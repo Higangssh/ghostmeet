@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>attend</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+  <div class="max-w-3xl mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-2">attend</h1>
+    <p class="text-zinc-400 mb-6">AI meeting delegate (self-hosted)</p>
+
+    {% if missing_keys %}
+    <div class="mb-6 p-4 rounded bg-red-950 border border-red-700 text-red-200">
+      Missing API keys: {{ ", ".join(missing_keys) }}
+    </div>
+    {% endif %}
+
+    <div class="space-y-3">
+      <input id="meetingUrl" class="w-full p-3 rounded bg-zinc-900 border border-zinc-700" placeholder="https://zoom.us/j/..." />
+      <button id="joinBtn" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500">Join meeting</button>
+      <p id="status" class="text-zinc-400"></p>
+    </div>
+  </div>
+
+  <script>
+    const joinBtn = document.getElementById('joinBtn');
+    const meetingUrl = document.getElementById('meetingUrl');
+    const statusEl = document.getElementById('status');
+
+    joinBtn.addEventListener('click', async () => {
+      statusEl.textContent = 'Joining...';
+      const res = await fetch('/api/join', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({meeting_url: meetingUrl.value})
+      });
+      const data = await res.json();
+      if (data.error) {
+        statusEl.textContent = 'Error: ' + data.error;
+        return;
+      }
+      window.location.href = `/meeting/${data.bot_id}`;
+    });
+  </script>
+</body>
+</html>
