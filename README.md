@@ -1,4 +1,4 @@
-# attend
+# ghostmeet
 
 Self-hosted AI meeting delegate.
 
@@ -15,7 +15,7 @@ See `IMPLEMENTATION_PLAN.md` and `requirements.md`.
 
 ### 1) Start backend
 ```bash
-cd /Users/sanghee/.openclaw/workspace/projects/attend
+cd /Users/sanghee/.openclaw/workspace/projects/ghostmeet
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -32,7 +32,7 @@ Backend runs on `http://127.0.0.1:8877`.
 1. Open `chrome://extensions`
 2. Enable **Developer mode**
 3. Click **Load unpacked**
-4. Select folder: `.../projects/attend/extension`
+4. Select folder: `.../projects/ghostmeet/extension`
 
 ### 3) Capture test
 1. Open Zoom/Meet tab in Chrome
@@ -48,7 +48,7 @@ Backend runs on `http://127.0.0.1:8877`.
 ## Repo layout (current)
 
 ```text
-attend/
+ghostmeet/
 ├── extension/                 # Chrome MV3 extension (PoC)
 │   ├── manifest.json
 │   ├── background.js

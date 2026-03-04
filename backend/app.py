@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RECORDINGS_DIR = ROOT / "recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="attend-backend", version="0.1.0")
+app = FastAPI(title="ghostmeet-backend", version="0.1.0")
 
 # in-memory session stats for PoC
 sessions: Dict[str, Dict[str, Any]] = {}
@@ -19,7 +19,7 @@ sessions: Dict[str, Dict[str, Any]] = {}
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "attend-backend"}
+    return {"ok": True, "service": "ghostmeet-backend"}
 
 
 @app.get("/api/sessions")

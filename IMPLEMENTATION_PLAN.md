@@ -1,4 +1,4 @@
-# attend Implementation Plan (10 Steps)
+# ghostmeet Implementation Plan (10 Steps)
 
 ## Goal
 Build a self-hosted AI meeting delegate with two modes:
