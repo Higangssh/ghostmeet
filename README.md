@@ -1,63 +1,83 @@
 # ghostmeet
 
-Self-hosted AI meeting delegate.
+Self-hosted AI meeting delegate — live captions and summaries from any browser tab.
 
 ## Current status
-- ✅ Step 1 complete: architecture/scope locked
-- ✅ Step 2 complete: Chrome tab audio capture → local backend WebSocket ingest PoC
-- ⏳ Step 3+: STT/summary/agent mode pending
+- ✅ Step 1: Architecture/scope locked
+- ✅ Step 2: Chrome tab audio capture → WebSocket → local backend
+- ✅ Step 3: Real-time STT pipeline (faster-whisper)
+- ✅ Step 4: Extension live captions UI (side panel)
+- ⏳ Step 5+: Summary engine, agent mode pending
 
-See `IMPLEMENTATION_PLAN.md` and `requirements.md`.
+See `IMPLEMENTATION_PLAN.md` for full roadmap.
 
 ---
 
-## PoC (Step 2) run guide
+## Quick Start
 
 ### 1) Start backend
 ```bash
-cd /Users/sanghee/.openclaw/workspace/projects/ghostmeet
+cd ghostmeet
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python -m backend
+
+# default model: base (options: tiny, base, small)
+GHOSTMEET_MODEL=base python -m backend
 ```
-
-Backend runs on `http://127.0.0.1:8877`.
-
-- Health: `GET /api/health`
-- Session stats: `GET /api/sessions`
-- WebSocket ingest: `ws://127.0.0.1:8877/ws/audio?session=<id>`
 
 ### 2) Load Chrome extension
 1. Open `chrome://extensions`
 2. Enable **Developer mode**
-3. Click **Load unpacked**
-4. Select folder: `.../projects/ghostmeet/extension`
+3. Click **Load unpacked** → select `extension/` folder
 
-### 3) Capture test
-1. Open Zoom/Meet tab in Chrome
-2. Click extension icon
-3. Press **Start capture**
-4. Talk in meeting tab for ~10s
-5. Press **Stop capture**
-6. Check backend stats at `/api/sessions`
-7. Verify file in `recordings/<session>.webm`
+### 3) Use it
+1. Open a meeting tab (Google Meet, Zoom web, etc.)
+2. Click ghostmeet extension icon → **Start Capture**
+3. Side panel opens automatically with live captions
+4. Click **Stop Capture** when done
+5. View transcript: `GET http://127.0.0.1:8877/api/sessions/{id}/transcript`
 
 ---
 
-## Repo layout (current)
+## API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | Health check + model info |
+| `/api/sessions` | GET | List all sessions |
+| `/api/sessions/{id}` | GET | Session details |
+| `/api/sessions/{id}/transcript` | GET | Full transcript |
+| `/ws/audio` | WS | Audio ingest |
+| `/ws/transcript/{id}` | WS | Live transcript stream |
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GHOSTMEET_MODEL` | `base` | Whisper model size (`tiny`/`base`/`small`) |
+| `GHOSTMEET_DEVICE` | `auto` | Compute device (`auto`/`cpu`/`cuda`) |
+| `GHOSTMEET_LANGUAGE` | auto-detect | Language code (`en`/`ko`/`ja`/etc.) |
+
+---
+
+## Repo Layout
 
 ```text
 ghostmeet/
-├── extension/                 # Chrome MV3 extension (PoC)
+├── extension/              # Chrome MV3 extension
 │   ├── manifest.json
-│   ├── background.js
-│   ├── popup.html
-│   └── popup.js
-├── backend/                   # local FastAPI backend (PoC)
-│   ├── __main__.py
-│   └── app.py
-├── recordings/                # captured webm chunks (runtime output)
+│   ├── background.js       # tab audio capture + WebSocket
+│   ├── popup.html/js       # start/stop controls
+│   ├── sidepanel.html      # live captions UI
+│   ├── sidepanel.js        # transcript WebSocket client
+│   └── sidepanel.css       # dark theme styles
+├── backend/                # FastAPI backend
+│   ├── app.py              # main server + routes
+│   ├── audio_processor.py  # ffmpeg webm→PCM conversion
+│   ├── transcriber.py      # faster-whisper wrapper
+│   └── models.py           # data models
+├── recordings/             # captured audio (runtime)
 ├── IMPLEMENTATION_PLAN.md
 ├── requirements.md
 └── requirements.txt

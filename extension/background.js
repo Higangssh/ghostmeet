@@ -15,6 +15,8 @@ async function startCapture() {
   }
 
   sessionId = newSessionId();
+  // persist for side panel
+  chrome.storage.local.set({ activeSessionId: sessionId });
 
   return new Promise((resolve) => {
     chrome.tabCapture.capture({ audio: true, video: false }, (stream) => {
@@ -78,6 +80,9 @@ async function stopCapture() {
   const stoppedSession = sessionId;
   socket = null;
   sessionId = null;
+
+  // clear persisted session
+  chrome.storage.local.remove('activeSessionId');
 
   return { ok: true, sessionId: stoppedSession, message: 'capture stopped' };
 }

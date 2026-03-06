@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ghostmeet — live captions</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div id="header">
+    <div class="logo">👻 ghostmeet</div>
+    <div id="status" class="status disconnected">disconnected</div>
+  </div>
+
+  <div id="controls">
+    <select id="language">
+      <option value="">Auto-detect</option>
+      <option value="en">English</option>
+      <option value="ko">한국어</option>
+      <option value="ja">日本語</option>
+      <option value="zh">中文</option>
+    </select>
+    <button id="btn-summarize">📋 Summarize</button>
+    <button id="btn-clear">Clear</button>
+  </div>
+
+  <div id="transcript-container">
+    <div id="transcript"></div>
+    <div id="empty-state">
+      <p>🎧 Start capturing audio to see live captions</p>
+      <p class="hint">Click the extension popup → Start Capture</p>
+    </div>
+  </div>
+
+  <div id="footer">
+    <span id="segment-count">0 segments</span>
+    <span id="duration">00:00</span>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,14 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "ghostmeet capture",
-  "version": "0.1.0",
-  "description": "Capture active tab audio and stream to local ghostmeet backend",
-  "permissions": ["tabCapture", "activeTab", "storage"],
+  "name": "ghostmeet",
+  "version": "0.2.0",
+  "description": "AI meeting delegate — live captions and summaries from any browser tab",
+  "permissions": ["tabCapture", "activeTab", "storage", "sidePanel"],
   "host_permissions": ["http://127.0.0.1:8877/*", "ws://127.0.0.1:8877/*"],
   "action": {
     "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   }
 }
