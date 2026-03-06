@@ -10,6 +10,7 @@ from typing import Dict, List
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from .audio_processor import transcribe_webm_file
 from .models import Session
@@ -29,6 +30,14 @@ WHISPER_DEVICE = os.environ.get("GHOSTMEET_DEVICE", "auto")
 WHISPER_LANGUAGE = os.environ.get("GHOSTMEET_LANGUAGE", None)
 
 app = FastAPI(title="ghostmeet-backend", version="0.2.0")
+
+# CORS for local development (extension + demo pages)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # state
 sessions: Dict[str, Session] = {}
