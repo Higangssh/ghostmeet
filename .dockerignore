@@ -1,0 +1,11 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+recordings/
+extension/
+.env
+.env.local
+node_modules
+.DS_Store

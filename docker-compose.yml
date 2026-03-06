@@ -1,0 +1,18 @@
+services:
+  backend:
+    build:
+      context: .
+      args:
+        WHISPER_MODEL: base  # tiny | base | small | medium
+    ports:
+      - "8877:8877"
+    volumes:
+      - ./recordings:/app/recordings
+    environment:
+      - GHOSTMEET_MODEL=base
+      - GHOSTMEET_DEVICE=cpu
+      # GHOSTMEET_LANGUAGE: auto-detect by default. Uncomment and set for specific language.
+      # - GHOSTMEET_LANGUAGE=en
+      - GHOSTMEET_CHUNK_INTERVAL=300  # seconds between transcription chunks
+      - GHOSTMEET_ANTHROPIC_KEY=   # required for summary feature
+    restart: unless-stopped

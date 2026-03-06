@@ -36,10 +36,10 @@ class Transcriber:
         self,
         model_size: str = "base",
         device: str = "auto",
-        compute_type: str = "auto",
+        compute_type: str = "float32",
         language: str | None = None,
     ):
-        logger.info("Loading whisper model: %s (device=%s)", model_size, device)
+        logger.info("Loading whisper model: %s (device=%s, compute=%s)", model_size, device, compute_type)
         self.model = WhisperModel(
             model_size,
             device=device,

@@ -5,7 +5,6 @@ import asyncio
 import datetime as dt
 import logging
 import os
-import tempfile
 from pathlib import Path
 from typing import Dict, List
 
@@ -28,13 +27,11 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 # config from env
 WHISPER_MODEL = os.environ.get("GHOSTMEET_MODEL", "base")
 WHISPER_DEVICE = os.environ.get("GHOSTMEET_DEVICE", "auto")
-WHISPER_LANGUAGE = os.environ.get("GHOSTMEET_LANGUAGE", None)
-# chunk interval in seconds (default 5 minutes)
+WHISPER_LANGUAGE = os.environ.get("GHOSTMEET_LANGUAGE", None) or None  # empty string → None
 CHUNK_INTERVAL = int(os.environ.get("GHOSTMEET_CHUNK_INTERVAL", "300"))
 
 app = FastAPI(title="ghostmeet-backend", version="0.3.0")
 
-# CORS for local development (extension + demo pages)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,7 +43,6 @@ app.add_middleware(
 sessions: Dict[str, Session] = {}
 transcribers: Dict[str, Transcriber] = {}
 summaries: Dict[str, Summary] = {}
-# websocket subscribers for live transcript
 transcript_subscribers: Dict[str, List[WebSocket]] = {}
 
 
@@ -92,12 +88,10 @@ def get_transcript(session_id: str):
 async def summarize_session(session_id: str):
     if session_id not in transcribers:
         raise HTTPException(status_code=404, detail="session not found")
-
     t = transcribers[session_id]
     text = t.get_full_text()
     if not text.strip():
         raise HTTPException(status_code=400, detail="transcript is empty")
-
     summary = await generate_summary(text, session_id)
     summaries[session_id] = summary
     return summary.to_dict()
@@ -112,12 +106,11 @@ def get_summary(session_id: str):
 
 @app.websocket("/ws/transcript/{session_id}")
 async def ws_transcript(websocket: WebSocket, session_id: str):
-    """Subscribe to live transcript updates for a session."""
     await websocket.accept()
     transcript_subscribers.setdefault(session_id, []).append(websocket)
     try:
         while True:
-            await websocket.receive_text()  # keep alive
+            await websocket.receive_text()
     except WebSocketDisconnect:
         pass
     finally:
@@ -125,7 +118,6 @@ async def ws_transcript(websocket: WebSocket, session_id: str):
 
 
 async def _broadcast_segments(session_id: str, segments: List[Segment]):
-    """Push new segments to all transcript subscribers."""
     subs = transcript_subscribers.get(session_id, [])
     data = [s.to_dict() for s in segments]
     dead = []
@@ -138,22 +130,13 @@ async def _broadcast_segments(session_id: str, segments: List[Segment]):
         subs.remove(ws)
 
 
-async def _transcribe_chunk_file(
-    chunk_path: Path,
-    transcriber: Transcriber,
-    session: Session,
-    session_id: str,
-):
-    """Transcribe a chunk file and broadcast results."""
-    logger.info("Transcribing chunk: %s", chunk_path.name)
-    loop = asyncio.get_event_loop()
-    new_segments = await loop.run_in_executor(
-        None, transcribe_webm_file, chunk_path, transcriber
-    )
-    if new_segments:
-        session.transcript_segments = len(transcriber.transcript)
-        await _broadcast_segments(session_id, new_segments)
-        logger.info("Chunk %s: %d new segments", chunk_path.name, len(new_segments))
+def _do_transcribe(chunk_path: Path, transcriber: Transcriber) -> list:
+    """Synchronous transcription — runs in executor thread."""
+    try:
+        return transcribe_webm_file(chunk_path, transcriber)
+    except Exception as e:
+        logger.error("Transcription failed for %s: %s", chunk_path, e, exc_info=True)
+        return []
 
 
 @app.websocket("/ws/audio")
@@ -171,7 +154,6 @@ async def ws_audio(websocket: WebSocket):
     )
     sessions[session_id] = session
 
-    # init transcriber for this session
     transcriber = Transcriber(
         model_size=WHISPER_MODEL,
         device=WHISPER_DEVICE,
@@ -179,16 +161,14 @@ async def ws_audio(websocket: WebSocket):
     )
     transcribers[session_id] = transcriber
 
-    # chunk management
+    # collect audio
     chunk_dir = RECORDINGS_DIR / f"{session_id}_chunks"
     chunk_dir.mkdir(exist_ok=True)
+    chunk_paths: List[Path] = []
     chunk_num = 0
     chunk_start_time = asyncio.get_event_loop().time()
     current_chunk_path = chunk_dir / f"chunk_{chunk_num:04d}.webm"
     current_chunk_file = current_chunk_path.open("wb")
-
-    # background transcription tasks
-    transcription_tasks: List[asyncio.Task] = []
 
     try:
         with out_path.open("ab") as full_file:
@@ -196,78 +176,63 @@ async def ws_audio(websocket: WebSocket):
                 message = await websocket.receive()
                 if "bytes" in message and message["bytes"]:
                     chunk = message["bytes"]
-
-                    # write to full recording
                     full_file.write(chunk)
                     full_file.flush()
-
-                    # write to current chunk
                     current_chunk_file.write(chunk)
                     current_chunk_file.flush()
-
                     session.chunks += 1
                     session.audio_bytes += len(chunk)
 
-                    # check if chunk interval elapsed
                     elapsed = asyncio.get_event_loop().time() - chunk_start_time
                     if elapsed >= CHUNK_INTERVAL:
-                        # close current chunk and start transcription
                         current_chunk_file.close()
-                        task = asyncio.create_task(
-                            _transcribe_chunk_file(
-                                current_chunk_path, transcriber, session, session_id
-                            )
-                        )
-                        transcription_tasks.append(task)
+                        chunk_paths.append(current_chunk_path)
 
-                        # start new chunk
+                        # transcribe completed chunk in background
+                        logger.info("Chunk %d ready (%.0fs), starting transcription", chunk_num, elapsed)
+                        loop = asyncio.get_event_loop()
+                        new_segs = await loop.run_in_executor(
+                            None, _do_transcribe, current_chunk_path, transcriber
+                        )
+                        if new_segs:
+                            session.transcript_segments = len(transcriber.transcript)
+                            await _broadcast_segments(session_id, new_segs)
+
                         chunk_num += 1
                         chunk_start_time = asyncio.get_event_loop().time()
                         current_chunk_path = chunk_dir / f"chunk_{chunk_num:04d}.webm"
                         current_chunk_file = current_chunk_path.open("wb")
 
-                        session.status = "streaming"
-                        logger.info(
-                            "Session %s: chunk %d started (after %.0fs)",
-                            session_id, chunk_num, elapsed,
-                        )
-
                 elif "text" in message and message["text"] == "stop":
                     break
     except WebSocketDisconnect:
         pass
-    finally:
-        # close and transcribe the last chunk
-        current_chunk_file.close()
 
-        if current_chunk_path.stat().st_size > 0:
-            session.status = "transcribing"
-            task = asyncio.create_task(
-                _transcribe_chunk_file(
-                    current_chunk_path, transcriber, session, session_id
-                )
-            )
-            transcription_tasks.append(task)
+    # close last chunk file
+    current_chunk_file.close()
 
-        # wait for all transcription tasks to finish
-        if transcription_tasks:
-            logger.info("Waiting for %d transcription tasks...", len(transcription_tasks))
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*transcription_tasks, return_exceptions=True),
-                    timeout=300,  # max 5 min wait
-                )
-            except asyncio.TimeoutError:
-                logger.error("Transcription tasks timed out")
+    # transcribe the last chunk
+    if current_chunk_path.exists() and current_chunk_path.stat().st_size > 0:
+        session.status = "transcribing"
+        logger.info("Transcribing final chunk %d (%d bytes)...", chunk_num, current_chunk_path.stat().st_size)
 
-        session.status = "stopped"
-        session.stopped_at = dt.datetime.now().isoformat(timespec="seconds")
-        logger.info(
-            "Session %s complete: %d chunks, %d bytes, %d segments, %d audio chunks",
-            session_id, session.chunks, session.audio_bytes,
-            session.transcript_segments, chunk_num + 1,
+        loop = asyncio.get_event_loop()
+        new_segs = await loop.run_in_executor(
+            None, _do_transcribe, current_chunk_path, transcriber
         )
+        if new_segs:
+            session.transcript_segments = len(transcriber.transcript)
+            await _broadcast_segments(session_id, new_segs)
+
+    session.status = "stopped"
+    session.stopped_at = dt.datetime.now().isoformat(timespec="seconds")
+    logger.info(
+        "Session %s complete: %d chunks, %d bytes, %d segments",
+        session_id, session.chunks, session.audio_bytes, session.transcript_segments,
+    )
 
 
 def run() -> None:
-    uvicorn.run(app, host="127.0.0.1", port=8877)
+    host = os.environ.get("GHOSTMEET_HOST", "0.0.0.0")
+    port = int(os.environ.get("GHOSTMEET_PORT", "8877"))
+    uvicorn.run(app, host=host, port=port)

@@ -15,7 +15,15 @@ See `IMPLEMENTATION_PLAN.md` for full roadmap.
 
 ## Quick Start
 
-### 1) Start backend
+### Option A: Docker (recommended)
+```bash
+git clone https://github.com/Higangssh/ghostmeet.git
+cd ghostmeet
+docker compose up
+```
+That's it. Backend + Whisper model ready on `http://localhost:8877`.
+
+### Option B: Manual
 ```bash
 cd ghostmeet
 python3 -m venv .venv
