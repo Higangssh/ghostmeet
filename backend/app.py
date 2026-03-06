@@ -11,7 +11,7 @@ from typing import Dict, List
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 
-from .audio_processor import webm_chunks_to_pcm
+from .audio_processor import transcribe_webm_file
 from .models import Session
 from .summarizer import Summary, generate_summary
 from .transcriber import Transcriber, Segment
@@ -144,22 +144,6 @@ async def ws_audio(websocket: WebSocket):
     )
     transcribers[session_id] = transcriber
 
-    # queue for feeding audio to ffmpeg
-    audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
-
-    async def _process_audio():
-        """Convert webm→PCM and transcribe in real-time."""
-        try:
-            async for pcm_chunk in webm_chunks_to_pcm(audio_queue):
-                new_segments = transcriber.transcribe_chunk(pcm_chunk)
-                if new_segments:
-                    session.transcript_segments = len(transcriber.transcript)
-                    await _broadcast_segments(session_id, new_segments)
-        except Exception as e:
-            logger.error("STT pipeline error: %s", e)
-
-    processor_task = asyncio.create_task(_process_audio())
-
     try:
         with out_path.open("ab") as f:
             while True:
@@ -167,28 +151,35 @@ async def ws_audio(websocket: WebSocket):
                 if "bytes" in message and message["bytes"]:
                     chunk = message["bytes"]
                     f.write(chunk)
+                    f.flush()
                     session.chunks += 1
                     session.audio_bytes += len(chunk)
-                    await audio_queue.put(chunk)
                 elif "text" in message and message["text"] == "stop":
                     break
     except WebSocketDisconnect:
         pass
-    finally:
-        # signal EOF to ffmpeg
-        await audio_queue.put(None)
-        # wait for processing to finish (max 10s)
-        try:
-            await asyncio.wait_for(processor_task, timeout=10.0)
-        except asyncio.TimeoutError:
-            processor_task.cancel()
 
-        session.status = "stopped"
-        session.stopped_at = dt.datetime.now().isoformat(timespec="seconds")
-        logger.info(
-            "Session %s stopped: %d chunks, %d bytes, %d transcript segments",
-            session_id, session.chunks, session.audio_bytes, session.transcript_segments,
+    # transcribe the complete recording
+    session.status = "transcribing"
+    logger.info("Session %s: transcribing %s (%d bytes)...", session_id, out_path.name, session.audio_bytes)
+
+    try:
+        loop = asyncio.get_event_loop()
+        new_segments = await loop.run_in_executor(
+            None, transcribe_webm_file, out_path, transcriber
         )
+        if new_segments:
+            session.transcript_segments = len(transcriber.transcript)
+            await _broadcast_segments(session_id, new_segments)
+    except Exception as e:
+        logger.error("Transcription error for %s: %s", session_id, e)
+
+    session.status = "stopped"
+    session.stopped_at = dt.datetime.now().isoformat(timespec="seconds")
+    logger.info(
+        "Session %s complete: %d chunks, %d bytes, %d transcript segments",
+        session_id, session.chunks, session.audio_bytes, session.transcript_segments,
+    )
 
 
 def run() -> None:

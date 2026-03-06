@@ -1,68 +1,49 @@
-"""Convert incoming webm/opus audio chunks to 16kHz mono PCM via ffmpeg."""
+"""Process incoming webm/opus audio for transcription."""
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import AsyncIterator
+import tempfile
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
-CHANNELS = 1
-SAMPLE_WIDTH = 2  # 16-bit
 
 
-async def webm_chunks_to_pcm(
-    chunks: asyncio.Queue[bytes | None],
-) -> AsyncIterator[bytes]:
-    """Stream webm bytes through ffmpeg, yielding raw PCM chunks.
+def transcribe_webm_file(webm_path: str | Path, transcriber) -> None:
+    """Transcribe a complete webm file using faster-whisper's native file reader.
 
-    Send None into the queue to signal EOF.
+    This is more reliable than streaming PCM through ffmpeg pipe,
+    because whisper can read webm/opus directly via its internal ffmpeg binding.
     """
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel", "error",
-        "-f", "webm",
-        "-i", "pipe:0",
-        "-ar", str(SAMPLE_RATE),
-        "-ac", str(CHANNELS),
-        "-f", "s16le",
-        "-acodec", "pcm_s16le",
-        "pipe:1",
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+    path = str(webm_path)
+    logger.info("Transcribing file: %s", path)
+
+    segments, info = transcriber.model.transcribe(
+        path,
+        language=transcriber.language,
+        beam_size=5,
+        best_of=3,
+        vad_filter=True,
+        vad_parameters=dict(
+            min_silence_duration_ms=500,
+            speech_pad_ms=200,
+        ),
     )
 
-    async def _feed_stdin():
-        try:
-            while True:
-                chunk = await chunks.get()
-                if chunk is None:
-                    break
-                if proc.stdin is not None:
-                    proc.stdin.write(chunk)
-                    await proc.stdin.drain()
-        except (BrokenPipeError, ConnectionResetError):
-            pass
-        finally:
-            if proc.stdin is not None:
-                proc.stdin.close()
+    new_segments = []
+    for seg in segments:
+        text = seg.text.strip()
+        if not text:
+            continue
+        from .transcriber import Segment
+        segment = Segment(
+            text=text,
+            start=seg.start,
+            end=seg.end,
+        )
+        transcriber.transcript.append(segment)
+        new_segments.append(segment)
+        logger.info("[%.1f-%.1f] %s", segment.start, segment.end, text)
 
-    feeder = asyncio.create_task(_feed_stdin())
-
-    try:
-        read_size = SAMPLE_RATE * CHANNELS * SAMPLE_WIDTH  # ~1 second of audio
-        while True:
-            data = await proc.stdout.read(read_size)
-            if not data:
-                break
-            yield data
-    finally:
-        feeder.cancel()
-        try:
-            proc.kill()
-        except ProcessLookupError:
-            pass
-        await proc.wait()
+    return new_segments
