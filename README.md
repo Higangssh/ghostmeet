@@ -2,12 +2,9 @@
   <img src="assets/logo.jpg" width="200" alt="ghostmeet logo">
 </p>
 
-<h1 align="center">ghostmeet</h1>
+# ghostmeet
 
-<p align="center">
-  <strong>Your invisible AI meeting assistant</strong><br>
-  Live captions and smart summaries — right in your browser.
-</p>
+**Your invisible AI meeting assistant** — Live captions and smart summaries, right in your browser.
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> •
