@@ -157,6 +157,24 @@ ghostmeet/
 └── requirements.txt        # Python dependencies
 ```
 
+## OpenClaw Integration
+
+ghostmeet works as an [OpenClaw](https://github.com/openclaw/openclaw) skill. Control your meetings from chat.
+
+```bash
+# Install the skill
+clawhub install ghostmeet
+```
+
+Then just ask your AI assistant:
+
+- **"Summarize my last meeting"** → generates AI summary from latest session
+- **"How many meetings did I have today?"** → lists all sessions
+- **"What was discussed?"** → fetches full transcript
+- **"Extract action items"** → pulls tasks from the summary
+
+> The skill handles session listing, transcript retrieval, and summary generation via the ghostmeet API. Recording start/stop is done through the Chrome Extension.
+
 ## Roadmap
 
 - [x] Real-time transcription (Whisper)
