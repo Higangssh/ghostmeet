@@ -6,12 +6,7 @@
 
 **Your invisible AI meeting assistant** — Live captions and smart summaries, right in your browser.
 
-<p align="center">
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#how-it-works">How It Works</a> •
-  <a href="#features">Features</a> •
-  <a href="#api">API</a>
-</p>
+[Quick Start](#quick-start) • [How It Works](#how-it-works) • [Features](#features) • [API](#api)
 
 ---
 
