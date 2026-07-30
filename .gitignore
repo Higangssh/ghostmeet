@@ -12,8 +12,14 @@ node_modules/
 .env
 .env.local
 
-# Runtime outputs
+# Runtime outputs — meeting audio, never commit these
 recordings/
+*.webm
+*.pcm
+*.wav
+
+# Test/tooling caches
+.pytest_cache/
 
 # IDE
 .vscode/

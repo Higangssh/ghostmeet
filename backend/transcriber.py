@@ -1,106 +1,78 @@
-"""Real-time transcription using faster-whisper."""
+"""Whisper model reuse and the per-session transcribe adapter.
+
+The model is expensive to load and safe to share, so it is cached per configuration for
+the life of the process. Language, by contrast, is a per-call argument — so a single
+shared model can serve concurrent sessions transcribing different languages.
+"""
 from __future__ import annotations
 
 import logging
-import time
-from dataclasses import dataclass, field
-from typing import List
+import threading
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
-from faster_whisper import WhisperModel
 
 logger = logging.getLogger(__name__)
 
+ModelFactory = Callable[..., Any]
 
-@dataclass
-class Segment:
-    """A single transcribed segment."""
-    text: str
-    start: float
-    end: float
-    timestamp: float = field(default_factory=time.time)
-
-    def to_dict(self):
-        return {
-            "text": self.text,
-            "start": round(self.start, 2),
-            "end": round(self.end, 2),
-            "timestamp": self.timestamp,
-        }
+_models: Dict[Tuple[str, str, str], Any] = {}
+_lock = threading.Lock()
 
 
-class Transcriber:
-    """Wraps faster-whisper for incremental transcription."""
+def _load_whisper(model_size: str, device: str, compute_type: str):
+    from faster_whisper import WhisperModel  # imported lazily: heavy, and not needed in tests
 
-    def __init__(
-        self,
-        model_size: str = "base",
-        device: str = "auto",
-        compute_type: str = "float32",
-        language: str | None = None,
-    ):
-        logger.info("Loading whisper model: %s (device=%s, compute=%s)", model_size, device, compute_type)
-        self.model = WhisperModel(
-            model_size,
-            device=device,
-            compute_type=compute_type,
-        )
+    logger.info(
+        "Loading whisper model %s (device=%s, compute=%s)", model_size, device, compute_type
+    )
+    model = WhisperModel(model_size, device=device, compute_type=compute_type)
+    logger.info("Whisper model %s ready", model_size)
+    return model
+
+
+def get_model(
+    model_size: str = "base",
+    device: str = "auto",
+    compute_type: str = "float32",
+    factory: Optional[ModelFactory] = None,
+):
+    """Return the shared model for this configuration, loading it at most once."""
+    key = (model_size, device, compute_type)
+    with _lock:
+        if key not in _models:
+            build = factory or _load_whisper
+            _models[key] = build(model_size, device=device, compute_type=compute_type)
+        return _models[key]
+
+
+def reset_model_cache() -> None:
+    """Drop cached models. Used by tests; also lets a long-lived process reclaim RAM."""
+    with _lock:
+        _models.clear()
+
+
+class WhisperTranscriber:
+    """Turns one bounded window of PCM into raw segments for a single session."""
+
+    def __init__(self, model: Any, language: str | None = None):
+        self._model = model
         self.language = language
-        self.transcript: List[Segment] = []
-        self._offset: float = 0.0
-        logger.info("Whisper model loaded successfully")
 
-    def transcribe_chunk(self, pcm_bytes: bytes) -> List[Segment]:
-        """Transcribe a chunk of raw PCM audio (16kHz, 16-bit, mono).
-
-        Returns list of new segments found in this chunk.
-        """
-        audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-
-        if len(audio) < 1600:  # less than 0.1s, skip
-            return []
-
-        segments_iter, info = self.model.transcribe(
+    def __call__(self, audio: np.ndarray) -> List[Any]:
+        segments, info = self._model.transcribe(
             audio,
             language=self.language,
-            beam_size=3,
-            best_of=3,
+            beam_size=5,
             vad_filter=True,
             vad_parameters=dict(
                 min_silence_duration_ms=500,
                 speech_pad_ms=200,
+                threshold=0.3,
             ),
+            # each window is transcribed independently; carrying context across windows
+            # lets a hallucinated phrase repeat itself for the rest of the meeting
+            condition_on_previous_text=False,
         )
-
-        new_segments = []
-        for seg in segments_iter:
-            text = seg.text.strip()
-            if not text:
-                continue
-            segment = Segment(
-                text=text,
-                start=self._offset + seg.start,
-                end=self._offset + seg.end,
-            )
-            self.transcript.append(segment)
-            new_segments.append(segment)
-            logger.info("[%.1f-%.1f] %s", segment.start, segment.end, text)
-
-        # advance offset by chunk duration
-        chunk_duration = len(audio) / 16000.0
-        self._offset += chunk_duration
-
-        return new_segments
-
-    def get_full_transcript(self) -> List[dict]:
-        """Return all segments as dicts."""
-        return [s.to_dict() for s in self.transcript]
-
-    def get_full_text(self) -> str:
-        """Return concatenated transcript text."""
-        return " ".join(s.text for s in self.transcript)
-
-    def reset(self):
-        """Clear transcript and reset offset."""
-        self.transcript.clear()
-        self._offset = 0.0
+        # faster-whisper defers all inference into this generator — consume it here
+        return list(segments)

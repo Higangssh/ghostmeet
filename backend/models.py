@@ -3,20 +3,24 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 @dataclass
 class Session:
     """Represents a capture + transcription session."""
+
     session_id: str
     chunks: int = 0
     audio_bytes: int = 0
     started_at: str = field(default_factory=lambda: dt.datetime.now().isoformat(timespec="seconds"))
     stopped_at: str | None = None
-    status: str = "streaming"  # streaming | transcribing | stopped
+    status: str = "streaming"  # streaming | transcribing | stopped | error
     file: str = ""
     transcript_segments: int = 0
+    language: str | None = None
+    duration_sec: float = 0.0
+    error: str | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -28,4 +32,7 @@ class Session:
             "status": self.status,
             "file": self.file,
             "transcript_segments": self.transcript_segments,
+            "language": self.language,
+            "duration_sec": self.duration_sec,
+            "error": self.error,
         }

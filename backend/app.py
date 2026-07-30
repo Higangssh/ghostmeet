@@ -1,21 +1,24 @@
-"""ghostmeet backend — audio capture + chunked STT."""
+"""ghostmeet backend — audio capture + incremental STT."""
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
 import logging
 import os
+from functools import partial
 from pathlib import Path
 from typing import Dict, List
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from .audio_processor import transcribe_webm_file
+from .decoder import StreamingWebmDecoder
+from .incremental import IncrementalTranscriber, Segment
 from .models import Session
+from .pcm_store import PcmStore
+from .pipeline import SessionPipeline
 from .summarizer import Summary, generate_summary
-from .transcriber import Transcriber, Segment
+from .transcriber import WhisperTranscriber, get_model
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -27,16 +30,11 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 # config from env
 WHISPER_MODEL = os.environ.get("GHOSTMEET_MODEL", "base")
 WHISPER_DEVICE = os.environ.get("GHOSTMEET_DEVICE", "auto")
-WHISPER_LANGUAGE = os.environ.get("GHOSTMEET_LANGUAGE", None) or None  # empty string → None
-CHUNK_INTERVAL = int(os.environ.get("GHOSTMEET_CHUNK_INTERVAL", "300"))
+WHISPER_COMPUTE = os.environ.get("GHOSTMEET_COMPUTE_TYPE", "float32")
+WHISPER_LANGUAGE = os.environ.get("GHOSTMEET_LANGUAGE") or None
+CHUNK_INTERVAL = float(os.environ.get("GHOSTMEET_CHUNK_INTERVAL", "10"))
 
-app = FastAPI(title="ghostmeet-backend", version="0.3.0")
-
-# serve demo page (local only, not committed to git)
-_demo_dir = Path(__file__).resolve().parent.parent / "demo"
-if _demo_dir.exists():
-    from fastapi.staticfiles import StaticFiles
-    app.mount("/demo", StaticFiles(directory=str(_demo_dir), html=True), name="demo")
+app = FastAPI(title="ghostmeet-backend", version="0.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,9 +45,15 @@ app.add_middleware(
 
 # state
 sessions: Dict[str, Session] = {}
-transcribers: Dict[str, Transcriber] = {}
+pipelines: Dict[str, SessionPipeline] = {}
 summaries: Dict[str, Summary] = {}
 transcript_subscribers: Dict[str, List[WebSocket]] = {}
+
+
+def _make_transcribe_fn(language: str | None) -> WhisperTranscriber:
+    """Build a per-session transcriber over the process-wide shared model."""
+    model = get_model(WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE)
+    return WhisperTranscriber(model, language=language)
 
 
 @app.get("/api/health")
@@ -79,23 +83,22 @@ def get_session(session_id: str):
 
 @app.get("/api/sessions/{session_id}/transcript")
 def get_transcript(session_id: str):
-    if session_id not in transcribers:
+    if session_id not in pipelines:
         raise HTTPException(status_code=404, detail="session not found")
-    t = transcribers[session_id]
+    transcriber = pipelines[session_id].transcriber
     return {
         "session_id": session_id,
-        "segments": t.get_full_transcript(),
-        "full_text": t.get_full_text(),
-        "segment_count": len(t.transcript),
+        "segments": transcriber.snapshot(),
+        "full_text": transcriber.full_text(),
+        "segment_count": len(transcriber.transcript),
     }
 
 
 @app.post("/api/sessions/{session_id}/summarize")
 async def summarize_session(session_id: str):
-    if session_id not in transcribers:
+    if session_id not in pipelines:
         raise HTTPException(status_code=404, detail="session not found")
-    t = transcribers[session_id]
-    text = t.get_full_text()
+    text = pipelines[session_id].transcriber.full_text()
     if not text.strip():
         raise HTTPException(status_code=400, detail="transcript is empty")
     summary = await generate_summary(text, session_id)
@@ -120,108 +123,129 @@ async def ws_transcript(websocket: WebSocket, session_id: str):
     except WebSocketDisconnect:
         pass
     finally:
-        transcript_subscribers.get(session_id, []).remove(websocket)
+        subscribers = transcript_subscribers.get(session_id, [])
+        if websocket in subscribers:
+            subscribers.remove(websocket)
 
 
-async def _broadcast_segments(session_id: str, segments: List[Segment]):
-    subs = transcript_subscribers.get(session_id, [])
-    data = [s.to_dict() for s in segments]
+async def _broadcast_segments(session_id: str, segments: List[Segment]) -> None:
+    session = sessions.get(session_id)
+    if session is not None and session_id in pipelines:
+        session.transcript_segments = len(pipelines[session_id].transcriber.transcript)
+
+    subscribers = transcript_subscribers.get(session_id, [])
+    payload = {"type": "transcript", "segments": [s.to_dict() for s in segments]}
     dead = []
-    for ws in subs:
+    for ws in subscribers:
         try:
-            await ws.send_json({"type": "transcript", "segments": data})
-        except Exception:
+            await ws.send_json(payload)
+        except Exception:  # noqa: BLE001 - a closed side panel is routine
             dead.append(ws)
     for ws in dead:
-        subs.remove(ws)
-
-
-def _do_transcribe(chunk_path: Path, transcriber: Transcriber) -> list:
-    """Synchronous transcription — runs in executor thread."""
-    try:
-        return transcribe_webm_file(chunk_path, transcriber)
-    except Exception as e:
-        logger.error("Transcription failed for %s: %s", chunk_path, e, exc_info=True)
-        return []
+        subscribers.remove(ws)
 
 
 @app.websocket("/ws/audio")
 async def ws_audio(websocket: WebSocket):
     await websocket.accept()
 
-    session_id = websocket.query_params.get("session")
-    if not session_id:
-        session_id = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    session_id = websocket.query_params.get("session") or dt.datetime.now().strftime(
+        "%Y%m%d-%H%M%S"
+    )
+    language = websocket.query_params.get("lang") or WHISPER_LANGUAGE
 
-    out_path = RECORDINGS_DIR / f"{session_id}.webm"
+    if session_id in pipelines and sessions.get(session_id, None) is not None:
+        if sessions[session_id].status == "streaming":
+            logger.warning("Rejected duplicate capture for active session %s", session_id)
+            await websocket.close(code=4409, reason="session already capturing")
+            return
+
+    archive_path = RECORDINGS_DIR / f"{session_id}.webm"
+    pcm_path = RECORDINGS_DIR / f"{session_id}.pcm"
+    # a re-used id starts fresh: appending to a previous recording corrupts both files
+    pcm_path.unlink(missing_ok=True)
+
     session = Session(
         session_id=session_id,
-        file=str(out_path.relative_to(ROOT)),
+        file=archive_path.name,
+        language=language,
     )
     sessions[session_id] = session
 
-    transcriber = Transcriber(
-        model_size=WHISPER_MODEL,
-        device=WHISPER_DEVICE,
-        language=WHISPER_LANGUAGE,
+    store = PcmStore(pcm_path)
+    decoder = StreamingWebmDecoder(store)
+    pipeline = SessionPipeline(
+        decoder=decoder,
+        transcriber=IncrementalTranscriber(store, _make_transcribe_fn(language)),
+        on_segments=partial(_broadcast_segments, session_id),
+        interval_sec=CHUNK_INTERVAL,
     )
-    transcribers[session_id] = transcriber
+    pipelines[session_id] = pipeline
+    await pipeline.start()
 
-    # notify client of session id
     await websocket.send_json({"session_id": session_id})
 
-    # collect audio — accumulate into one growing file, transcribe periodically
-    last_transcribed_size = 0
-    chunk_start_time = asyncio.get_event_loop().time()
-
     try:
-        with out_path.open("ab") as full_file:
-            while True:
-                message = await websocket.receive()
-                if "bytes" in message and message["bytes"]:
-                    chunk = message["bytes"]
-                    full_file.write(chunk)
-                    full_file.flush()
-                    session.chunks += 1
-                    session.audio_bytes += len(chunk)
+        try:
+            with archive_path.open("wb") as archive:
+                while True:
+                    message = await websocket.receive()
+                    if message.get("bytes"):
+                        chunk = message["bytes"]
+                        archive.write(chunk)
+                        session.chunks += 1
+                        session.audio_bytes += len(chunk)
+                        pipeline.feed(chunk)  # returns immediately
+                    elif message.get("text") == "stop":
+                        break
+                    elif message.get("type") == "websocket.disconnect":
+                        break
+        except WebSocketDisconnect:
+            pass
 
-                    elapsed = asyncio.get_event_loop().time() - chunk_start_time
-                    if elapsed >= CHUNK_INTERVAL:
-                        # transcribe the full accumulated file
-                        logger.info("Interval reached (%.0fs, %d bytes), transcribing...", elapsed, session.audio_bytes)
-                        loop = asyncio.get_event_loop()
-                        new_segs = await loop.run_in_executor(
-                            None, _do_transcribe, out_path, transcriber
-                        )
-                        if new_segs:
-                            session.transcript_segments = len(transcriber.transcript)
-                            await _broadcast_segments(session_id, new_segs)
-                        last_transcribed_size = session.audio_bytes
-                        chunk_start_time = asyncio.get_event_loop().time()
-
-                elif "text" in message and message["text"] == "stop":
-                    break
-    except WebSocketDisconnect:
-        pass
-
-    # transcribe remaining audio if new data arrived since last transcription
-    if session.audio_bytes > last_transcribed_size and out_path.exists() and out_path.stat().st_size > 0:
         session.status = "transcribing"
-        logger.info("Transcribing final audio (%d bytes)...", out_path.stat().st_size)
+        await pipeline.stop()
 
-        loop = asyncio.get_event_loop()
-        new_segs = await loop.run_in_executor(
-            None, _do_transcribe, out_path, transcriber
+        if decoder.error is not None:
+            session.status = "error"
+            session.error = str(decoder.error)
+        else:
+            session.status = "stopped"
+
+        session.stopped_at = dt.datetime.now().isoformat(timespec="seconds")
+        session.transcript_segments = len(pipeline.transcriber.transcript)
+        session.duration_sec = round(store.duration, 2)
+    finally:
+        # Always release the handle and reclaim the working file, even if the client
+        # vanished or a pass blew up mid-session. Order matters: the decoder writes into
+        # the store from its own thread, so it has to be stopped first.
+        decoder.close()
+        store.close()
+        # the PCM working file is large (~115 MB/hour); the webm archive is the durable copy
+        pcm_path.unlink(missing_ok=True)
+
+    # tell the client the final pass is done, so it knows the transcript is complete and
+    # summarising is now safe. The socket may already be gone, which is fine.
+    try:
+        await websocket.send_json(
+            {
+                "type": "complete",
+                "session_id": session_id,
+                "status": session.status,
+                "segment_count": session.transcript_segments,
+                "duration_sec": session.duration_sec,
+            }
         )
-        if new_segs:
-            session.transcript_segments = len(transcriber.transcript)
-            await _broadcast_segments(session_id, new_segs)
+    except Exception:  # noqa: BLE001 - client hung up first
+        logger.debug("Could not send completion notice for %s", session_id)
 
-    session.status = "stopped"
-    session.stopped_at = dt.datetime.now().isoformat(timespec="seconds")
     logger.info(
-        "Session %s complete: %d chunks, %d bytes, %d segments",
-        session_id, session.chunks, session.audio_bytes, session.transcript_segments,
+        "Session %s complete: %d chunks, %d bytes, %.0fs audio, %d segments",
+        session_id,
+        session.chunks,
+        session.audio_bytes,
+        session.duration_sec,
+        session.transcript_segments,
     )
 
 
