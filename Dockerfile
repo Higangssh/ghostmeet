@@ -23,5 +23,8 @@ EXPOSE 8877
 ENV GHOSTMEET_MODEL=${WHISPER_MODEL}
 ENV GHOSTMEET_DEVICE=cpu
 ENV GHOSTMEET_CHUNK_INTERVAL=10
+# must listen on all interfaces *inside* the container; docker-compose publishes the
+# port on the host's loopback only
+ENV GHOSTMEET_HOST=0.0.0.0
 
 CMD ["python", "-m", "backend"]

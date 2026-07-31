@@ -113,7 +113,7 @@ Set these in `.env` or `docker-compose.yml`:
 | `GHOSTMEET_LANGUAGE` | auto-detect | Force language (`en` / `ko` / `ja` / etc.) |
 | `GHOSTMEET_CHUNK_INTERVAL` | `10` | Seconds between transcription updates |
 | `GHOSTMEET_ANTHROPIC_KEY` | — | Required for AI summaries |
-| `GHOSTMEET_HOST` | `0.0.0.0` | Server bind address |
+| `GHOSTMEET_HOST` | `127.0.0.1` | Server bind address (loopback — the API has no auth) |
 | `GHOSTMEET_PORT` | `8877` | Server port |
 
 **Model size guide:**

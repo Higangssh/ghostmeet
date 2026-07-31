@@ -55,7 +55,7 @@ Default backend: `http://127.0.0.1:8877`
 ```bash
 curl -s http://127.0.0.1:8877/api/health
 ```
-Returns: `{"status": "ok", "whisper_model": "base", "device": "cpu"}`
+Returns: `{"ok": true, "service": "ghostmeet-backend", "model": "base", "chunk_interval_sec": 10}`
 
 ### List Sessions
 ```bash
@@ -121,7 +121,7 @@ User: "How many meetings did I have today?"
 | `GHOSTMEET_LANGUAGE` | auto | Force language (en/ko/ja etc.) or auto-detect |
 | `GHOSTMEET_CHUNK_INTERVAL` | `10` | Transcription interval in seconds |
 | `GHOSTMEET_ANTHROPIC_KEY` | — | Claude API key for summaries |
-| `GHOSTMEET_HOST` | `0.0.0.0` | Backend bind address |
+| `GHOSTMEET_HOST` | `127.0.0.1` | Backend bind address (loopback — the API has no auth) |
 | `GHOSTMEET_PORT` | `8877` | Backend port |
 
 ### Model Size Guide

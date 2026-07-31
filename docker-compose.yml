@@ -5,7 +5,8 @@ services:
       args:
         WHISPER_MODEL: base  # tiny | base | small | medium
     ports:
-      - "8877:8877"
+      # published on loopback only — the API is unauthenticated
+      - "127.0.0.1:8877:8877"
     volumes:
       - ./recordings:/app/recordings
     environment:
