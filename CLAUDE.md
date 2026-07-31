@@ -21,8 +21,10 @@ secrets and recordings. `.gitignore` is a safety net, not a substitute for looki
 Never check in a clip of an actual meeting.
 
 **Do not weaken the local-only posture** — it is the project's core promise:
-- Bind `127.0.0.1` by default, never `0.0.0.0`
-- Do not widen CORS to `*`; scope it to the extension origin
+- Bind `127.0.0.1` by default. The Docker image sets `0.0.0.0` because it has to listen
+  inside the container; compose publishes the port on the host's loopback only. Keep
+  both halves of that arrangement intact.
+- Do not widen CORS to `*`; it is scoped to extension and loopback origins
 - No telemetry, no analytics, no crash reporting
 - The only permitted outbound call is the user-triggered Anthropic summarize request
 - Do not introduce third-party SaaS dependencies (Recall.ai, Deepgram, etc.)
@@ -42,6 +44,11 @@ internal project names, no pasted transcript excerpts.
   accumulation — speaker diarization will depend on them lining up.
 - `Segment.speaker` exists and is `None` until diarization lands. Keep it in the wire
   format.
+- **Segments are persisted as they are recognised**, not at the end of the meeting, so a
+  crash costs at most the current window. `SessionStore` is shared across threads under a
+  lock — the transcription worker writes, the event loop reads.
+- Live sessions answer `/transcript` from the running pipeline; finished ones read from
+  SQLite. Both paths must stay in sync in shape.
 
 ## Dev
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
 from typing import Dict, List
@@ -17,6 +18,7 @@ from .incremental import IncrementalTranscriber, Segment
 from .models import Session
 from .pcm_store import PcmStore
 from .pipeline import SessionPipeline
+from .store import SessionStore
 from .summarizer import Summary, generate_summary
 from .transcriber import WhisperTranscriber, get_model
 
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
 RECORDINGS_DIR = ROOT / "recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = RECORDINGS_DIR / "ghostmeet.db"
 
 # config from env
 WHISPER_MODEL = os.environ.get("GHOSTMEET_MODEL", "base")
@@ -34,20 +37,44 @@ WHISPER_COMPUTE = os.environ.get("GHOSTMEET_COMPUTE_TYPE", "float32")
 WHISPER_LANGUAGE = os.environ.get("GHOSTMEET_LANGUAGE") or None
 CHUNK_INTERVAL = float(os.environ.get("GHOSTMEET_CHUNK_INTERVAL", "10"))
 
-app = FastAPI(title="ghostmeet-backend", version="0.4.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # state
 sessions: Dict[str, Session] = {}
 pipelines: Dict[str, SessionPipeline] = {}
 summaries: Dict[str, Summary] = {}
 transcript_subscribers: Dict[str, List[WebSocket]] = {}
+store: SessionStore | None = None
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    global store
+    store = SessionStore(DB_PATH)
+    pipelines.clear()
+    summaries.clear()
+    sessions.clear()
+    sessions.update(store.load_sessions())
+    # nothing is capturing yet, so anything left mid-flight died with the last process
+    for session in sessions.values():
+        if session.status in ("streaming", "transcribing"):
+            session.status = "interrupted"
+    logger.info("Loaded %d session(s) from %s", len(sessions), DB_PATH)
+    try:
+        yield
+    finally:
+        store.close()
+        store = None
+
+
+app = FastAPI(title="ghostmeet-backend", version="0.5.0", lifespan=lifespan)
+
+# The API has no authentication, so the browser extension is the only intended caller.
+# Echoing back any Origin let any page the user visited read their meeting transcripts.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^(chrome-extension://[a-z]+|moz-extension://[0-9a-f-]+|http://(127\.0\.0\.1|localhost)(:\d+)?)$",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _make_transcribe_fn(language: str | None) -> WhisperTranscriber:
@@ -81,36 +108,45 @@ def get_session(session_id: str):
     return sessions[session_id].to_dict()
 
 
+def _segments_for(session_id: str) -> List[Segment]:
+    """Live sessions answer from the pipeline producing them, finished ones from disk."""
+    if session_id in pipelines:
+        return pipelines[session_id].transcriber.transcript
+    return store.load_segments(session_id)
+
+
 @app.get("/api/sessions/{session_id}/transcript")
 def get_transcript(session_id: str):
-    if session_id not in pipelines:
+    if session_id not in pipelines and session_id not in sessions:
         raise HTTPException(status_code=404, detail="session not found")
-    transcriber = pipelines[session_id].transcriber
+    segments = _segments_for(session_id)
     return {
         "session_id": session_id,
-        "segments": transcriber.snapshot(),
-        "full_text": transcriber.full_text(),
-        "segment_count": len(transcriber.transcript),
+        "segments": [s.to_dict() for s in segments],
+        "full_text": " ".join(s.text for s in segments),
+        "segment_count": len(segments),
     }
 
 
 @app.post("/api/sessions/{session_id}/summarize")
 async def summarize_session(session_id: str):
-    if session_id not in pipelines:
+    if session_id not in pipelines and session_id not in sessions:
         raise HTTPException(status_code=404, detail="session not found")
-    text = pipelines[session_id].transcriber.full_text()
+    text = " ".join(s.text for s in _segments_for(session_id))
     if not text.strip():
         raise HTTPException(status_code=400, detail="transcript is empty")
     summary = await generate_summary(text, session_id)
     summaries[session_id] = summary
+    store.save_summary(summary)
     return summary.to_dict()
 
 
 @app.get("/api/sessions/{session_id}/summary")
 def get_summary(session_id: str):
-    if session_id not in summaries:
+    summary = summaries.get(session_id) or store.load_summary(session_id)
+    if summary is None:
         raise HTTPException(status_code=404, detail="summary not found — call POST /summarize first")
-    return summaries[session_id].to_dict()
+    return summary.to_dict()
 
 
 @app.websocket("/ws/transcript/{session_id}")
@@ -129,9 +165,13 @@ async def ws_transcript(websocket: WebSocket, session_id: str):
 
 
 async def _broadcast_segments(session_id: str, segments: List[Segment]) -> None:
+    # persist first: captions are nice to have, a lost transcript is not recoverable
+    store.add_segments(session_id, segments)
+
     session = sessions.get(session_id)
     if session is not None and session_id in pipelines:
         session.transcript_segments = len(pipelines[session_id].transcriber.transcript)
+        store.save_session(session)
 
     subscribers = transcript_subscribers.get(session_id, [])
     payload = {"type": "transcript", "segments": [s.to_dict() for s in segments]}
@@ -171,12 +211,13 @@ async def ws_audio(websocket: WebSocket):
         language=language,
     )
     sessions[session_id] = session
+    store.save_session(session)
 
-    store = PcmStore(pcm_path)
-    decoder = StreamingWebmDecoder(store)
+    pcm = PcmStore(pcm_path)
+    decoder = StreamingWebmDecoder(pcm)
     pipeline = SessionPipeline(
         decoder=decoder,
-        transcriber=IncrementalTranscriber(store, _make_transcribe_fn(language)),
+        transcriber=IncrementalTranscriber(pcm, _make_transcribe_fn(language)),
         on_segments=partial(_broadcast_segments, session_id),
         interval_sec=CHUNK_INTERVAL,
     )
@@ -214,13 +255,14 @@ async def ws_audio(websocket: WebSocket):
 
         session.stopped_at = dt.datetime.now().isoformat(timespec="seconds")
         session.transcript_segments = len(pipeline.transcriber.transcript)
-        session.duration_sec = round(store.duration, 2)
+        session.duration_sec = round(pcm.duration, 2)
+        store.save_session(session)
     finally:
         # Always release the handle and reclaim the working file, even if the client
         # vanished or a pass blew up mid-session. Order matters: the decoder writes into
-        # the store from its own thread, so it has to be stopped first.
+        # the PCM store from its own thread, so it has to be stopped first.
         decoder.close()
-        store.close()
+        pcm.close()
         # the PCM working file is large (~115 MB/hour); the webm archive is the durable copy
         pcm_path.unlink(missing_ok=True)
 
@@ -249,7 +291,11 @@ async def ws_audio(websocket: WebSocket):
     )
 
 
+def default_host() -> str:
+    """Loopback unless asked otherwise — the API is unauthenticated."""
+    return os.environ.get("GHOSTMEET_HOST", "127.0.0.1")
+
+
 def run() -> None:
-    host = os.environ.get("GHOSTMEET_HOST", "0.0.0.0")
     port = int(os.environ.get("GHOSTMEET_PORT", "8877"))
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host=default_host(), port=port)
