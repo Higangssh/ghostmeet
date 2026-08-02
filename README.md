@@ -27,9 +27,11 @@ It runs as a **Chrome Extension side panel**. Other participants can't see it. L
 ## Features
 
 - 🎙️ **Real-time transcription** — Whisper STT, updates every 10 seconds
+- ⏱️ **Built for long meetings** — cost per pass stays flat, so a 4-hour session behaves like a 4-minute one
 - 📋 **AI-powered summaries** — Key decisions, action items, next steps
-- 📎 **Meeting context** — Add agenda or attach files before the meeting
-- 🔒 **Self-hosted** — your audio stays on your machine
+- 💾 **Nothing is lost** — transcripts are written to SQLite as they happen and survive a restart
+- 🌏 **Per-meeting language** — pick the language in the side panel, or let Whisper detect it
+- 🔒 **Self-hosted** — your audio stays on your machine, and the server listens on loopback only
 - 🐳 **One-command setup** — `docker compose up` and you're ready
 - 👻 **Invisible** — side panel UI, no one in the meeting knows
 
@@ -37,18 +39,25 @@ It runs as a **Chrome Extension side panel**. Other participants can't see it. L
 
 ```
 Browser Tab (Zoom / Meet / Teams)
-    │
-    ├── Chrome Extension captures tab audio (chrome.tabCapture)
-    │
+    │ audio
     ▼
-WebSocket ──→ Local Backend (FastAPI + Whisper)
-                  │
-                  ├── Real-time STT ──→ Live Captions (Side Panel)
-                  │
-                  └── Claude AI (on demand) ──→ Meeting Summary
+Chrome Extension
+    ├── service worker  — asks Chrome for a tab stream id
+    └── offscreen page  — records it, and plays it back so you still hear the meeting
+    │
+    ▼  WebSocket (webm/opus, 1s chunks)
+Local Backend (FastAPI)
+    ├── one demuxer per session  ──→ PCM appended to disk
+    ├── Whisper reads only the newest window, never the whole recording
+    ├── segments ──→ SQLite  +  live captions in the side panel
+    └── Claude API (on demand) ──→ Meeting Summary
 ```
 
 Everything runs on your machine. The only external call is to Claude API when you click Summarize (optional — transcription works without it).
+
+Audio is decoded once as it arrives and kept on disk, and each transcription pass reads
+only a bounded window of it. That is what keeps a long meeting from getting slower and
+slower, and keeps memory flat no matter how long you record.
 
 ## Quick Start
 
@@ -96,9 +105,12 @@ Note: First run downloads the Whisper model (~150MB for `base`).
 
 1. **Join a meeting** — Open Google Meet, Zoom, Teams (or any tab with audio)
 2. **Click 👻** — Side panel opens on the right
-3. **Click ▶ Start** — Live captions appear as people speak
-4. **Click ■ Stop** — When the meeting ends
-5. **Click 📋 Summarize** — AI generates a structured summary
+3. **Pick a language** (optional) — or leave it on Auto-detect
+4. **Click ▶ Start** — Live captions appear as people speak. The tab stays audible.
+5. **Click ■ Stop** — The panel says "Transcription complete" once the last pass finishes
+6. **Click 📋 Summarize** — AI generates a structured summary
+
+Reopening the side panel mid-meeting brings the transcript so far back with it.
 
 That's it. No sign-up, no config, no cloud.
 
@@ -110,7 +122,8 @@ Set these in `.env` or `docker-compose.yml`:
 |----------|---------|-------------|
 | `GHOSTMEET_MODEL` | `base` | Whisper model size (`tiny` / `base` / `small` / `medium` / `large`) |
 | `GHOSTMEET_DEVICE` | `auto` | Compute device (`auto` / `cpu` / `cuda`) |
-| `GHOSTMEET_LANGUAGE` | auto-detect | Force language (`en` / `ko` / `ja` / etc.) |
+| `GHOSTMEET_COMPUTE_TYPE` | `float32` | Precision (`int8` is much faster on CPU) |
+| `GHOSTMEET_LANGUAGE` | auto-detect | Default language (`en` / `ko` / `ja` / etc.) — the side panel can override it per meeting |
 | `GHOSTMEET_CHUNK_INTERVAL` | `10` | Seconds between transcription updates |
 | `GHOSTMEET_ANTHROPIC_KEY` | — | Required for AI summaries |
 | `GHOSTMEET_HOST` | `127.0.0.1` | Server bind address (loopback — the API has no auth) |
@@ -132,8 +145,31 @@ Set these in `.env` or `docker-compose.yml`:
 | `/api/sessions/{id}/transcript` | GET | Full transcript |
 | `/api/sessions/{id}/summarize` | POST | Generate AI summary |
 | `/api/sessions/{id}/summary` | GET | Get generated summary |
-| `/ws/audio` | WS | Audio ingest (binary) |
+| `/ws/audio` | WS | Audio ingest (binary chunks; send `stop` as text to finish) |
 | `/ws/transcript/{id}` | WS | Live transcript stream |
+
+Sessions, transcripts and summaries are stored in `recordings/ghostmeet.db`, so every
+endpoint above keeps working after the backend restarts.
+
+## Development
+
+```bash
+python -m venv .venv
+./.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+
+./.venv/Scripts/python.exe -m pytest tests/ -q       # backend suite
+node --test tests/extension/shared.test.mjs          # extension helpers
+```
+
+The suite needs no Whisper model and no network — real opus audio goes through the real
+decoder, and only inference is stubbed.
+
+There is one thing tests cannot reach: `chrome.tabCapture.getMediaStreamId()` needs the
+`activeTab` grant that only a real toolbar click produces. Everything after that point is
+covered by `node tests/extension/verify-capture.mjs`, which drives the extension in a real
+browser against a running backend (needs `npm install playwright && npx playwright install
+chromium`). To check the last step by hand: start a capture on a tab with audio and confirm
+`audio_bytes` climbs in `/api/sessions` — and that you can still hear the tab.
 
 ## Project Structure
 
@@ -141,16 +177,23 @@ Set these in `.env` or `docker-compose.yml`:
 ghostmeet/
 ├── extension/              # Chrome MV3 Extension
 │   ├── manifest.json       # permissions + side panel config
-│   ├── background.js       # tab audio capture → WebSocket
-│   ├── sidepanel.html/js   # live captions UI
+│   ├── background.js       # service worker: gets a tab stream id, drives capture
+│   ├── offscreen.html/js   # hidden page that actually records → WebSocket
+│   ├── sidepanel.html/js   # live captions, language picker, summaries
 │   ├── popup.html/js       # start/stop controls
-│   └── icons/              # extension icons
+│   ├── shared.js           # pure helpers shared by the above
+│   └── icons/
 ├── backend/                # Python backend (FastAPI)
 │   ├── app.py              # HTTP + WebSocket server
-│   ├── audio_processor.py  # Whisper transcription pipeline
-│   ├── transcriber.py      # faster-whisper wrapper
+│   ├── decoder.py          # streaming webm/opus → PCM (one demuxer per session)
+│   ├── pcm_store.py        # append-only audio on disk, windowed reads
+│   ├── incremental.py      # bounded-window transcription, absolute timestamps
+│   ├── pipeline.py         # receive / decode / transcribe, decoupled
+│   ├── transcriber.py      # shared Whisper model + per-session language
+│   ├── store.py            # SQLite: sessions, segments, summaries
 │   ├── summarizer.py       # Claude API integration
-│   └── models.py           # session + segment models
+│   └── models.py           # session model
+├── tests/                  # pytest suite + extension tests
 ├── assets/                 # logo, demo GIF
 ├── docker-compose.yml      # one-command deployment
 ├── Dockerfile              # backend container
@@ -180,10 +223,13 @@ Then just ask your AI assistant:
 - [x] Real-time transcription (Whisper)
 - [x] Chrome Extension side panel UI
 - [x] AI meeting summaries (Claude)
-- [x] Meeting context input + file attach
+- [x] Long meetings — flat cost per pass, tested to 4h+ of audio
+- [x] Transcripts survive a restart (SQLite)
+- [x] Per-session language selection
+- [ ] Meeting context input + file attach
 - [ ] Speaker diarization (who said what)
+- [ ] In-person meetings (microphone capture)
 - [ ] Export to Markdown / PDF
-- [ ] Multi-language support
 - [ ] Agent Mode — AI speaks in the meeting for you
 
 ## License
