@@ -10,7 +10,7 @@ let audioContext = null;
 let sendChain = Promise.resolve();
 
 async function start({ streamId, sessionId, language, backend }) {
-  stream = await navigator.mediaDevices.getUserMedia({
+  const tabStream = await navigator.mediaDevices.getUserMedia({
     audio: {
       mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId },
     },
@@ -19,8 +19,20 @@ async function start({ streamId, sessionId, language, backend }) {
   // Capturing a tab takes its audio away from the speakers; play it back so the user
   // can still hear the meeting they are in.
   audioContext = new AudioContext();
-  audioContext.createMediaStreamSource(stream).connect(audioContext.destination);
+  audioContext.createMediaStreamSource(tabStream).connect(audioContext.destination);
 
+  await startRecording(tabStream, { sessionId, language, backend });
+}
+
+/**
+ * Record a stream and ship it to the backend.
+ *
+ * Split out from acquiring the tab stream: getting the stream needs a real toolbar
+ * click (activeTab), everything from here on does not, so this half can be exercised
+ * on its own.
+ */
+export async function startRecording(mediaStream, { sessionId, language, backend }) {
+  stream = mediaStream;
   socket = new WebSocket(audioSocketUrl(backend, sessionId, language));
   socket.binaryType = 'arraybuffer';
   await new Promise((resolve, reject) => {
@@ -68,7 +80,7 @@ function onBackendMessage(event) {
   }
 }
 
-function stop() {
+export function stopRecording() {
   // Only stops the recorder. The socket stays open until the backend reports the final
   // pass is complete, otherwise the tail of the meeting is never transcribed.
   if (recorder && recorder.state !== 'inactive') recorder.stop();
@@ -100,7 +112,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         await start(message);
         sendResponse({ ok: true });
       } else if (message.action === 'stop') {
-        stop();
+        stopRecording();
         sendResponse({ ok: true });
       } else {
         sendResponse({ ok: false, error: `unknown action ${message.action}` });
