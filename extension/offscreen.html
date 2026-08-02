@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ghostmeet capture</title>
+</head>
+<body>
+  <!--
+    Not shown to anyone. A service worker cannot use MediaRecorder or hold a MediaStream,
+    so the actual recording happens here and the worker just drives it.
+  -->
+  <script type="module" src="offscreen.js"></script>
+</body>
+</html>

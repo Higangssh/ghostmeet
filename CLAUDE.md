@@ -40,6 +40,13 @@ internal project names, no pasted transcript excerpts.
   session), and Whisper only ever sees a bounded tail window (`IncrementalTranscriber`).
   Any change that reintroduces "re-process the whole session" is a regression.
 - **Load the Whisper model once per process**, never per session.
+- **Recording happens in an offscreen document, never in the service worker.**
+  `chrome.tabCapture.capture()` is documented foreground-only and `MediaRecorder` does
+  not exist in a service worker scope. The worker calls `getMediaStreamId()` and hands
+  the id to `offscreen.js`. Capturing a tab also silences it, so the offscreen document
+  plays the stream back through an `AudioContext` — do not remove that.
+- Summary text is model output derived from meeting audio. Escape it before it reaches
+  `innerHTML` (`renderSummary` in `extension/shared.js`).
 - **Absolute timestamps** are derived from the sample cursor, not from per-chunk
   accumulation — speaker diarization will depend on them lining up.
 - `Segment.speaker` exists and is `None` until diarization lands. Keep it in the wire
@@ -53,10 +60,17 @@ internal project names, no pasted transcript excerpts.
 ## Dev
 
 ```bash
-python -m venv .venv && ./.venv/Scripts/python.exe -m pip install -r requirements.txt
-./.venv/Scripts/python.exe -m pytest tests/ -q     # tests must not download a Whisper model
-./.venv/Scripts/python.exe -m backend             # run backend on :8877
+python -m venv .venv && ./.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+./.venv/Scripts/python.exe -m pytest tests/ -q          # tests must not download a Whisper model
+node --test tests/extension/shared.test.mjs             # extension pure helpers
+./.venv/Scripts/python.exe -m backend                   # run backend on :8877
 ```
+
+The extension has no automated runtime coverage. Verify capture by hand: load
+`extension/` unpacked at `chrome://extensions`, open a tab with audio, click Start, and
+check `curl http://127.0.0.1:8877/api/sessions`. Driving a real MV3 extension from
+Playwright or raw CDP did not work here — the service worker never registered under
+`--load-extension`, so those runs prove nothing either way.
 
 Tests inject fake transcribe functions and duck-typed audio sources so the suite stays
 fast and offline. Keep it that way — no test should need a model or a network call.

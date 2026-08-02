@@ -1,30 +1,34 @@
 const statusEl = document.getElementById('status');
 
+function show(text) {
+  statusEl.textContent = text;
+}
+
 async function send(action) {
   const response = await chrome.runtime.sendMessage({ action });
   if (!response) {
-    statusEl.textContent = 'no response from background';
+    show('no response from the extension background');
     return;
   }
-  statusEl.textContent = JSON.stringify(response, null, 2);
 
-  // on successful start, store session ID and notify side panel
-  if (response.ok && action === 'start_capture' && response.sessionId) {
-    chrome.storage.local.set({ activeSessionId: response.sessionId });
+  if (!response.ok) {
+    show(`⚠ ${response.error}`);
+    return;
+  }
+
+  if (action === 'start_capture') {
+    show(`● recording — ${response.sessionId}`);
     chrome.runtime.sendMessage({
+      target: 'panel',
       action: 'transcript_start',
       sessionId: response.sessionId,
     }).catch(() => {});
-    // open side panel
     if (chrome.sidePanel) {
-      chrome.sidePanel.open({ windowId: (await chrome.windows.getCurrent()).id }).catch(() => {});
+      const window = await chrome.windows.getCurrent();
+      chrome.sidePanel.open({ windowId: window.id }).catch(() => {});
     }
-  }
-
-  // on stop, clear session and notify side panel
-  if (response.ok && action === 'stop_capture') {
-    chrome.storage.local.remove('activeSessionId');
-    chrome.runtime.sendMessage({ action: 'transcript_stop' }).catch(() => {});
+  } else if (action === 'stop_capture') {
+    show('■ stopped — finishing transcription...');
   }
 }
 

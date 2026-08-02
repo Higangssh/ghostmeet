@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "//": "Only here so Node can import shared.js as ES modules in tests. Chrome ignores it."
+}
