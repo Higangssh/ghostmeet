@@ -13,8 +13,28 @@ Treat every change as world-readable and every recording as personal data.
 - Real transcript or summary text, in code, tests, docs, commit messages, or issue/PR bodies
 - `demo/` contents, screenshots, or GIFs that show real participants, names, or discussion
 
-**Before every commit:** run `git status` and `git diff --staged` and read them for
-secrets and recordings. `.gitignore` is a safety net, not a substitute for looking.
+**Before every push**, not just every commit, run the scan below and report what it
+found. `.gitignore` is a safety net, not a substitute for looking.
+
+```bash
+git status && git diff --staged                       # read these, do not skim
+git grep -nIiE "C:\\\\Users|/home/[a-z]|AppData|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}"
+git grep -nIiE "sk-ant-|ghp_|AKIA[0-9A-Z]{16}|-----BEGIN.*PRIVATE KEY"
+git log --all --pretty=format: --name-only --diff-filter=A | sort -u \
+  | grep -iE "\.env$|recordings/|\.webm$|\.pcm$|\.wav$|\.db$"   # history, not just HEAD
+```
+
+Expected hits, safe to ignore: the pattern lines in this file, and
+`.env.example:2` (`sk-ant-...`, a placeholder). Anything else is a finding.
+
+**Grep does not read images.** Screenshots, GIFs and the demo asset can show real
+meeting content, names or faces that no text scan will catch. Look at them. Frames come
+out with `av.open(path)` plus `frame.to_image().save(...)`. `assets/demo.gif` was checked
+on 2026-08-02 and is a synthetic meeting (Alice Chen / Bob Smith / Charlie Park, emoji
+avatars) — re-check if it is ever replaced.
+
+The commit author email is public in every commit going back to the first one, and the
+repo owner has decided that is fine. Do not raise it again.
 
 **Test fixtures must be synthetic.** Generate audio programmatically (see
 `make_webm_opus` in `tests/test_decoder.py` — a sine wave through a real opus encoder).
