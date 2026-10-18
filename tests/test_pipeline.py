@@ -212,6 +212,45 @@ async def test_stop_drains_a_backlog_larger_than_one_window():
     assert pipeline.transcriber.pending_samples == 0
 
 
+class SpyTranscriber:
+    """Records how each pass was asked for; reports backlog until it has been forced."""
+
+    def __init__(self, pending_seconds: float):
+        self._pending = int(pending_seconds * SAMPLE_RATE)
+        self.forced: list[bool] = []
+
+    @property
+    def pending_samples(self) -> int:
+        return self._pending
+
+    def step(self, force: bool = False):
+        self.forced.append(force)
+        self._pending = max(0, self._pending - 30 * SAMPLE_RATE)
+        return []
+
+
+async def test_stop_drains_with_forced_passes_only():
+    """Once the decoder is closed no more audio is coming, so every drain pass is final.
+
+    A non-forced pass may legitimately decline to commit speech running into the end of
+    the audio (waiting for audio that will never arrive), and a drain loop built on those
+    passes re-reads the same tail until it hits its pass limit.
+    """
+    transcriber = SpyTranscriber(pending_seconds=90.0)
+    pipeline = SessionPipeline(
+        decoder=FakeDecoder(FakeStore()),
+        transcriber=transcriber,
+        on_segments=Collector(),
+        interval_sec=100.0,
+    )
+    await pipeline.start()
+
+    await pipeline.stop()
+
+    assert transcriber.forced and all(transcriber.forced)
+    assert transcriber.pending_samples == 0
+
+
 async def test_stop_closes_the_decoder():
     whisper = Whisper()
     pipeline, decoder, _ = build(whisper)

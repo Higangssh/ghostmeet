@@ -85,18 +85,18 @@ class SessionPipeline:
             await self._pass()
 
     async def _drain(self) -> None:
-        """Catch up on any backlog, then take a final forced pass for trailing audio."""
+        """Catch up on any backlog with forced passes: no more audio is coming, so speech
+        running into the end of the session is committed instead of held back."""
         for _ in range(_MAX_DRAIN_PASSES):
             if self.transcriber.pending_samples <= 0:
                 break
-            await self._pass()
+            await self._pass(force=True)
         else:
             logger.warning(
                 "Gave up draining after %d passes, %d samples left",
                 _MAX_DRAIN_PASSES,
                 self.transcriber.pending_samples,
             )
-        await self._pass(force=True)
 
     async def _pass(self, force: bool = False) -> None:
         loop = asyncio.get_running_loop()
