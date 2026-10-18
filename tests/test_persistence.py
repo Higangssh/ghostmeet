@@ -6,6 +6,7 @@ disk. Without this the OpenClaw skill cannot answer "summarise my last meeting".
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import pytest
@@ -36,6 +37,20 @@ def wired(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module, "RECORDINGS_DIR", tmp_path)
     monkeypatch.setattr(app_module, "DB_PATH", tmp_path / "ghostmeet.db")
     return tmp_path
+
+
+def wait_until(check, timeout: float = 10.0, interval: float = 0.02):
+    """Poll `check` until it returns something truthy or `timeout` seconds pass.
+
+    Bounded by time, not by a number of polls: a fixed count of tight polls is a
+    deadline that shrinks as the machine gets faster and fails when it is busy.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        result = check()
+        if result or time.monotonic() >= deadline:
+            return result
+        time.sleep(interval)
 
 
 @pytest.fixture(scope="module")
@@ -142,12 +157,7 @@ def test_segments_are_written_during_the_meeting_not_only_at_the_end(wired, webm
             for i in range(0, len(webm), 4096):
                 ws.send_bytes(webm[i : i + 4096])
 
-            stored = []
-            for _ in range(100):
-                stored = app_module.store.load_segments("live")
-                if stored:
-                    break
-                client.get("/api/health")
+            stored = wait_until(lambda: app_module.store.load_segments("live"))
 
             assert stored, "nothing was persisted while the session was still open"
             ws.send_text("stop")
@@ -170,11 +180,10 @@ def test_a_live_session_is_served_from_memory_not_the_database(wired, webm, monk
             for i in range(0, len(webm), 4096):
                 ws.send_bytes(webm[i : i + 4096])
 
-            for _ in range(100):
-                body = client.get("/api/sessions/live/transcript").json()
-                if body["segment_count"]:
-                    break
+            count = wait_until(
+                lambda: client.get("/api/sessions/live/transcript").json()["segment_count"]
+            )
 
-            assert body["segment_count"] >= 1
+            assert count >= 1
             ws.send_text("stop")
             ws.receive_json()
