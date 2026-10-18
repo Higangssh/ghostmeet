@@ -168,16 +168,20 @@ def test_forced_pass_on_an_empty_session_does_nothing(store):
 
 
 def test_overlapping_audio_does_not_produce_duplicate_segments(store):
-    """The overlap re-feeds audio to Whisper; it must not re-emit the same speech."""
+    """After a blind cut the overlap re-feeds audio; it must not re-emit the same speech.
+
+    Speech filling a whole window has no pause to resume from, so the cursor is cut at
+    the window edge and the next pass rewinds by the overlap.
+    """
     whisper = Whisper(
         script=[
-            [RawSeg(1.0, 4.0, "hello there")],
+            [RawSeg(1.0, 29.5, "hello there")],
             [RawSeg(0.5, 1.5, "hello there"), RawSeg(3.0, 5.0, "brand new line")],
         ]
     )
     transcriber = IncrementalTranscriber(store, whisper, window_sec=30.0, overlap_sec=2.0)
 
-    store.grow(10.0)
+    store.grow(30.0)
     first = transcriber.step()
     store.grow(10.0)
     second = transcriber.step()
@@ -330,3 +334,127 @@ def test_segment_dict_round_trip_has_the_fields_the_ui_uses(store):
     assert data["start"] == 1.0
     assert data["end"] == 2.0
     assert "timestamp" in data
+
+
+# --- window boundaries -------------------------------------------------------------
+#
+# Regression: on Korean read speech the live path (10 s passes) scored CER ~0.25-0.31
+# against ~0.02-0.06 per utterance, on every engine, because speech was duplicated at
+# window boundaries. A segment cut off by the window edge was committed as final, and
+# the next window re-read the overlap and committed the same speech again.
+
+
+class TimelineStore(FakeStore):
+    """Audio whose sample values are their own absolute index, so a fake model can tell
+    exactly which slice of the session it was handed."""
+
+    def read(self, start_sample: int, end_sample: int | None = None) -> np.ndarray:
+        end = self.total_samples if end_sample is None else min(end_sample, self.total_samples)
+        start = max(0, min(start_sample, end))
+        return np.arange(start, end, dtype=np.float64)
+
+
+class TimelineWhisper:
+    """Transcribes a fixed script of utterances the way Whisper does at window edges.
+
+    Speech running past the end of the window comes back cut ("text~cut"); speech that
+    began before the window comes back as a fragment ("~text"). A correct transcript
+    contains neither marker and each utterance exactly once.
+    """
+
+    def __init__(self, utterances):
+        self.utterances = utterances  # (absolute start, absolute end, text)
+        self.calls: list[int] = []
+
+    def __call__(self, audio: np.ndarray) -> list[RawSeg]:
+        self.calls.append(len(audio))
+        ws = audio[0] / SAMPLE_RATE
+        we = (audio[-1] + 1) / SAMPLE_RATE
+        out = []
+        for start, end, text in self.utterances:
+            if end <= ws or start >= we:
+                continue
+            label = ("~" if start < ws else "") + text + ("~cut" if end > we else "")
+            out.append(RawSeg(max(start, ws) - ws, min(end, we) - ws, label))
+        return out
+
+
+def run_live(store, transcriber, seconds, tick=10.0):
+    for _ in range(int(seconds / tick)):
+        store.grow(tick)
+        transcriber.step()
+    for _ in range(10):
+        if transcriber.pending_samples == 0:
+            break
+        transcriber.step(force=True)
+
+
+def test_speech_cut_by_the_window_edge_is_not_committed_twice():
+    """Live passes: a sentence still being spoken at the edge waits for the next pass."""
+    script = [(1.0, 6.0, "one"), (7.0, 13.0, "two"), (14.0, 18.5, "three"), (21.0, 28.0, "four")]
+    store = TimelineStore()
+    transcriber = IncrementalTranscriber(store, TimelineWhisper(script), window_sec=30.0, overlap_sec=2.0)
+
+    run_live(store, transcriber, 30.0)
+
+    assert [s.text for s in transcriber.transcript] == ["one", "two", "three", "four"]
+    assert [(s.start, s.end) for s in transcriber.transcript] == [(a, b) for a, b, _ in script]
+
+
+def test_a_long_segment_spanning_the_overlap_is_not_re_emitted():
+    """Backlog passes: the sentence crossing the 30 s edge appears once, whole."""
+    script = [(2.0, 12.0, "a"), (14.0, 26.0, "b"), (27.0, 35.0, "c"), (37.0, 50.0, "d")]
+    store = TimelineStore()
+    transcriber = IncrementalTranscriber(store, TimelineWhisper(script), window_sec=30.0, overlap_sec=2.0)
+
+    store.grow(60.0)
+    for _ in range(10):
+        if transcriber.pending_samples == 0:
+            break
+        transcriber.step(force=True)
+
+    assert [s.text for s in transcriber.transcript] == ["a", "b", "c", "d"]
+    assert transcriber.pending_samples == 0
+
+
+def test_a_held_back_tail_is_committed_by_the_final_forced_pass():
+    """Holding back the edge must never lose it: the session's last words still land."""
+    script = [(1.0, 5.0, "x"), (6.0, 9.8, "y")]
+    store = TimelineStore()
+    transcriber = IncrementalTranscriber(store, TimelineWhisper(script), window_sec=30.0, overlap_sec=2.0)
+
+    store.grow(10.0)
+    assert [s.text for s in transcriber.step()] == ["x"]  # y runs into the edge
+    assert [s.text for s in transcriber.step(force=True)] == ["y"]
+    assert transcriber.pending_samples == 0
+
+
+def test_speech_longer_than_a_window_still_makes_progress_within_bounds():
+    """Holding back must not stall a cursor when no pause ever comes."""
+    store = TimelineStore()
+    whisper = TimelineWhisper([(0.0, 100.0, "monologue")])
+    transcriber = IncrementalTranscriber(store, whisper, window_sec=30.0, overlap_sec=2.0)
+
+    store.grow(100.0)
+    for _ in range(20):
+        if transcriber.pending_samples == 0:
+            break
+        transcriber.step(force=True)
+
+    assert transcriber.pending_samples == 0
+    assert transcriber.transcript, "the monologue was dropped instead of committed"
+    assert max(whisper.calls) <= 30 * SAMPLE_RATE
+
+
+def test_holding_back_keeps_the_per_pass_window_bounded_for_four_hours():
+    """Speech that always runs into the edge must not grow the window past its cap."""
+    store = TimelineStore()
+    script = [(t + 1.0, t + 10.0, f"s{i}") for i, t in enumerate(range(0, 4 * 3600, 10))]
+    whisper = TimelineWhisper(script)
+    transcriber = IncrementalTranscriber(store, whisper, window_sec=30.0, overlap_sec=2.0)
+
+    run_live(store, transcriber, 4 * 3600.0)
+
+    assert max(whisper.calls) <= 30 * SAMPLE_RATE
+    assert len(transcriber.transcript) == len(script)
+    assert all("~" not in s.text for s in transcriber.transcript)

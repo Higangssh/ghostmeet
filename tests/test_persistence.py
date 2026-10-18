@@ -25,7 +25,7 @@ class RawSeg:
 
 def stub_factory(language=None):
     def transcribe(audio):
-        return [RawSeg(0.0, 1.0, "we agreed to ship on friday")]
+        return [RawSeg(0.0, 0.5, "we agreed to ship on friday")]  # ends at a pause, so it is final
 
     return transcribe
 

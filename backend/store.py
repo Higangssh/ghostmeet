@@ -1,7 +1,9 @@
 """SQLite persistence for sessions, transcripts and summaries.
 
-Segments are written as they are recognised rather than at the end, so a crash part way
-through a long meeting loses at most the current window instead of the whole transcript.
+Segments are written as they are committed rather than at the end, so a crash part way
+through a long meeting loses at most the transcript of the newest window instead of the
+whole transcript: up to `window_sec` of speech held back or not yet committed, plus the
+audio that arrived since the last pass. The audio itself is already on disk (PcmStore).
 """
 from __future__ import annotations
 

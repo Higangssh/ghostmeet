@@ -96,6 +96,9 @@ class Collector:
 
 
 def build(whisper, interval=0.02, seconds_per_chunk=1.0, **kwargs):
+    # These fakes report speech spanning their whole window, which is what hold-back
+    # exists to defer; the wiring tests here are not about window edges.
+    kwargs.setdefault("holdback_sec", 0.0)
     store = FakeStore()
     decoder = FakeDecoder(store, seconds_per_chunk)
     incremental = IncrementalTranscriber(store, whisper, **kwargs)
@@ -251,6 +254,34 @@ async def test_stop_drains_with_forced_passes_only():
     assert transcriber.pending_samples == 0
 
 
+class StillTalking:
+    """Speech that always runs right up to the end of whatever window it is given."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, audio):
+        self.calls += 1
+        return [RawSeg(0.0, len(audio) / SAMPLE_RATE, "still talking")]
+
+
+async def test_stop_commits_speech_running_into_the_end_without_spinning():
+    """Hold-back meets hangup: the held tail is committed by one drain pass, not lost
+    and not re-read up to the pass limit."""
+    whisper = StillTalking()
+    pipeline, _, collector = build(
+        whisper, interval=100.0, seconds_per_chunk=5.0, holdback_sec=1.0
+    )
+    await pipeline.start()
+
+    pipeline.feed(b"chunk")
+    await pipeline.stop()
+
+    assert collector.texts == ["still talking"]
+    assert whisper.calls == 1
+    assert pipeline.transcriber.pending_samples == 0
+
+
 async def test_stop_closes_the_decoder():
     whisper = Whisper()
     pipeline, decoder, _ = build(whisper)
@@ -329,7 +360,7 @@ async def test_broadcast_failure_does_not_stop_transcription():
     store = FakeStore()
     decoder = FakeDecoder(store)
     whisper = Whisper(script=[[RawSeg(0.0, 1.0, "one")], [RawSeg(1.0, 2.0, "two")]])
-    incremental = IncrementalTranscriber(store, whisper)
+    incremental = IncrementalTranscriber(store, whisper, holdback_sec=0.0)
     pipeline = SessionPipeline(
         decoder=decoder, transcriber=incremental, on_segments=exploding, interval_sec=0.02
     )

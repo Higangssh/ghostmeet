@@ -31,7 +31,7 @@ class StubWhisper:
 
     def __call__(self, audio):
         self.samples_seen += len(audio)
-        return [RawSeg(0.0, 1.0, "transcribed text")]
+        return [RawSeg(0.0, 0.5, "transcribed text")]  # ends at a pause, so it is final
 
 
 @pytest.fixture
