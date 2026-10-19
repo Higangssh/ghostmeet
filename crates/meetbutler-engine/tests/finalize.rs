@@ -128,7 +128,7 @@ fn the_final_transcript_replaces_the_live_one_per_channel_in_time_order() {
     let segs = r.transcript("call").unwrap().unwrap();
     let got: Vec<(&str, &str)> = segs
         .iter()
-        .map(|s| (s.text.as_str(), s.speaker.as_deref().unwrap()))
+        .map(|s| (s.text.as_str(), s.channel.as_deref().unwrap()))
         .collect();
     assert_eq!(got, [("final mine", "me"), ("final theirs", "them")]);
     assert!(segs[0].start > 0.5 && segs[1].start > 4.5);

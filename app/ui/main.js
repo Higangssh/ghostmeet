@@ -19,7 +19,7 @@ function caption(seg, provisional) {
   if (provisional) li.className = "provisional";
   const who = document.createElement("span");
   who.className = "who";
-  who.textContent = seg.speaker === "them" ? "상대" : "나";
+  who.textContent = seg.channel === "them" ? "상대" : "나";
   li.append(who, document.createTextNode(seg.text));
   return li;
 }

@@ -20,7 +20,8 @@ use crate::incremental::Segment;
 pub use rusqlite::Error as StoreError;
 pub type Result<T> = std::result::Result<T, StoreError>;
 
-const SCHEMA_VERSION: i64 = 1;
+/// 1: the first desktop schema. 2: `segments.channel` split out of `speaker`.
+const SCHEMA_VERSION: i64 = 2;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS sessions (
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS segments (
     text       TEXT NOT NULL,
     start_sec  REAL NOT NULL,
     end_sec    REAL NOT NULL,
+    channel    TEXT,
     speaker    TEXT,
     created_at REAL NOT NULL
 );
@@ -203,8 +205,7 @@ impl SessionStore {
         }
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.execute_batch(SCHEMA)?;
-        conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        migrate(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -328,7 +329,7 @@ impl SessionStore {
     pub fn load_segments(&self, session_id: &str) -> Result<Vec<Segment>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT text, start_sec, end_sec, speaker, created_at FROM segments
+            "SELECT text, start_sec, end_sec, channel, speaker, created_at FROM segments
              WHERE session_id = ?1 ORDER BY id",
         )?;
         let rows = stmt.query_map([session_id], |r| {
@@ -336,8 +337,9 @@ impl SessionStore {
                 text: r.get(0)?,
                 start: r.get(1)?,
                 end: r.get(2)?,
-                speaker: r.get(3)?,
-                timestamp: r.get(4)?,
+                channel: r.get(3)?,
+                speaker: r.get(4)?,
+                timestamp: r.get(5)?,
             })
         })?;
         rows.collect()
@@ -389,14 +391,45 @@ impl SessionStore {
     }
 }
 
+/// Bring the schema to `SCHEMA_VERSION`, each step in its own transaction. A database
+/// from a newer build is refused rather than rewritten.
+fn migrate(conn: &Connection) -> Result<()> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    if version > SCHEMA_VERSION {
+        return Err(StoreError::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CANTOPEN),
+            Some(format!(
+                "database schema {version} is newer than this app ({SCHEMA_VERSION})"
+            )),
+        ));
+    }
+    if version == 0 {
+        conn.execute_batch(&format!(
+            "BEGIN; {SCHEMA} PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"
+        ))?;
+        return Ok(());
+    }
+    if version < 2 {
+        // version 1 kept the channel label in speaker; diarization needs that field
+        conn.execute_batch(
+            "BEGIN;
+             ALTER TABLE segments ADD COLUMN channel TEXT;
+             UPDATE segments SET channel = speaker, speaker = NULL WHERE speaker IN ('me', 'them');
+             PRAGMA user_version = 2;
+             COMMIT;",
+        )?;
+    }
+    Ok(())
+}
+
 fn insert_segments(
     tx: &rusqlite::Transaction,
     session_id: &str,
     segments: &[Segment],
 ) -> Result<()> {
     let mut stmt = tx.prepare(
-        "INSERT INTO segments (session_id, text, start_sec, end_sec, speaker, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO segments (session_id, text, start_sec, end_sec, channel, speaker, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
     )?;
     for s in segments {
         stmt.execute(params![
@@ -404,6 +437,7 @@ fn insert_segments(
             s.text,
             s.start,
             s.end,
+            s.channel,
             s.speaker,
             s.timestamp
         ])?;

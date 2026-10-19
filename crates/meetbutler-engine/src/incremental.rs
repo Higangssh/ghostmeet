@@ -25,7 +25,9 @@ pub struct Segment {
     /// Seconds from the start of the session, derived from the sample cursor.
     pub start: f64,
     pub end: f64,
-    /// The channel ("me" / "them") until diarization lands, then the speaker.
+    /// Which recording it came from: "me" (microphone) or "them" (system audio).
+    pub channel: Option<String>,
+    /// Who spoke, once diarization lands. Empty until then.
     pub speaker: Option<String>,
     /// Wall-clock seconds since the Unix epoch when the segment was recognised.
     pub timestamp: f64,
@@ -37,6 +39,7 @@ impl Segment {
             text: text.into(),
             start,
             end,
+            channel: None,
             speaker: None,
             timestamp: now(),
         }
@@ -91,7 +94,7 @@ pub struct IncrementalTranscriber<S, T> {
     overlap: usize,
     min_new: usize,
     holdback: f64,
-    speaker: Option<String>,
+    channel: Option<String>,
     cursor: usize,      // samples consumed
     blind_cut: bool,    // cursor sits at a window edge, not at the end of speech
     emitted_until: f64, // absolute seconds covered by emitted segments
@@ -108,7 +111,7 @@ impl<S: AudioSource, T: Transcribe> IncrementalTranscriber<S, T> {
             overlap: samples(cfg.overlap_sec),
             min_new: samples(cfg.min_new_sec),
             holdback: cfg.holdback_sec,
-            speaker: None,
+            channel: None,
             cursor: 0,
             blind_cut: false,
             emitted_until: 0.0,
@@ -116,9 +119,9 @@ impl<S: AudioSource, T: Transcribe> IncrementalTranscriber<S, T> {
         }
     }
 
-    /// Label every segment from this source, e.g. with its channel.
-    pub fn with_speaker(mut self, speaker: impl Into<String>) -> Self {
-        self.speaker = Some(speaker.into());
+    /// Label every segment from this source with its channel ("me" / "them").
+    pub fn with_channel(mut self, channel: impl Into<String>) -> Self {
+        self.channel = Some(channel.into());
         self
     }
 
@@ -239,7 +242,7 @@ impl<S: AudioSource, T: Transcribe> IncrementalTranscriber<S, T> {
                 continue;
             }
             let mut segment = Segment::new(text, start, end);
-            segment.speaker = self.speaker.clone();
+            segment.channel = self.channel.clone();
             self.transcript.push(segment.clone());
             new.push(segment);
             self.emitted_until = self.emitted_until.max(end);

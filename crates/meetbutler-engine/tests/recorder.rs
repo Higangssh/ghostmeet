@@ -122,7 +122,7 @@ fn session_list_survives_a_restart() {
 }
 
 #[test]
-fn segments_are_stored_with_their_channel_as_speaker() {
+fn segments_are_stored_with_their_channel_and_no_speaker_yet() {
     let dir = tempfile::tempdir().unwrap();
     record(&dir, "persisted", 1);
 
@@ -132,7 +132,8 @@ fn segments_are_stored_with_their_channel_as_speaker() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(segments[0].speaker.as_deref(), Some("me"));
+    assert_eq!(segments[0].channel.as_deref(), Some("me"));
+    assert_eq!(segments[0].speaker, None);
     assert!(segments[0].end > segments[0].start);
 }
 
@@ -220,7 +221,7 @@ fn both_channels_are_transcribed_separately_and_merged_in_time_order() {
     );
     let speakers: Vec<_> = transcript
         .iter()
-        .map(|s| s.speaker.as_deref().unwrap())
+        .map(|s| s.channel.as_deref().unwrap())
         .collect();
     assert!(
         speakers.contains(&"me") && speakers.contains(&"them"),

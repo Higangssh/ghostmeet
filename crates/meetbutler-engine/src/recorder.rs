@@ -73,8 +73,8 @@ impl Channel {
         }
     }
 
-    /// The speaker label its segments carry until diarization lands.
-    pub fn speaker(self) -> &'static str {
+    /// The label its segments carry in `Segment::channel`.
+    pub fn label(self) -> &'static str {
         match self {
             Self::Mic => "me",
             Self::System => "them",
@@ -199,7 +199,7 @@ impl Recorder {
             let audio = Arc::new(PcmStore::open(self.audio_path(session_id, channel))?);
             let t =
                 IncrementalTranscriber::new(audio.clone(), transcriber(channel), self.cfg.window)
-                    .with_speaker(channel.speaker());
+                    .with_channel(channel.label());
             let pipeline = SessionPipeline::start(t, self.sink(session_id), self.cfg.interval);
             running.push(LiveChannel { audio, pipeline });
         }
@@ -358,7 +358,7 @@ impl Recorder {
             });
             match pass {
                 Ok(segments) => transcript.extend(segments.into_iter().map(|mut s| {
-                    s.speaker = Some(channel.speaker().to_string());
+                    s.channel = Some(channel.label().to_string());
                     s
                 })),
                 Err(err) => {

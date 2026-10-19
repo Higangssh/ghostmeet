@@ -120,12 +120,13 @@ fn segments_come_back_in_the_order_they_were_added() {
 }
 
 #[test]
-fn segment_fields_survive_including_speaker() {
+fn segment_fields_survive_including_channel_and_speaker() {
     let dir = tempfile::tempdir().unwrap();
     let store = open(&dir);
     store.save_session(&make_session("s1")).unwrap();
     let original = Segment {
-        speaker: Some("me".into()),
+        channel: Some("them".into()),
+        speaker: Some("speaker 2".into()),
         timestamp: 1234.5,
         ..seg("hello", 1.5, 2.25)
     };
@@ -439,4 +440,106 @@ fn sessions_cut_off_by_a_crash_are_marked_interrupted_on_reopen() {
         texts(&reopened.load_segments("cut").unwrap()),
         ["said before the crash"]
     );
+}
+
+// --- schema versions -----------------------------------------------------------------
+
+/// The schema as the first desktop build (user_version 1) wrote it.
+const V1: &str = "
+CREATE TABLE sessions (session_id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '',
+    started_at REAL NOT NULL, stopped_at REAL, status TEXT NOT NULL,
+    sources TEXT NOT NULL DEFAULT '', language TEXT, duration_sec REAL NOT NULL DEFAULT 0,
+    transcript TEXT NOT NULL DEFAULT 'live', transcript_segments INTEGER NOT NULL DEFAULT 0,
+    error TEXT);
+CREATE TABLE segments (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+    text TEXT NOT NULL, start_sec REAL NOT NULL, end_sec REAL NOT NULL, speaker TEXT,
+    created_at REAL NOT NULL);
+CREATE TABLE summaries (session_id TEXT PRIMARY KEY, content TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '', input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT '', error TEXT);
+INSERT INTO sessions (session_id, started_at, status, sources) VALUES ('old', 1.0, 'stopped', 'mic,system');
+INSERT INTO segments (session_id, text, start_sec, end_sec, speaker, created_at) VALUES
+    ('old', 'mine', 0.0, 1.0, 'me', 5.0),
+    ('old', 'theirs', 1.0, 2.0, 'them', 6.0),
+    ('old', 'unlabelled', 2.0, 3.0, NULL, 7.0);
+PRAGMA user_version = 1;
+";
+
+fn user_version(path: &std::path::Path) -> i64 {
+    rusqlite::Connection::open(path)
+        .unwrap()
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap()
+}
+
+#[test]
+fn a_version_1_database_moves_the_channel_out_of_the_speaker_field() {
+    // version 1 kept "me"/"them" in speaker; diarization needs that field for itself
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("meetbutler.db");
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch(V1)
+        .unwrap();
+
+    let store = SessionStore::open(&path).unwrap();
+
+    let segs = store.load_segments("old").unwrap();
+    let got: Vec<(&str, Option<&str>, Option<&str>)> = segs
+        .iter()
+        .map(|s| (s.text.as_str(), s.channel.as_deref(), s.speaker.as_deref()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("mine", Some("me"), None),
+            ("theirs", Some("them"), None),
+            ("unlabelled", None, None)
+        ]
+    );
+    assert_eq!(segs[0].timestamp, 5.0, "nothing else changes");
+    assert!(store.load_session("old").unwrap().is_some());
+    drop(store);
+    assert_eq!(user_version(&path), 2);
+}
+
+#[test]
+fn migrating_twice_changes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("meetbutler.db");
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch(V1)
+        .unwrap();
+    drop(SessionStore::open(&path).unwrap());
+
+    let store = SessionStore::open(&path).unwrap();
+
+    assert_eq!(store.load_segments("old").unwrap().len(), 3);
+    assert_eq!(
+        store.load_segments("old").unwrap()[0].channel.as_deref(),
+        Some("me")
+    );
+}
+
+#[test]
+fn a_fresh_database_starts_at_the_current_version() {
+    let dir = tempfile::tempdir().unwrap();
+    drop(open(&dir));
+    assert_eq!(user_version(&dir.path().join("meetbutler.db")), 2);
+}
+
+#[test]
+fn a_database_from_a_newer_app_is_refused_not_rewritten() {
+    // an older build must not quietly drop what a newer one stored
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("meetbutler.db");
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(V1).unwrap();
+        conn.pragma_update(None, "user_version", 99).unwrap();
+    }
+
+    assert!(SessionStore::open(&path).is_err());
+    assert_eq!(user_version(&path), 99);
 }

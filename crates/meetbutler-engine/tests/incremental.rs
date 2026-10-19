@@ -308,18 +308,21 @@ fn segments_expose_a_speaker_slot_for_diarization() {
     assert_eq!(segment.speaker, None);
     let json = serde_json::to_value(&segment).unwrap();
     assert!(json.as_object().unwrap().contains_key("speaker"));
+    assert!(json.as_object().unwrap().contains_key("channel"));
 }
 
 #[test]
-fn a_transcriber_can_label_its_channel_as_the_speaker() {
+fn a_transcriber_labels_its_channel_and_leaves_the_speaker_to_diarization() {
     // the microphone is "me" and system audio is "them" until diarization splits them
     let store = Arc::new(FakeStore::default());
     let whisper = Whisper::scripted(vec![vec![raw(0.0, 1.0, "hello")]]);
     let mut t = IncrementalTranscriber::new(store.clone(), whisper.func(), WindowConfig::default())
-        .with_speaker("me");
+        .with_channel("me");
 
     store.grow(5.0);
-    assert_eq!(t.step(false)[0].speaker.as_deref(), Some("me"));
+    let segment = t.step(false).remove(0);
+    assert_eq!(segment.channel.as_deref(), Some("me"));
+    assert_eq!(segment.speaker, None);
 }
 
 #[test]
