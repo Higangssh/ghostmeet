@@ -79,7 +79,7 @@
 
 #### 5.2.1 엔진 (2026-10-19 확정, 근거: `bench/results/RESULTS.md`)
 
-- **whisper.cpp 하나**, Rust에서 whisper-rs(MIT)로 부른다. 앱 전체가 Rust다.
+- **whisper.cpp 하나**, Rust에서 whisper-rs(Unlicense, 안의 whisper.cpp는 MIT)로 부른다. 앱 전체가 Rust다.
 - **2단 구조.** 회의 중에는 small 모델로 **임시 자막**(실측 CER 약 8%)을 띄우고, 회의가
   끝나면 turbo 모델로 처음부터 다시 전사해 **최종본**(실측 약 2.4%)으로 한 번에 바꾼다.
   화면과 저장 형식은 임시/최종을 구분한다.
