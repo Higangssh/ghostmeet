@@ -3,7 +3,7 @@
     python -I bench/run_stream.py <engine-spec> [--minutes 36] [--mode backlog|live]
 
 FLEURS ko test utterances are concatenated (TSV order, 0.6 s low-level noise gaps) into
-one session of at least `--minutes`, then fed through backend.incremental's
+one session of at least `--minutes`, then fed through legacy/backend/incremental.py's
 IncrementalTranscriber (window 30 s, overlap 2 s), the same class the app uses.
 
   backlog  all audio is already there; every pass is a full 30 s window. Isolates the

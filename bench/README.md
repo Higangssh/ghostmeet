@@ -58,13 +58,13 @@ VAD 기준값: `silero_reference.py`가 WAV(또는 `--fleurs 분`으로 만든 F
 
 ## 무엇을 같게 맞췄나
 
-- 디코딩 설정은 `backend/transcriber.py`와 같게 했다. 한국어로 고정했고, Whisper는 beam 5다.
+- 디코딩 설정은 `legacy/backend/transcriber.py`(v0.1)와 같게 했다. 한국어로 고정했고, Whisper는 beam 5다.
   Silero VAD는 threshold 0.3, 최소 침묵 500ms, 패딩 200ms다. 창 사이에 텍스트 문맥은 넘기지
   않는다. faster-whisper는 프로덕션의 `WhisperTranscriber`를 그대로 호출한다.
 - 스레드는 엔진마다 4개다(M4 성능 코어 수).
 - whisper.cpp는 Homebrew의 `whisper-server`를 loopback에 띄워 모델을 한 번만 올린다. 요청마다
   WAV를 HTTP로 넘기는 비용이 들어가지만, 30초 창 기준 수 ms다.
-- 꼬리 창 측정은 `backend.incremental.IncrementalTranscriber`를 그대로 쓴다.
+- 꼬리 창 측정은 `legacy/backend/incremental.py`의 `IncrementalTranscriber`(v0.1)를 그대로 쓴다.
 
 ## CER 계산
 

@@ -1,7 +1,7 @@
 """Engine adapters with one shape: load once, then `engine(audio) -> [Seg]`.
 
 Each adapter mirrors the production decode settings as closely as the engine allows
-(backend/transcriber.py): Korean fixed, beam 5 for Whisper, Silero VAD with
+(legacy/backend/transcriber.py): Korean fixed, beam 5 for Whisper, Silero VAD with
 threshold 0.3 / min silence 500 ms / pad 200 ms, no text context carried between calls.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ import soundfile as sf
 
 from common import DATA, MODELS, REPO, SAMPLE_RATE
 
-sys.path.insert(0, str(REPO))  # reuse the production transcriber/incremental code
+sys.path.insert(0, str(REPO / "legacy"))  # reuse the v0.1 transcriber/incremental code
 
 THREADS = 4  # M4 has 4 performance cores; same budget for every engine
 LANG = "ko"
