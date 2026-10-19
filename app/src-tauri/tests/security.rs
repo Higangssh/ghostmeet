@@ -34,13 +34,15 @@ fn directive(name: &str) -> String {
 /// Packages compiled into the app for a desktop target, from `cargo tree` (offline: the
 /// lockfile already pins everything). Cargo.lock alone is not enough: it also lists
 /// crates only mobile targets build, such as Tauri's iOS/Android asset client.
-fn packages_for(target: &str) -> Vec<String> {
+fn packages_for(package: &str, features: &str, target: &str) -> Vec<String> {
     let out = std::process::Command::new(env!("CARGO"))
         .args([
             "tree",
             "--offline",
             "-p",
-            "meetbutler",
+            package,
+            "--features",
+            features,
             "-e",
             "normal,build",
             "--prefix",
@@ -148,12 +150,42 @@ fn nothing_in_the_build_can_serve_a_port_or_reach_the_network() {
         "x86_64-apple-darwin",
         "x86_64-pc-windows-msvc",
     ] {
-        let packages = packages_for(target);
+        let packages = packages_for("meetbutler", "", target);
         assert!(
             packages.iter().any(|p| p == "tauri"),
             "{target}: cargo tree listed nothing"
         );
         assert_no_network(target, &packages);
+    }
+}
+
+#[test]
+fn the_summary_sidecar_cannot_serve_a_port_or_reach_the_network_either() {
+    // it ships beside the app and reads meeting transcripts, so the same rules apply
+    for target in [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+    ] {
+        let packages = packages_for("meetbutler-summarizer", "llama", target);
+        assert!(
+            packages.iter().any(|p| p == "llama-cpp-2"),
+            "{target}: the llama backend is not in the tree"
+        );
+        assert_no_network(target, &packages);
+    }
+}
+
+#[test]
+fn the_summary_sidecar_never_binds_a_socket() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/meetbutler-summarizer/src");
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        let src = std::fs::read_to_string(&path).unwrap();
+        for needle in ["TcpListener", "UdpSocket", "TcpStream", "std::net"] {
+            assert!(!src.contains(needle), "{} uses {needle}", path.display());
+        }
     }
 }
 

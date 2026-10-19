@@ -1,0 +1,25 @@
+[package]
+name = "meetbutler-summarizer"
+description = "MeetButler's summary sidecar: a local LLM behind JSON lines on stdin/stdout"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+log = "0.4.34"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2.0.21"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+llama-cpp-2 = { version = "0.1.160", optional = true, default-features = false, features = ["common", "metal"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+llama-cpp-2 = { version = "0.1.160", optional = true, default-features = false, features = ["common"] }
+
+[features]
+# llama.cpp through llama-cpp-2 (Metal on macOS). Off by default so the fast suite
+# builds without it.
+llama = ["dep:llama-cpp-2"]
