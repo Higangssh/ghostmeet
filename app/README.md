@@ -61,3 +61,13 @@ Quitting — every path must end without a crash report and keep the recording
 The quit paths matter because a Metal model still loaded when the process exits makes
 ggml abort; `AppState::shutdown` stops recording, cancels the final pass and drops every
 model on `RunEvent::Exit`.
+
+## Backlog (0.2)
+
+- Finish what a hard exit left behind. A session killed outright (`kill`, a crash, power
+  loss) never reaches `RunEvent::Exit`; on the next launch it is `interrupted` with its
+  audio and live captions on disk. Run `Recorder::finalize` on such sessions at startup,
+  or offer a "최종본 만들기" button in the library; it already works on interrupted
+  sessions.
+- Windows system audio (WASAPI loopback, `crates/meetbutler-audio/src/system.rs`).
+
