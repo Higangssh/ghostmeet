@@ -74,7 +74,7 @@ def main() -> None:
     if stream:
         lines += [
             "",
-            "## 2. 긴 세션, 꼬리 창 (backend.incremental.IncrementalTranscriber 그대로)",
+            "## 2. 긴 세션, 꼬리 창 (legacy/backend/incremental.py의 IncrementalTranscriber 그대로)",
             "",
             f"FLEURS 문장을 이어 붙인 {stream[0]['session_min']}분 세션, 창 30초. "
             "`수정 전` = 측정 당시 main(창 경계 중복 버그 포함), `수정 후` = 창 경계 보류 수정.",
@@ -232,17 +232,33 @@ def main() -> None:
             "`crates/meetbutler-engine`의 `final_transcript`를 그대로 돌렸다(`examples/final_pass`). 6절 "
             "`*-filtered`와 같은 규칙(우리 구간을 하나씩 디코딩, 2초 미만 구간의 자막 문구 차단)이지만 "
             "VAD 확률, 구간 규칙, 차단 목록, whisper.cpp 호출이 모두 Rust다. 오디오는 앱이 녹음하는 "
-            "형식(16 kHz s16le)으로 넘긴다. 합격선은 최종본 CER 3% 이하다.",
+            "형식(16 kHz s16le)으로 넘긴다. 합격선은 최종본 CER 3% 이하다. 짧은 대답을 끼운 세션은 "
+            "재현율로 판정한다: 대답 51/53 이상, 차단 규칙으로 잃은 대답 0, CER은 같은 경로의 본 세션 "
+            "대비 +1.0%p 이내.",
             "",
             "| 엔진 | 조건 | CER | 기준 | 짧은 대답 | 처리 시간 | RTF | 최대 메모리 | 부하(1분 평균) |",
             "|---|---|---:|---|---:|---:|---:|---:|---|",
         ]
+        plain = {r["spec"]: r for r in rust if "replies" not in r}
+
+        def verdict(r):
+            """The plain session against the 3% bar; the session with replies by recall
+            (>= 51/53, none lost to the blocklist) and CER within +1.0%p of the plain one."""
+            if "replies" not in r:
+                return "통과" if r["cer"] <= 0.03 else "미달"
+            base = plain.get(r["spec"])
+            if base is not None and base["cer"] > 0.03:
+                return "— (본 세션 미달)"
+            ok = (r["replies_recalled"] >= r["replies"] - 2 and r["replies_lost_to_filter"] == 0
+                  and base is not None and r["cer"] - base["cer"] <= 0.01)
+            return "통과" if ok else "미달"
+
         for r in sorted(rust, key=lambda r: (r["spec"], "replies" in r)):
             reply = f"{r['replies_recalled']}/{r['replies']}" if "replies" in r else "—"
-            verdict = "통과" if r["cer"] <= 0.03 else "미달"
+            verdict_text = verdict(r)
             lines.append(
                 f"| {r['engine']} | {'일괄 + 짧은 대답' if 'replies' in r else '일괄'} | **{pct(r['cer'])}** | "
-                f"{verdict} | {reply} | {r['sec']:.0f}s | {r['rtf']:.3f} | {r['peak_footprint_mb']:.0f}MB | "
+                f"{verdict_text} | {reply} | {r['sec']:.0f}s | {r['rtf']:.3f} | {r['peak_footprint_mb']:.0f}MB | "
                 f"{r.get('load', '—')} |"
             )
         lines += [

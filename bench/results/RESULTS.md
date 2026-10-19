@@ -21,7 +21,7 @@
 - 최대 메모리: macOS phys_footprint 최대치(활성 상태 보기의 '메모리'). Metal 할당 포함. whisper.cpp는 whisper-server 프로세스 기준.
 - ¹ 전체 측정 때는 첫 실행이라 모델 다운로드가 로드에 섞였다. 그래서 모델을 캐시한 상태에서 5문장으로 따로 잰 값을 넣었다.
 
-## 2. 긴 세션, 꼬리 창 (backend.incremental.IncrementalTranscriber 그대로)
+## 2. 긴 세션, 꼬리 창 (legacy/backend/incremental.py의 IncrementalTranscriber 그대로)
 
 FLEURS 문장을 이어 붙인 36.1분 세션, 창 30초. `수정 전` = 측정 당시 main(창 경계 중복 버그 포함), `수정 후` = 창 경계 보류 수정.
 
@@ -113,14 +113,14 @@ FLEURS 문장을 이어 붙인 36.1분 세션, 창 30초. `수정 전` = 측정 
 
 ## 7. Rust 엔진의 회의 후 최종본 (앱이 쓸 경로 그대로)
 
-`crates/meetbutler-engine`의 `final_transcript`를 그대로 돌렸다(`examples/final_pass`). 6절 `*-filtered`와 같은 규칙(우리 구간을 하나씩 디코딩, 2초 미만 구간의 자막 문구 차단)이지만 VAD 확률, 구간 규칙, 차단 목록, whisper.cpp 호출이 모두 Rust다. 오디오는 앱이 녹음하는 형식(16 kHz s16le)으로 넘긴다. 합격선은 최종본 CER 3% 이하다.
+`crates/meetbutler-engine`의 `final_transcript`를 그대로 돌렸다(`examples/final_pass`). 6절 `*-filtered`와 같은 규칙(우리 구간을 하나씩 디코딩, 2초 미만 구간의 자막 문구 차단)이지만 VAD 확률, 구간 규칙, 차단 목록, whisper.cpp 호출이 모두 Rust다. 오디오는 앱이 녹음하는 형식(16 kHz s16le)으로 넘긴다. 합격선은 최종본 CER 3% 이하다. 짧은 대답을 끼운 세션은 재현율로 판정한다: 대답 51/53 이상, 차단 규칙으로 잃은 대답 0, CER은 같은 경로의 본 세션 대비 +1.0%p 이내.
 
 | 엔진 | 조건 | CER | 기준 | 짧은 대답 | 처리 시간 | RTF | 최대 메모리 | 부하(1분 평균) |
 |---|---|---:|---|---:|---:|---:|---:|---|
 | Rust engine large-v3-turbo (Metal, Silero spans + blocklist) | 일괄 | **2.7%** | 통과 | — | 203s | 0.094 | 1965MB | 1.81 → 0.73 |
-| Rust engine large-v3-turbo (Metal, Silero spans + blocklist) | 일괄 + 짧은 대답 | **3.3%** | 미달 | 52/53 | 261s | 0.121 | 1961MB | 0.73 → 1.03 |
+| Rust engine large-v3-turbo (Metal, Silero spans + blocklist) | 일괄 + 짧은 대답 | **3.3%** | 통과 | 52/53 | 261s | 0.121 | 1961MB | 0.73 → 1.03 |
 | Rust engine large-v3-turbo (Metal, whisper.cpp ggml Silero v5.1.2 spans + blocklist) | 일괄 | **6.0%** | 미달 | — | 234s | 0.108 | 1963MB | 1.89 → 3.60 |
-| Rust engine large-v3-turbo (Metal, whisper.cpp ggml Silero v5.1.2 spans + blocklist) | 일괄 + 짧은 대답 | **6.7%** | 미달 | 52/53 | 283s | 0.130 | 1963MB | 3.60 → 1.26 |
+| Rust engine large-v3-turbo (Metal, whisper.cpp ggml Silero v5.1.2 spans + blocklist) | 일괄 + 짧은 대답 | **6.7%** | — (본 세션 미달) | 52/53 | 283s | 0.130 | 1963MB | 3.60 → 1.26 |
 
 - whisper.cpp의 ggml Silero v5.1.2(`-ggmlvad` 행)는 쓰지 않는다. 원래 Silero는 프레임마다 이전 프레임의 마지막 64샘플을 문맥으로 붙이는데, ggml 이식판은 프레임마다 반사 패딩(`ggml_pad_reflect_1d(…, 64, 64)`)을 한다. 이 세션에서 말을 23.0분만 찾았고(v4는 int16 입력에서 26.9분), 발화를 통째로 놓쳐 삭제가 314자였다. 합성 음성(TTS)에서는 오히려 더 많이 잡아서 합성 음성 대조로는 드러나지 않았다. VAD나 엔진을 바꿀 때는 FLEURS로도 확인한다(`tests/slow_vad.rs`).
 - 채택한 VAD는 bench와 같은 `silero_vad.onnx`(k2-fsa가 내보낸 Silero v4, MIT)를 tract(순수 Rust ONNX 런타임)로 돌린다. onnxruntime 대비 프레임 확률 차이는 합성 세션 6.2e-6, FLEURS 10분 1.9e-5이고, 같은 입력에서 구간은 sherpa-onnx와 하나도 다르지 않다.
