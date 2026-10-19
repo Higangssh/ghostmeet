@@ -149,3 +149,23 @@ bench/.venv/bin/python -I bench/meeting_gen.py                                 #
 bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench         # 생성기·채점기 테스트 21개
 # (표준 라이브러리 unittest라 pytest가 필요 없다. bench/.venv는 위 "준비"에서 만든 venv다)
 ```
+
+### 요약 모델 (직접 변환한 GGUF)
+
+각 공식 저장소의 safetensors를 커밋 해시로 고정해 받고, sidecar와 같은 llama.cpp(`d812350`)의 `convert_hf_to_gguf.py`와 `llama-quantize`로 Q4_K_M을 만들었다(`llm_models.py`, 결과는 `llm_models.json`). 받은 원본은 변환 후 지웠다. 커밋 해시로 다시 만들 수 있고, 사용자가 받을 파일은 아래 sha256으로 확인한다.
+
+| 이름 | 원본 저장소@커밋 | 라이선스 | 기기 묶음 | 크기 | sha256 | 변환에 쓴 transformers |
+|---|---|---|---|---:|---|---|
+| kanana-1.5-2.1b | `kakaocorp/kanana-1.5-2.1b-instruct-2505@7df4bc35ccd6` | Apache-2.0 | 8GB | 1.42 GiB | `622293385bb6fb46…` | 4.57.6 |
+| midm-2.0-mini | `K-intelligence/Midm-2.0-Mini-Instruct@383eb221c52a` | MIT | 8GB | 1.33 GiB | `f4ba7d9ac35b523f…` | 4.57.6 |
+| qwen3.5-4b | `Qwen/Qwen3.5-4B@851bf6e806ef` | Apache-2.0 | 8GB | 2.59 GiB | `60cb21ee219f5c13…` | 4.57.6 |
+| ax-4.0-light | `skt/A.X-4.0-Light@ba21c20ea1b3` | Apache-2.0 (ships a NOTICE: built with Qwen 2.5) | 16GB | 4.13 GiB | `2115a098ae9c1309…` | 4.57.6 |
+| kanana-1.5-8b | `kakaocorp/kanana-1.5-8b-instruct-2505@c963a5f4f649` | Apache-2.0 | 16GB | 4.58 GiB | `ea411a3934a8cbfb…` | 4.57.6 |
+| qwen3.5-9b | `Qwen/Qwen3.5-9B@c20223623576` | Apache-2.0 | 16GB | 5.38 GiB | `d5e23001c0128665…` | 4.57.6 |
+| midm-2.0-base | `K-intelligence/Midm-2.0-Base-Instruct@35479c5fc9a1` | MIT | 16GB | 6.55 GiB | `e590278bb19ffaf6…` | 4.57.6 |
+| gemma-4-e4b | `google/gemma-4-E4B-it@ee0ef6023621` | Apache-2.0 | 8GB | 4.97 GiB | `4b9bd938e2cd55f4…` | 5.20.1 |
+
+- A.X 4.0 Light를 채택해 배포하면 Apache-2.0 §4(d)에 따라 저장소의 NOTICE("Built with Qwen 2.5 — Alibaba Cloud")를 함께 실어야 한다.
+- Gemma 4 E4B는 llama.cpp가 고정한 transformers 4.57.6이 `gemma4`를 몰라서 5.20.1로 변환했다(별도 venv). 나머지는 4.57.6.
+- Gemma 4 E4B는 "유효 4B"지만 레이어별 임베딩까지 합치면 약 8B라 Q4_K_M이 4.97 GiB다. 8GB 묶음 상한(최대 메모리 4GB)을 넘는다.
+- 라이선스 원문 확인 결과와 제외한 모델(EXAONE 4.0, Kanana-2, HyperCLOVA X SEED, Llama 계열)은 0.2 마일스톤 3 보고에 있다.

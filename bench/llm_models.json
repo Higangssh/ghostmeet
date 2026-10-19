@@ -1,0 +1,98 @@
+{
+ "kanana-1.5-2.1b": {
+  "repo": "kakaocorp/kanana-1.5-2.1b-instruct-2505",
+  "commit": "7df4bc35ccd610e451809d7106e1c3cf82bfd44c",
+  "licence": "Apache-2.0",
+  "tier": "8GB",
+  "file": "kanana-1.5-2.1b-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "bytes": 1522796608,
+  "sha256": "622293385bb6fb469738020866ba199eb983765ea397857c0f0067c2d2493a1f",
+  "llama_cpp": "ggml-org/llama.cpp@d81235049384534c167caea52b85a694f6103d14",
+  "transformers": "4.57.6"
+ },
+ "midm-2.0-mini": {
+  "repo": "K-intelligence/Midm-2.0-Mini-Instruct",
+  "commit": "383eb221c52a32278f1985257b264ade8d982e60",
+  "licence": "MIT",
+  "tier": "8GB",
+  "file": "midm-2.0-mini-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "bytes": 1426272544,
+  "sha256": "f4ba7d9ac35b523f73d2eea361aafd880266b7a80f80b9d94e574f07ce59a9c6",
+  "llama_cpp": "ggml-org/llama.cpp@d81235049384534c167caea52b85a694f6103d14",
+  "transformers": "4.57.6"
+ },
+ "qwen3.5-4b": {
+  "repo": "Qwen/Qwen3.5-4B",
+  "commit": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+  "licence": "Apache-2.0",
+  "tier": "8GB",
+  "file": "qwen3.5-4b-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "bytes": 2783446432,
+  "sha256": "60cb21ee219f5c138aa959cae929a000b8d35689cca56cde5a52bd7729c3207a",
+  "llama_cpp": "ggml-org/llama.cpp@d81235049384534c167caea52b85a694f6103d14",
+  "transformers": "4.57.6"
+ },
+ "ax-4.0-light": {
+  "repo": "skt/A.X-4.0-Light",
+  "commit": "ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+  "licence": "Apache-2.0 (ships a NOTICE: built with Qwen 2.5)",
+  "tier": "16GB",
+  "file": "ax-4.0-light-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "bytes": 4435826272,
+  "sha256": "2115a098ae9c130933b336b7d379087c880fdd94ee8f8d3b3b733d4a4abcec4f",
+  "llama_cpp": "ggml-org/llama.cpp@d81235049384534c167caea52b85a694f6103d14",
+  "transformers": "4.57.6"
+ },
+ "kanana-1.5-8b": {
+  "repo": "kakaocorp/kanana-1.5-8b-instruct-2505",
+  "commit": "c963a5f4f6496c749f94064a20b33028b0db9f19",
+  "licence": "Apache-2.0",
+  "tier": "16GB",
+  "file": "kanana-1.5-8b-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "bytes": 4920765312,
+  "sha256": "ea411a3934a8cbfb0d8c4d841a8a60be67d9a69a2bc49edb83b4389d6f0156b8",
+  "llama_cpp": "ggml-org/llama.cpp@d81235049384534c167caea52b85a694f6103d14",
+  "transformers": "4.57.6"
+ },
+ "qwen3.5-9b": {
+  "repo": "Qwen/Qwen3.5-9B",
+  "commit": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+  "licence": "Apache-2.0",
+  "tier": "16GB",
+  "file": "qwen3.5-9b-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "bytes": 5780090304,
+  "sha256": "d5e23001c01286656dc47627b9f323d1b29ff9e2ef3747a24890f641ef1b9244",
+  "llama_cpp": "ggml-org/llama.cpp@d81235049384534c167caea52b85a694f6103d14",
+  "transformers": "4.57.6"
+ },
+ "midm-2.0-base": {
+  "repo": "K-intelligence/Midm-2.0-Base-Instruct",
+  "commit": "35479c5fc9a18a5db7cc6dbadcf1db68db7beab0",
+  "licence": "MIT",
+  "tier": "16GB",
+  "file": "midm-2.0-base-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "bytes": 7029505504,
+  "sha256": "e590278bb19ffaf6d355b907f7e26daaaf22ebd7fa24422940cf960ccdc52677",
+  "llama_cpp": "ggml-org/llama.cpp@d81235049384534c167caea52b85a694f6103d14",
+  "transformers": "4.57.6"
+ },
+ "gemma-4-e4b": {
+  "repo": "google/gemma-4-E4B-it",
+  "commit": "ee0ef6023621cff504d758262d4e04895a5af4a2",
+  "licence": "Apache-2.0",
+  "tier": "8GB",
+  "file": "gemma-4-e4b-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "bytes": 5335291936,
+  "sha256": "4b9bd938e2cd55f45eb406cfc07bb97d655bd69c84df6cb2748f2a7dcf9cc7fb",
+  "llama_cpp": "ggml-org/llama.cpp@d81235049384534c167caea52b85a694f6103d14",
+  "transformers": "5.20.1"
+ }
+}
