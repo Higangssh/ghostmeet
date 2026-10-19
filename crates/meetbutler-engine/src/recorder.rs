@@ -12,14 +12,20 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::incremental::{IncrementalTranscriber, Segment, WindowConfig};
 use crate::pcm_store::PcmStore;
 use crate::pipeline::SessionPipeline;
-use crate::store::{Session, SessionStatus, SessionStore, StoreError};
-use crate::Transcribe;
+use crate::span_decoder::{final_transcript, SpanDecode, SpeechProbs};
+use crate::spans::BENCH;
+use crate::store::{Session, SessionStatus, SessionStore, StoreError, TranscriptKind};
+use crate::{Transcribe, TranscribeError};
+
+/// The after-meeting pass cuts a channel this much at a time.
+const FINAL_CHUNK_SEC: f64 = 600.0;
 
 /// Called with every batch of new segments, after they are on disk.
 pub type OnSegments = Arc<dyn Fn(&str, &[Segment]) + Send + Sync>;
@@ -52,6 +58,14 @@ pub enum Channel {
 }
 
 impl Channel {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "mic" => Some(Self::Mic),
+            "system" => Some(Self::System),
+            _ => None,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Self::Mic => "mic",
@@ -76,6 +90,12 @@ pub enum RecorderError {
     Exists,
     #[error("this session is not recording")]
     NotRecording,
+    #[error("no such session")]
+    NotFound,
+    #[error("the final pass was cancelled")]
+    Cancelled,
+    #[error("the final pass failed: {0}")]
+    Pass(String),
     #[error("a session needs at least one channel")]
     NoChannels,
     #[error("session ids are letters, digits, '-' and '_'")]
@@ -273,6 +293,108 @@ impl Recorder {
         Ok(Some(segments))
     }
 
+    /// The after-meeting pass: transcribe every channel again from its recording with
+    /// the final model and replace the live transcript with the result in one
+    /// transaction. Works on stopped and interrupted sessions alike.
+    ///
+    /// On failure the live transcript stays and the reason is kept in `error`; when
+    /// `cancel` is set (the app is quitting) nothing changes and the pass can run again.
+    /// `progress` runs from 0 to 1 across all channels.
+    pub fn finalize<V, D>(
+        &self,
+        session_id: &str,
+        mut vad: impl FnMut() -> std::result::Result<V, TranscribeError>,
+        mut decoder: impl FnMut(Channel) -> std::result::Result<D, TranscribeError>,
+        cancel: &AtomicBool,
+        mut progress: impl FnMut(f64),
+    ) -> Result<Session>
+    where
+        V: SpeechProbs,
+        D: SpanDecode,
+    {
+        if self.live().contains_key(session_id) {
+            return Err(RecorderError::AlreadyRecording);
+        }
+        let original = self
+            .store
+            .load_session(session_id)?
+            .ok_or(RecorderError::NotFound)?;
+        let mut session = Session {
+            status: SessionStatus::Finalizing,
+            ..original.clone()
+        };
+        self.store.save_session(&session)?;
+
+        let channels: Vec<Channel> = session
+            .sources
+            .iter()
+            .filter_map(|s| Channel::from_name(s))
+            .collect();
+        let n = channels.len().max(1) as f64;
+        let mut transcript = Vec::new();
+        let mut duration = 0.0f64;
+        let mut failure = None;
+        for (i, &channel) in channels.iter().enumerate() {
+            if cancel.load(Ordering::SeqCst) {
+                break;
+            }
+            let Some(audio) = self.audio(session_id, channel)? else {
+                continue;
+            };
+            duration = duration.max(audio.duration());
+            let pass = vad().and_then(|mut vad| {
+                let mut decoder = Cancellable {
+                    inner: decoder(channel)?,
+                    cancel,
+                };
+                final_transcript(
+                    &*audio,
+                    &mut vad,
+                    &mut decoder,
+                    &BENCH,
+                    FINAL_CHUNK_SEC,
+                    |p| progress((i as f64 + p) / n),
+                )
+            });
+            match pass {
+                Ok(segments) => transcript.extend(segments.into_iter().map(|mut s| {
+                    s.speaker = Some(channel.speaker().to_string());
+                    s
+                })),
+                Err(err) => {
+                    failure = Some(err.to_string());
+                    break;
+                }
+            }
+        }
+
+        if cancel.load(Ordering::SeqCst) {
+            self.store.save_session(&original)?;
+            return Err(RecorderError::Cancelled);
+        }
+        if let Some(reason) = failure {
+            let status = SessionStatus::Stopped;
+            self.store.save_session(&Session {
+                status,
+                error: Some(reason.clone()),
+                ..original
+            })?;
+            return Err(RecorderError::Pass(reason));
+        }
+
+        transcript.sort_by(|a, b| a.start.total_cmp(&b.start));
+        self.store.replace_transcript(session_id, &transcript)?;
+        session.status = SessionStatus::Stopped;
+        session.transcript = TranscriptKind::Final;
+        session.transcript_segments = transcript.len() as i64;
+        session.duration_sec = duration;
+        session.stopped_at = session.stopped_at.or(Some(now()));
+        session.error = None;
+        self.store.save_session(&session)?;
+        progress(1.0);
+        Ok(session)
+    }
+
     /// A channel's recording, live or finished. `None` if it was never recorded.
     pub fn audio(&self, session_id: &str, channel: Channel) -> Result<Option<Arc<PcmStore>>> {
         if let Some(live) = self.live().get(session_id) {
@@ -290,6 +412,24 @@ impl Recorder {
         let audio = PcmStore::open(path)?;
         audio.close(); // read-only: a finished recording is never appended to
         Ok(Some(Arc::new(audio)))
+    }
+}
+
+/// Ends a pass at the next span once the app asks to quit.
+struct Cancellable<'a, D> {
+    inner: D,
+    cancel: &'a AtomicBool,
+}
+
+impl<D: SpanDecode> SpanDecode for Cancellable<'_, D> {
+    fn decode(
+        &mut self,
+        audio: &[f32],
+    ) -> std::result::Result<Vec<crate::incremental::RawSegment>, TranscribeError> {
+        if self.cancel.load(Ordering::SeqCst) {
+            return Err("cancelled".into());
+        }
+        self.inner.decode(audio)
     }
 }
 
