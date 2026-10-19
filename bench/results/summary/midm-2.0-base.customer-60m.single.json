@@ -1,0 +1,21 @@
+{
+ "model": "midm-2.0-base",
+ "tier": "16GB",
+ "meeting": "customer-60m",
+ "mode": "single",
+ "error": "generate: Decode Error -3: unknown",
+ "score": null,
+ "wall_sec": 1.1,
+ "load_sec": null,
+ "prompt_tokens": 0,
+ "gen_tokens": 0,
+ "prompt_tok_s": null,
+ "gen_tok_s": null,
+ "n_ctx": null,
+ "generations": 0,
+ "process_sec": 1.14,
+ "peak_footprint_mb": 7102,
+ "max_rss_mb": 9787,
+ "peak_mb": 9787,
+ "exit": 0
+}

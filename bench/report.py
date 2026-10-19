@@ -24,6 +24,156 @@ def lat(r: dict) -> str:
     return f"{r['caption_latency_median_s']:.1f} / {r['caption_latency_p95_s']:.1f}s"
 
 
+# peak memory a summary may use, by device tier (models are loaded after transcription
+# has let go of its own)
+TIER_LIMIT_MB = {"8GB": 4096, "16GB": 9216}
+
+# f16 K+V bytes per token of context, from each GGUF's metadata: 2 × layers that keep a
+# KV cache × KV heads × head size × 2 bytes. Qwen3.5 keeps one only in its 8 full-attention
+# layers of 33 (the others carry a fixed recurrent state); Gemma 4 E4B in its 4 global
+# layers that are not shared (sliding-window layers hold a fixed 512 tokens).
+KV_BYTES_PER_TOKEN = {
+    "kanana-1.5-2.1b": 2 * 32 * 8 * 128 * 2,
+    "kanana-1.5-8b": 2 * 32 * 8 * 128 * 2,
+    "midm-2.0-mini": 2 * 48 * 8 * 128 * 2,
+    "midm-2.0-base": 2 * 48 * 8 * 128 * 2,
+    "ax-4.0-light": 2 * 28 * 4 * 128 * 2,
+    "qwen3.5-4b": 2 * 8 * 4 * 256 * 2,
+    "qwen3.5-9b": 2 * 8 * 4 * 256 * 2,
+    "gemma-4-e4b": 2 * 4 * 2 * 512 * 2,
+}
+
+
+def summary_table(rows: list[dict]) -> list[str]:
+    from collections import defaultdict
+
+    def ratio(a: int, b: int) -> str:
+        return f"{a}/{b} ({a / b:.0%})" if b else "—"
+
+    def mean(xs: list[float]) -> float | None:
+        return sum(xs) / len(xs) if xs else None
+
+    by = defaultdict(list)
+    for r in rows:
+        by[(r["model"], r["mode"])].append(r)
+    out = [
+        "| 모델 | 묶음 | 방식 | 실행 실패 | 형식 깨짐 | 결정 | 할 일 | 담당자 맞음 | 기한 맞음 | 미해결 | 철회를 결정으로 "
+        "| 지어낸 담당자 | 지어낸 숫자 | 회의당 시간 | 최대 메모리 | 생성 tok/s | 판정 |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    order = {"8GB": 0, "16GB": 1}
+    for (model, mode), rs in sorted(by.items(), key=lambda kv: (order.get(kv[1][0]["tier"], 9), kv[0])):
+        tier = rs[0]["tier"]
+        ran = [r for r in rs if not r.get("error")]
+        failed = len(rs) - len(ran)
+        scored = [r["score"] for r in ran if r["score"].get("format_ok")]
+        tot = lambda k: sum(s.get(k, 0) for s in scored)  # noqa: E731
+        # recall is out of every meeting that ran, so a broken format counts as missed
+        key = lambda k: sum(r["score"][k] for r in ran)  # noqa: E731
+        found_a = tot("actions_found")
+        wall = mean([r["wall_sec"] for r in ran])
+        peak = max((r.get("peak_mb") or 0 for r in rs), default=0)
+        gen = mean([r["gen_tok_s"] for r in ran if r.get("gen_tok_s")])
+        verdict = "탈락(메모리)" if peak > TIER_LIMIT_MB.get(tier, 1 << 30) else "—"
+        if failed:
+            verdict = "실행 실패" if not ran else verdict
+        out.append(
+            f"| {model} | {tier} | {mode} | {failed}/{len(rs)} | {len(ran) - len(scored)}/{len(ran)} | "
+            f"{ratio(tot('decisions_found'), key('decisions_total'))} | "
+            f"{ratio(found_a, key('actions_total'))} | "
+            f"{ratio(tot('actions_owner_ok'), found_a)} | {ratio(tot('actions_due_ok'), found_a)} | "
+            f"{ratio(tot('open_questions_found'), key('open_questions_total'))} | "
+            f"{tot('withdrawn_listed')} | "
+            f"{sum(len(s.get('unknown_owners', [])) + len(s.get('invented_people', [])) for s in scored)} | "
+            f"{sum(len(s.get('invented_numbers', [])) for s in scored)} | "
+            f"{f'{wall:.0f}s' if wall else '—'} | {peak / 1024:.1f}GB | {f'{gen:.1f}' if gen else '—'} | {verdict} |"
+        )
+    return out
+
+
+def single_memory_estimate(rows: list[dict]) -> list[str]:
+    """What single would have peaked at with n_ctx sized to what it used, not transcript + 8192."""
+    from collections import defaultdict
+
+    # the largest answer the model gave in a well-formed run; one that ran into max_tokens
+    # was looping, and a real n_ctx would not be sized for that
+    longest = defaultdict(int)
+    for r in rows:
+        if not r.get("error") and r["score"].get("format_ok"):
+            longest[r["model"]] = max(longest[r["model"]], r["gen_tokens"])
+    out = [
+        "| 모델 | 묶음 | 대본 | KV/토큰 | 쓴 n_ctx | 필요한 n_ctx | 잰 최대 메모리 | 줄어드는 KV | 추정 최대 메모리 | 상한 |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    order = {"8GB": 0, "16GB": 1}
+    for r in sorted(rows, key=lambda r: (order.get(r["tier"], 9), r["model"], int(r["meeting"].split("-")[-1][:-1]), r["meeting"])):
+        if r.get("error") or r["model"] not in KV_BYTES_PER_TOKEN:
+            continue
+        per = KV_BYTES_PER_TOKEN[r["model"]]
+        need = -(-(r["prompt_tokens"] + longest[r["model"]] + 64) // 256) * 256
+        saved = (r["n_ctx"] - need) * per / 2**20
+        est = r["peak_mb"] - saved
+        limit = TIER_LIMIT_MB[r["tier"]]
+        out.append(
+            f"| {r['model']} | {r['tier']} | {r['meeting']} | {per // 1024}KiB | {r['n_ctx']} | {need} | "
+            f"{r['peak_mb'] / 1024:.1f}GB | {saved / 1024:.1f}GB | {est / 1024:.1f}GB | "
+            f"{'넘음' if est > limit else '안 넘음'} |"
+        )
+    return out
+
+
+def summary_section(rows: list[dict]) -> list[str]:
+    """Section 8: local summary models on the synthetic meetings (run_summary.py)."""
+    short = [r for r in rows if not r["meeting"].endswith("-120m")]
+    long = [r for r in rows if r["meeting"].endswith("-120m")]
+    out = [
+        "",
+        "## 8. 로컬 요약 모델 (합성 회의 대본, 정답 대본 입력)",
+        "",
+        "`run_summary.py`가 앱의 요약 sidecar를 앱과 같은 방식으로 돌렸다. 요약마다 프로세스를 새로 띄우고, "
+        "GGUF 안의 chat template, 고정 형식(SUM-1)을 강제하는 grammar, repeat penalty 1.1, greedy를 쓴다. "
+        "대본은 `meeting_gen.py`의 주간·1:1·고객 × 30·60·120분이고 정답지와 맞춰 채점했다"
+        "(`summary_score.py`). 모든 모델에 같은 프롬프트를 썼다. single은 전사를 통째로 넣고, chunked는 "
+        "약 10분씩 요약한 뒤 목록을 잇는다.",
+        "",
+        "재현율은 대본 합계다(형식이 깨진 요약은 하나도 못 찾은 것으로 센다). 지어낸 담당자는 회의에 없는 "
+        "이름이나 사람이 아닌 담당자의 수이고, 지어낸 숫자는 회의에서 말하지 않은 숫자의 수다. "
+        "최대 메모리는 peak footprint와 max RSS 중 큰 값이다. "
+        f"기기 상한은 8GB 묶음 {TIER_LIMIT_MB['8GB'] / 1024:.0f}GB, 16GB 묶음 {TIER_LIMIT_MB['16GB'] / 1024:.0f}GB이고, "
+        "넘으면 탈락이다. single의 n_ctx는 전사 + 8192(출력 상한)로 잡았다.",
+        "",
+        "### 30·60분 대본 6개, 모든 모델",
+        "",
+    ]
+    out += summary_table(short)
+    if long:
+        out += [
+            "",
+            "### 120분 대본 3개, 30·60분 결과로 고른 모델",
+            "",
+            "묶음마다 상한 안에 든 방식의 결정+할 일 재현율이 높은 두 모델이다. llama 구조 모델(Kanana, Mi:dm)의 "
+            "single은 시작하자마자 디코딩이 실패했다(`Decode Error -3`, 최대 메모리 11GB대). 실패한 실행은 n_ctx를 "
+            "남기지 못했지만 같은 식(전사 + 8192)이면 57344로, 학습 문맥 32768을 넘고 KV 캐시만 Mi:dm Mini 10.5GB, "
+            "Kanana 8B 7GB다. 30·60분 표의 Mi:dm Base single 60분 3개도 같은 실패다(n_ctx 약 36864, KV 6.75GB + "
+            "모델 6.5GB). 측정 설정 탓이지만, 프롬프트를 60분의 두 배로 잡아(Mi:dm 약 2.3만, Kanana 약 3.1만 토큰) "
+            "n_ctx를 맞춰도 KV만 Mi:dm Mini 약 4.2GB, Kanana 8B 약 3.9GB다. Mi:dm Mini는 8GB 묶음 상한을 넘고 "
+            "Kanana 8B는 9GB 상한 근처이며 학습 문맥 끝에 걸린다.",
+            "",
+        ]
+        out += summary_table(long)
+    out += [
+        "",
+        "### single의 메모리를 n_ctx 때문에 얼마나 크게 쟀나 (추정, 다시 돌리지 않음)",
+        "",
+        "llama.cpp는 n_ctx만큼의 KV 캐시를 처음에 다 잡는다. 필요한 n_ctx = 프롬프트 + 그 모델이 형식을 "
+        "지킨 요약 중 가장 긴 출력 + 64를 256 단위로 올린 값이다. 추정 최대 메모리 = 잰 값 − (쓴 n_ctx − "
+        "필요한 n_ctx) × KV/토큰. 계산 버퍼는 n_ctx에 따라 조금 더 줄어들 수 있으니 상한 쪽 추정이다.",
+        "",
+    ]
+    out += single_memory_estimate([r for r in rows if r["mode"] == "single"])
+    return out
+
+
 def main() -> None:
     utt = sorted(load("*.utt.json"), key=lambda r: r["cer_no_digits"])
     cold = {r["spec"]: r for r in load("*.coldstart.json")}
@@ -276,6 +426,10 @@ def main() -> None:
             "float 입력 205개, int16 입력 174개였다(겹치지 않는 구간이 많다). 5·6절은 float으로 쟀고, 앱은 "
             "int16으로 녹음하므로 이 절은 int16으로 쟀다.",
         ]
+
+    summaries = load("summary/*.json")
+    if summaries:
+        lines += summary_section(summaries)
 
     out = RESULTS / "RESULTS.md"
     out.write_text("\n".join(lines) + "\n")

@@ -1,0 +1,39 @@
+{
+ "model": "gemma-4-e4b",
+ "tier": "8GB",
+ "meeting": "one_on_one-60m",
+ "mode": "chunked",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 13,
+  "decisions_total": 24,
+  "actions_found": 12,
+  "actions_owner_ok": 12,
+  "actions_due_ok": 12,
+  "actions_total": 14,
+  "open_questions_found": 0,
+  "open_questions_total": 4,
+  "withdrawn_listed": 5,
+  "withdrawn_total": 5,
+  "invented_people": [],
+  "unknown_owners": [
+   "본인"
+  ],
+  "invented_numbers": [],
+  "summary_chars": 226
+ },
+ "wall_sec": 151.3,
+ "load_sec": 0.44,
+ "prompt_tokens": 16393,
+ "gen_tokens": 1898,
+ "prompt_tok_s": 379.9,
+ "gen_tok_s": 17.7,
+ "n_ctx": 8192,
+ "generations": 7,
+ "process_sec": 151.46,
+ "peak_footprint_mb": 896,
+ "max_rss_mb": 5968,
+ "peak_mb": 5968,
+ "exit": 0
+}

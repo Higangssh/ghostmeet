@@ -1,0 +1,39 @@
+{
+ "model": "ax-4.0-light",
+ "tier": "16GB",
+ "meeting": "one_on_one-60m",
+ "mode": "chunked",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 7,
+  "decisions_total": 24,
+  "actions_found": 9,
+  "actions_owner_ok": 8,
+  "actions_due_ok": 9,
+  "actions_total": 14,
+  "open_questions_found": 0,
+  "open_questions_total": 4,
+  "withdrawn_listed": 0,
+  "withdrawn_total": 5,
+  "invented_people": [],
+  "unknown_owners": [
+   "담당자"
+  ],
+  "invented_numbers": [],
+  "summary_chars": 338
+ },
+ "wall_sec": 127.0,
+ "load_sec": 0.23,
+ "prompt_tokens": 11984,
+ "gen_tokens": 1393,
+ "prompt_tok_s": 317.5,
+ "gen_tok_s": 15.7,
+ "n_ctx": 8192,
+ "generations": 7,
+ "process_sec": 127.03,
+ "peak_footprint_mb": 686,
+ "max_rss_mb": 4907,
+ "peak_mb": 4907,
+ "exit": 0
+}

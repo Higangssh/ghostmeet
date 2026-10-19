@@ -1,0 +1,39 @@
+{
+ "model": "qwen3.5-9b",
+ "tier": "16GB",
+ "meeting": "one_on_one-30m",
+ "mode": "chunked",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 8,
+  "decisions_total": 11,
+  "actions_found": 6,
+  "actions_owner_ok": 6,
+  "actions_due_ok": 6,
+  "actions_total": 7,
+  "open_questions_found": 0,
+  "open_questions_total": 3,
+  "withdrawn_listed": 2,
+  "withdrawn_total": 2,
+  "invented_people": [],
+  "unknown_owners": [
+   "나"
+  ],
+  "invented_numbers": [],
+  "summary_chars": 249
+ },
+ "wall_sec": 119.4,
+ "load_sec": 0.4,
+ "prompt_tokens": 7989,
+ "gen_tokens": 1113,
+ "prompt_tok_s": 233.1,
+ "gen_tok_s": 13.2,
+ "n_ctx": 8192,
+ "generations": 4,
+ "process_sec": 119.43,
+ "peak_footprint_mb": 740,
+ "max_rss_mb": 6088,
+ "peak_mb": 6088,
+ "exit": 0
+}

@@ -1,0 +1,43 @@
+{
+ "model": "midm-2.0-base",
+ "tier": "16GB",
+ "meeting": "customer-60m",
+ "mode": "chunked",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 7,
+  "decisions_total": 21,
+  "actions_found": 6,
+  "actions_owner_ok": 6,
+  "actions_due_ok": 6,
+  "actions_total": 9,
+  "open_questions_found": 3,
+  "open_questions_total": 9,
+  "withdrawn_listed": 0,
+  "withdrawn_total": 4,
+  "invented_people": [],
+  "unknown_owners": [
+   "담당자",
+   "담당자미정",
+   "법무팀"
+  ],
+  "invented_numbers": [
+   "2023"
+  ],
+  "summary_chars": 355
+ },
+ "wall_sec": 229.2,
+ "load_sec": 0.33,
+ "prompt_tokens": 16010,
+ "gen_tokens": 1296,
+ "prompt_tok_s": 147.0,
+ "gen_tok_s": 11.0,
+ "n_ctx": 10240,
+ "generations": 7,
+ "process_sec": 229.36,
+ "peak_footprint_mb": 2197,
+ "max_rss_mb": 8835,
+ "peak_mb": 8835,
+ "exit": 0
+}

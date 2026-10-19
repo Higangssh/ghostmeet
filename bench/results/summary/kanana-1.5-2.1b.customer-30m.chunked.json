@@ -1,0 +1,45 @@
+{
+ "model": "kanana-1.5-2.1b",
+ "tier": "8GB",
+ "meeting": "customer-30m",
+ "mode": "chunked",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 3,
+  "decisions_total": 11,
+  "actions_found": 4,
+  "actions_owner_ok": 3,
+  "actions_due_ok": 4,
+  "actions_total": 4,
+  "open_questions_found": 2,
+  "open_questions_total": 5,
+  "withdrawn_listed": 0,
+  "withdrawn_total": 3,
+  "invented_people": [],
+  "unknown_owners": [
+   "김철수",
+   "박민수",
+   "운영팀",
+   "홍길동"
+  ],
+  "invented_numbers": [
+   "10",
+   "15"
+  ],
+  "summary_chars": 139
+ },
+ "wall_sec": 42.6,
+ "load_sec": 0.16,
+ "prompt_tokens": 9029,
+ "gen_tokens": 997,
+ "prompt_tok_s": 803.8,
+ "gen_tok_s": 32.3,
+ "n_ctx": 8192,
+ "generations": 4,
+ "process_sec": 42.67,
+ "peak_footprint_mb": 1278,
+ "max_rss_mb": 2723,
+ "peak_mb": 2723,
+ "exit": 0
+}

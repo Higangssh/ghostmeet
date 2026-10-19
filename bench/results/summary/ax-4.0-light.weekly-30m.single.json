@@ -1,0 +1,39 @@
+{
+ "model": "ax-4.0-light",
+ "tier": "16GB",
+ "meeting": "weekly-30m",
+ "mode": "single",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 2,
+  "decisions_total": 11,
+  "actions_found": 4,
+  "actions_owner_ok": 3,
+  "actions_due_ok": 4,
+  "actions_total": 9,
+  "open_questions_found": 0,
+  "open_questions_total": 2,
+  "withdrawn_listed": 0,
+  "withdrawn_total": 3,
+  "invented_people": [],
+  "unknown_owners": [
+   "개발팀"
+  ],
+  "invented_numbers": [],
+  "summary_chars": 114
+ },
+ "wall_sec": 46.8,
+ "load_sec": 2.33,
+ "prompt_tokens": 5416,
+ "gen_tokens": 365,
+ "prompt_tok_s": 238.8,
+ "gen_tok_s": 16.8,
+ "n_ctx": 22528,
+ "generations": 1,
+ "process_sec": 46.94,
+ "peak_footprint_mb": 1465,
+ "max_rss_mb": 5584,
+ "peak_mb": 5584,
+ "exit": 0
+}

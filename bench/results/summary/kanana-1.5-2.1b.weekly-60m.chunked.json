@@ -1,0 +1,42 @@
+{
+ "model": "kanana-1.5-2.1b",
+ "tier": "8GB",
+ "meeting": "weekly-60m",
+ "mode": "chunked",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 9,
+  "decisions_total": 22,
+  "actions_found": 14,
+  "actions_owner_ok": 13,
+  "actions_due_ok": 14,
+  "actions_total": 17,
+  "open_questions_found": 1,
+  "open_questions_total": 4,
+  "withdrawn_listed": 1,
+  "withdrawn_total": 4,
+  "invented_people": [],
+  "unknown_owners": [
+   "디자인팀",
+   "박",
+   "운영팀",
+   "원"
+  ],
+  "invented_numbers": [],
+  "summary_chars": 673
+ },
+ "wall_sec": 94.5,
+ "load_sec": 0.17,
+ "prompt_tokens": 17439,
+ "gen_tokens": 2440,
+ "prompt_tok_s": 820.0,
+ "gen_tok_s": 33.7,
+ "n_ctx": 8192,
+ "generations": 7,
+ "process_sec": 94.56,
+ "peak_footprint_mb": 1282,
+ "max_rss_mb": 2727,
+ "peak_mb": 2727,
+ "exit": 0
+}

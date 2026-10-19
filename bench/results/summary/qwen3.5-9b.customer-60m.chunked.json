@@ -1,0 +1,41 @@
+{
+ "model": "qwen3.5-9b",
+ "tier": "16GB",
+ "meeting": "customer-60m",
+ "mode": "chunked",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 13,
+  "decisions_total": 21,
+  "actions_found": 9,
+  "actions_owner_ok": 9,
+  "actions_due_ok": 9,
+  "actions_total": 9,
+  "open_questions_found": 6,
+  "open_questions_total": 9,
+  "withdrawn_listed": 2,
+  "withdrawn_total": 4,
+  "invented_people": [],
+  "unknown_owners": [
+   "나",
+   "담당자",
+   "법무팀"
+  ],
+  "invented_numbers": [],
+  "summary_chars": 264
+ },
+ "wall_sec": 250.4,
+ "load_sec": 0.37,
+ "prompt_tokens": 15592,
+ "gen_tokens": 2364,
+ "prompt_tok_s": 219.8,
+ "gen_tok_s": 13.2,
+ "n_ctx": 8192,
+ "generations": 7,
+ "process_sec": 250.51,
+ "peak_footprint_mb": 737,
+ "max_rss_mb": 6087,
+ "peak_mb": 6087,
+ "exit": 0
+}

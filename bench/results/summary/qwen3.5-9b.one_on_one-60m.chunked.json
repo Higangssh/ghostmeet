@@ -1,0 +1,42 @@
+{
+ "model": "qwen3.5-9b",
+ "tier": "16GB",
+ "meeting": "one_on_one-60m",
+ "mode": "chunked",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 14,
+  "decisions_total": 24,
+  "actions_found": 12,
+  "actions_owner_ok": 12,
+  "actions_due_ok": 12,
+  "actions_total": 14,
+  "open_questions_found": 0,
+  "open_questions_total": 4,
+  "withdrawn_listed": 5,
+  "withdrawn_total": 5,
+  "invented_people": [],
+  "unknown_owners": [
+   "나",
+   "발언자(안내문구담당)",
+   "발언자(안내문구작성자)",
+   "발언자(자료제공자)"
+  ],
+  "invented_numbers": [],
+  "summary_chars": 298
+ },
+ "wall_sec": 241.9,
+ "load_sec": 0.42,
+ "prompt_tokens": 15825,
+ "gen_tokens": 2208,
+ "prompt_tok_s": 221.2,
+ "gen_tok_s": 13.0,
+ "n_ctx": 8192,
+ "generations": 7,
+ "process_sec": 241.98,
+ "peak_footprint_mb": 740,
+ "max_rss_mb": 6072,
+ "peak_mb": 6072,
+ "exit": 0
+}

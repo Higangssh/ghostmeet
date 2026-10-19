@@ -1,0 +1,27 @@
+{
+ "model": "kanana-1.5-2.1b",
+ "tier": "8GB",
+ "meeting": "weekly-60m",
+ "mode": "single",
+ "error": null,
+ "score": {
+  "format_ok": false,
+  "decisions_total": 22,
+  "actions_total": 17,
+  "open_questions_total": 4,
+  "withdrawn_total": 4
+ },
+ "wall_sec": 477.5,
+ "load_sec": 0.16,
+ "prompt_tokens": 15104,
+ "gen_tokens": 8192,
+ "prompt_tok_s": 396.4,
+ "gen_tok_s": 18.7,
+ "n_ctx": 34816,
+ "generations": 1,
+ "process_sec": 477.59,
+ "peak_footprint_mb": 4632,
+ "max_rss_mb": 6075,
+ "peak_mb": 6075,
+ "exit": 0
+}

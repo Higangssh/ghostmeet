@@ -1,0 +1,39 @@
+{
+ "model": "midm-2.0-mini",
+ "tier": "8GB",
+ "meeting": "weekly-60m",
+ "mode": "chunked",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 9,
+  "decisions_total": 22,
+  "actions_found": 12,
+  "actions_owner_ok": 10,
+  "actions_due_ok": 12,
+  "actions_total": 17,
+  "open_questions_found": 2,
+  "open_questions_total": 4,
+  "withdrawn_listed": 0,
+  "withdrawn_total": 4,
+  "invented_people": [],
+  "unknown_owners": [
+   "제가맡겠습니다"
+  ],
+  "invented_numbers": [],
+  "summary_chars": 136
+ },
+ "wall_sec": 71.8,
+ "load_sec": 0.14,
+ "prompt_tokens": 15851,
+ "gen_tokens": 1354,
+ "prompt_tok_s": 590.4,
+ "gen_tok_s": 30.8,
+ "n_ctx": 10240,
+ "generations": 7,
+ "process_sec": 71.82,
+ "peak_footprint_mb": 2165,
+ "max_rss_mb": 3515,
+ "peak_mb": 3515,
+ "exit": 0
+}

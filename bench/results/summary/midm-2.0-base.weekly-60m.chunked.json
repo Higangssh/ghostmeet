@@ -1,0 +1,40 @@
+{
+ "model": "midm-2.0-base",
+ "tier": "16GB",
+ "meeting": "weekly-60m",
+ "mode": "chunked",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 10,
+  "decisions_total": 22,
+  "actions_found": 15,
+  "actions_owner_ok": 14,
+  "actions_due_ok": 12,
+  "actions_total": 17,
+  "open_questions_found": 3,
+  "open_questions_total": 4,
+  "withdrawn_listed": 0,
+  "withdrawn_total": 4,
+  "invented_people": [],
+  "unknown_owners": [],
+  "invented_numbers": [
+   "06",
+   "2023"
+  ],
+  "summary_chars": 310
+ },
+ "wall_sec": 242.8,
+ "load_sec": 0.34,
+ "prompt_tokens": 15903,
+ "gen_tokens": 1466,
+ "prompt_tok_s": 146.1,
+ "gen_tok_s": 11.1,
+ "n_ctx": 10240,
+ "generations": 7,
+ "process_sec": 242.97,
+ "peak_footprint_mb": 2194,
+ "max_rss_mb": 8878,
+ "peak_mb": 8878,
+ "exit": 0
+}
