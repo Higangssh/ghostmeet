@@ -77,7 +77,6 @@ fn lines(n: usize, syllables_each: usize) -> Vec<String> {
 fn opts() -> Options {
     Options {
         model: "/models/qwen.gguf".into(),
-        ..Options::default()
     }
 }
 
