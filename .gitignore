@@ -39,3 +39,6 @@ bench/results/raw/
 
 # Rust
 /target/
+
+# Tauri
+app/src-tauri/gen/

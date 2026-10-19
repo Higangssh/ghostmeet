@@ -1,0 +1,26 @@
+[package]
+name = "meetbutler"
+description = "MeetButler desktop app: records a meeting on this machine and transcribes it locally"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "meetbutler_app"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6", features = [] }
+
+[dependencies]
+tauri = { version = "2.11", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+meetbutler-engine = { path = "../../crates/meetbutler-engine", features = ["whisper", "silero"] }
+meetbutler-audio = { path = "../../crates/meetbutler-audio" }
+
+[dev-dependencies]
+tempfile = "3"

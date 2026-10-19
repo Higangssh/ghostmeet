@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeetButler</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <header>
+    <div id="indicator" class="indicator" hidden>
+      <span class="dot" aria-hidden="true"></span><span>녹음 중</span>
+      <span id="elapsed" class="elapsed">0:00</span>
+    </div>
+    <h1 id="idle-title">MeetButler</h1>
+  </header>
+
+  <section class="controls" id="controls">
+    <fieldset>
+      <legend>소스</legend>
+      <label><input type="checkbox" name="source" value="mic" checked> 마이크 (나)</label>
+      <label><input type="checkbox" name="source" value="system" checked> 시스템 오디오 (상대)</label>
+    </fieldset>
+    <label class="language">언어
+      <select id="language">
+        <option value="ko" selected>한국어</option>
+        <option value="en">English</option>
+        <option value="auto">자동</option>
+      </select>
+    </label>
+  </section>
+
+  <button id="toggle" class="toggle" type="button">녹음 시작</button>
+  <p id="notice" class="notice" role="status" hidden></p>
+
+  <section class="captions" aria-live="polite">
+    <div class="captions-head">
+      <h2>자막</h2>
+      <span id="kind" class="kind"></span>
+    </div>
+    <ol id="captions"></ol>
+  </section>
+
+  <section class="library">
+    <h2>지난 회의</h2>
+    <ul id="sessions"></ul>
+  </section>
+</body>
+</html>
