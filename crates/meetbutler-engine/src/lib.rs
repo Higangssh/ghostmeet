@@ -18,6 +18,7 @@ pub mod silero;
 pub mod span_decoder;
 pub mod spans;
 pub mod store;
+pub mod vocabulary;
 #[cfg(feature = "whisper")]
 pub mod whisper;
 

@@ -191,6 +191,57 @@ fn the_final_pass_keeps_every_short_reply_in_the_synthetic_session() {
     );
 }
 
+/// Terms the synthetic session never says: the vocabulary must not put them in.
+const DECOYS: &[&str] = &["주소록 동기화", "누리온", "바람결상사"];
+
+#[test]
+#[ignore = "needs bench/data models and synthetic audio"]
+fn a_vocabulary_nobody_says_stays_out_and_an_empty_one_changes_nothing() {
+    let _g = serial();
+    let session = Memory(read_wav(&synth().join("session.wav")));
+    let model = model("large-v3-turbo");
+    let run = |terms: &[&str]| {
+        let terms: Vec<String> = terms.iter().map(|t| t.to_string()).collect();
+        let mut dec = WhisperDecoder::new(model.clone(), Some("ko".into()))
+            .unwrap()
+            .with_vocabulary(&terms);
+        text_of(&final_transcript(&session, &mut vad(), &mut dec, &BENCH, 600.0, |_| {}).unwrap())
+    };
+
+    let plain = run(&[]);
+    // the prompt reaches the decoder: turbo writes "서버쪽" on its own and follows the
+    // vocabulary's spacing when given it (the decoy check below means nothing otherwise)
+    assert!(plain.contains("서버쪽"), "{plain}");
+    let spaced = run(&["서버 쪽"]);
+    assert!(
+        spaced.contains("서버 쪽"),
+        "the vocabulary was not used: {spaced}"
+    );
+    assert_eq!(
+        run(&["", " "]),
+        plain,
+        "an empty vocabulary changed the transcript"
+    );
+    let primed = run(DECOYS);
+    eprintln!(
+        "with decoys: CER {:.1}% (without {:.1}%)\n  {primed}",
+        cer(&script(), &primed) * 100.0,
+        cer(&script(), &plain) * 100.0
+    );
+    for decoy in DECOYS {
+        assert!(
+            !chars(&primed)
+                .windows(chars(decoy).len())
+                .any(|w| w == &chars(decoy)[..]),
+            "\"{decoy}\" was never said but is in the transcript: {primed}"
+        );
+    }
+    assert!(
+        cer(&script(), &primed) <= 0.03,
+        "the vocabulary pushed CER over the 3% bar"
+    );
+}
+
 #[test]
 #[ignore = "needs bench/data models and synthetic audio"]
 fn each_benchmark_reply_survives_on_its_own_between_pauses() {

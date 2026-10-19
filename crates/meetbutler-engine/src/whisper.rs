@@ -19,6 +19,9 @@ use crate::TranscribeError;
 /// Performance cores on an M4; the budget every engine had in the benchmark.
 pub const THREADS: i32 = 4;
 
+/// Text context for the vocabulary prompt: whisper's own cap, half its 448-token window.
+const PROMPT_CTX: i32 = 224;
+
 /// Route whisper.cpp's and ggml's logging through the `log` crate instead of stderr.
 pub fn install_logging() {
     whisper_rs::install_logging_hooks();
@@ -54,6 +57,7 @@ pub struct WhisperDecoder {
     state: WhisperState,
     _model: Arc<WhisperModel>,
     language: Option<String>,
+    prompt: Option<String>,
 }
 
 impl WhisperDecoder {
@@ -67,7 +71,15 @@ impl WhisperDecoder {
             state,
             _model: model,
             language,
+            prompt: None,
         })
+    }
+
+    /// Give every span the user's vocabulary as whisper's initial prompt (STT-7).
+    /// With no terms the decoder stays as `new` made it.
+    pub fn with_vocabulary(mut self, terms: &[String]) -> Self {
+        self.prompt = crate::vocabulary::prompt(terms);
+        self
     }
 }
 
@@ -81,8 +93,16 @@ impl SpanDecode for WhisperDecoder {
         params.set_n_threads(THREADS);
         // each span is decoded on its own; carrying text across lets a hallucinated
         // phrase repeat itself for the rest of the meeting
-        params.set_n_max_text_ctx(0);
         params.set_no_context(true);
+        match &self.prompt {
+            // no_context clears the past, so each span starts from the vocabulary alone;
+            // whisper.cpp drops any prompt when the text context is 0
+            Some(prompt) => {
+                params.set_initial_prompt(prompt);
+                params.set_n_max_text_ctx(PROMPT_CTX);
+            }
+            None => params.set_n_max_text_ctx(0),
+        }
         params.set_temperature(0.0);
         params.set_print_special(false);
         params.set_print_progress(false);
