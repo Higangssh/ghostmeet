@@ -625,3 +625,16 @@ fn holding_back_keeps_the_per_pass_window_bounded_for_four_hours() {
     assert_eq!(t.transcript().len(), n);
     assert!(t.transcript().iter().all(|s| !s.text.contains('~')));
 }
+
+#[test]
+fn a_panicking_model_is_a_failed_pass_not_a_stuck_window() {
+    // a window that crashes the decoder every time must be skipped, not retried forever
+    let store = Arc::new(FakeStore::default());
+    let panicking =
+        |_: &[f32]| -> Result<Vec<RawSegment>, TranscribeError> { panic!("decoder blew up") };
+    let mut t = IncrementalTranscriber::new(store.clone(), panicking, WindowConfig::default());
+    store.grow(10.0);
+
+    assert!(t.step(false).is_empty());
+    assert_eq!(t.pending_samples(), 0);
+}

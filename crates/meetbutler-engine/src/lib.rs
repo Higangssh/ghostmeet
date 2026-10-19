@@ -10,6 +10,7 @@ use std::io;
 pub mod blocklist;
 pub mod incremental;
 pub mod pcm_store;
+pub mod pipeline;
 pub mod spans;
 pub mod store;
 

@@ -11,6 +11,7 @@
 //! to be cut blindly (silence, or speech filling a whole window) does the next pass rewind
 //! by `overlap_sec` to catch words straddling the cut.
 
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -164,7 +165,10 @@ impl<S: AudioSource, T: Transcribe> IncrementalTranscriber<S, T> {
                 if audio.is_empty() {
                     Ok(None)
                 } else {
-                    self.transcribe.transcribe(&audio).map(Some)
+                    let transcribe = &mut self.transcribe;
+                    catch_unwind(AssertUnwindSafe(|| transcribe.transcribe(&audio)))
+                        .unwrap_or_else(|_| Err("the decoder panicked".into()))
+                        .map(Some)
                 }
             });
         let raw = match decoded {
