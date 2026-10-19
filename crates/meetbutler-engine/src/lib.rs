@@ -11,6 +11,7 @@ pub mod blocklist;
 pub mod incremental;
 pub mod pcm_store;
 pub mod spans;
+pub mod store;
 
 /// Every sample in the engine is 16 kHz mono.
 pub const SAMPLE_RATE: usize = 16_000;
