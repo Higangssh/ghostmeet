@@ -23,7 +23,6 @@ const THREADS: i32 = 4;
 pub struct Llama {
     backend: LlamaBackend,
     model: Option<LlamaModel>,
-    n_ctx: u32,
 }
 
 impl Llama {
@@ -33,7 +32,6 @@ impl Llama {
         Self {
             backend,
             model: None,
-            n_ctx: 0,
         }
     }
 }
@@ -45,13 +43,12 @@ impl Default for Llama {
 }
 
 impl Generator for Llama {
-    fn load(&mut self, model: &Path, n_ctx: u32) -> Result<(), String> {
+    fn load(&mut self, model: &Path) -> Result<(), String> {
         self.model = None; // free the old one first: two at once may not fit
         let params = LlamaModelParams::default().with_n_gpu_layers(u32::MAX);
         let loaded = LlamaModel::load_from_file(&self.backend, model, &params)
             .map_err(|e| format!("loading {}: {e}", model.display()))?;
         self.model = Some(loaded);
-        self.n_ctx = n_ctx;
         Ok(())
     }
 
@@ -59,21 +56,22 @@ impl Generator for Llama {
         &mut self,
         prompt: &str,
         max_tokens: u32,
+        n_ctx: u32,
         grammar: Option<&str>,
         on_progress: &mut dyn FnMut(Phase, u32, u32) -> bool,
     ) -> Result<Generated, String> {
         let model = self.model.as_ref().ok_or("no model loaded")?;
         let vocab = model.vocab();
         let tokens = vocab.tokenize(prompt.as_bytes(), true, true);
-        if tokens.len() as u32 + max_tokens > self.n_ctx {
+        if tokens.len() as u32 + max_tokens > n_ctx {
             return Err(format!(
                 "prompt of {} tokens plus {max_tokens} to generate does not fit a context of {}",
                 tokens.len(),
-                self.n_ctx
+                n_ctx
             ));
         }
         let params = LlamaContextParams::default()
-            .with_n_ctx(NonZeroU32::new(self.n_ctx))
+            .with_n_ctx(NonZeroU32::new(n_ctx))
             .with_n_batch(BATCH as u32)
             .with_n_threads(THREADS)
             .with_n_threads_batch(THREADS);

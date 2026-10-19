@@ -16,11 +16,12 @@ use crate::protocol::{ErrorKind, Event, GenerateRequest, Generated, Phase, Reque
 /// A language model behind the loop. `on_progress(phase, done, total)` is called as the
 /// prompt is read and as tokens come out, and returns false to stop.
 pub trait Generator {
-    fn load(&mut self, model: &Path, n_ctx: u32) -> Result<(), String>;
+    fn load(&mut self, model: &Path) -> Result<(), String>;
     fn generate(
         &mut self,
         prompt: &str,
         max_tokens: u32,
+        n_ctx: u32,
         grammar: Option<&str>,
         on_progress: &mut dyn FnMut(Phase, u32, u32) -> bool,
     ) -> Result<Generated, String>;
@@ -152,7 +153,7 @@ fn run<W: Write, G: Generator>(
     let mut load_sec = 0.0;
     if loaded.as_deref() != Some(req.model.as_path()) {
         let started = Instant::now();
-        if let Err(message) = gen.load(&req.model, req.n_ctx) {
+        if let Err(message) = gen.load(&req.model) {
             *loaded = None;
             emit(
                 out,
@@ -179,6 +180,7 @@ fn run<W: Write, G: Generator>(
     let result = gen.generate(
         &req.prompt,
         req.max_tokens,
+        req.n_ctx,
         req.grammar.as_deref(),
         &mut |phase, done, total| {
             if cancel.load(Ordering::SeqCst) {

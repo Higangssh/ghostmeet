@@ -17,6 +17,7 @@ struct Fake {
     text: &'static str,
     delay: Duration,
     loads: Arc<AtomicUsize>,
+    contexts: Arc<Mutex<Vec<u32>>>,
 }
 
 impl Fake {
@@ -25,6 +26,7 @@ impl Fake {
             text,
             delay: Duration::ZERO,
             loads: Arc::default(),
+            contexts: Arc::default(),
         }
     }
     fn slow(text: &'static str, ms: u64) -> Self {
@@ -36,7 +38,7 @@ impl Fake {
 }
 
 impl Generator for Fake {
-    fn load(&mut self, model: &Path, _n_ctx: u32) -> Result<(), String> {
+    fn load(&mut self, model: &Path) -> Result<(), String> {
         if model.to_str() == Some("missing.gguf") {
             return Err("no such file".into());
         }
@@ -47,9 +49,11 @@ impl Generator for Fake {
         &mut self,
         prompt: &str,
         max_tokens: u32,
+        n_ctx: u32,
         _grammar: Option<&str>,
         on_progress: &mut dyn FnMut(Phase, u32, u32) -> bool,
     ) -> Result<Generated, String> {
+        self.contexts.lock().unwrap().push(n_ctx);
         if prompt == "explode" {
             return Err("out of memory".into());
         }
@@ -370,4 +374,19 @@ fn max_tokens_is_passed_to_the_generator() {
     let r = start(Fake::new("abcdefghij"));
     r.send(json!({"type": "generate", "id": "a", "model": "m.gguf", "prompt": "x", "max_tokens": 3, "n_ctx": 512}));
     assert_eq!(r.out.wait_for("done", "a")["text"], "abc");
+}
+
+#[test]
+fn each_request_gets_the_context_it_asks_for_without_a_reload() {
+    // a long meeting needs a bigger context than a short one; the model stays loaded
+    let fake = Fake::new("ok");
+    let (loads, contexts) = (fake.loads.clone(), fake.contexts.clone());
+    let r = start(fake);
+    r.send(json!({"type": "generate", "id": "a", "model": "m.gguf", "prompt": "x", "max_tokens": 8, "n_ctx": 2048}));
+    r.send(json!({"type": "generate", "id": "b", "model": "m.gguf", "prompt": "x", "max_tokens": 8, "n_ctx": 32768}));
+
+    r.out.wait_for("done", "b");
+
+    assert_eq!(*contexts.lock().unwrap(), [2048, 32768]);
+    assert_eq!(loads.load(Ordering::SeqCst), 1);
 }

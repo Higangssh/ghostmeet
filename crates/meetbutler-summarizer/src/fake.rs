@@ -15,7 +15,7 @@ pub struct Fake {
 }
 
 impl Generator for Fake {
-    fn load(&mut self, model: &Path, _n_ctx: u32) -> Result<(), String> {
+    fn load(&mut self, model: &Path) -> Result<(), String> {
         if model.as_os_str().is_empty() {
             return Err("no model given".into());
         }
@@ -26,6 +26,7 @@ impl Generator for Fake {
         &mut self,
         prompt: &str,
         max_tokens: u32,
+        _n_ctx: u32,
         _grammar: Option<&str>,
         on_progress: &mut dyn FnMut(Phase, u32, u32) -> bool,
     ) -> Result<Generated, String> {
