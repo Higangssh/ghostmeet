@@ -128,6 +128,26 @@ def main() -> None:
                 "자른다. 그래서 같은 엔진이라도 문맥과 경계 조건이 조금 다르다.",
             ]
 
+    longform = load("*.longform.json")
+    if longform:
+        backlog = {r["spec"]: r for r in stream if r["mode"] == "backlog" and r.get("label") == "after"}
+        lines += [
+            "",
+            "## 4. 회의 후 일괄 재전사 (세션 전체를 한 번에)",
+            "",
+            f"같은 {longform[0]['session_min']}분 세션을 엔진에 통째로 넣었다. 창을 나누는 일은 엔진의 "
+            "long-form 디코딩이 한다. 비교용으로 같은 엔진의 꼬리 창 backlog(수정 후) CER을 붙였다.",
+            "",
+            "| 엔진 | long-form CER | 처리 시간 | RTF | 최대 메모리 | 꼬리 창 backlog CER |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+        for r in longform:
+            b = backlog.get(r["spec"])
+            lines.append(
+                f"| {r['engine']} | **{pct(r['cer'])}** | {r['sec']:.0f}s | {r['rtf']:.3f} | "
+                f"{r['peak_footprint_mb']:.0f}MB | {pct(b['cer']) if b else '—'} |"
+            )
+
     out = RESULTS / "RESULTS.md"
     out.write_text("\n".join(lines) + "\n")
     print(out.read_text())

@@ -68,13 +68,17 @@ class FasterWhisper(Engine):
 class WhisperCpp(Engine):
     """whisper-server (Homebrew whisper.cpp) on loopback; model loaded once per run."""
 
-    def __init__(self, size: str, gpu: bool = True, vad: bool = True):
+    def __init__(self, size: str, gpu: bool = True, vad: bool = True, dtw: bool = False):
         import requests
 
         self._http = requests.Session()
         port = _free_port()
         self._url = f"http://127.0.0.1:{port}/inference"
-        self.name = f"whisper.cpp {size} ({'Metal' if gpu else 'CPU'}{'' if vad else ', no VAD'})"
+        self.name = (
+            f"whisper.cpp {size} ({'Metal' if gpu else 'CPU'}"
+            f"{'' if vad else ', no VAD'}{', DTW' if dtw else ''})"
+        )
+        self._dtw = dtw
         cmd = [
             "whisper-server",
             "-m", str(MODELS / f"ggml-{size}.bin"),
@@ -91,6 +95,8 @@ class WhisperCpp(Engine):
             ]
         if not gpu:
             cmd.append("-ng")
+        if dtw:  # token times from cross-attention; the library ignores DTW under flash attention
+            cmd += ["-dtw", size.replace("-", "."), "-nfa"]
         self._log = open(MODELS.parent / f"whisper-server-{port}.log", "w")
         self._proc = subprocess.Popen(cmd, stdout=self._log, stderr=subprocess.STDOUT)
         self.pid = self._proc.pid
@@ -113,10 +119,17 @@ class WhisperCpp(Engine):
             self._url,
             files={"file": ("w.wav", buf.getvalue(), "audio/wav")},
             data={"response_format": "verbose_json", "temperature": "0.0"},
-            timeout=600,
+            timeout=3600,  # a long-form run sends a whole session in one request
         )
         r.raise_for_status()
-        return [Seg(s["start"], s["end"], s["text"]) for s in r.json().get("segments", [])]
+        return [Seg(s["start"], self._end(s), s["text"]) for s in r.json().get("segments", [])]
+
+    def _end(self, seg: dict) -> float:
+        """Segment end; with DTW, where the last word was actually spoken."""
+        if not self._dtw:
+            return seg["end"]
+        ends = [w["t_dtw"] * 0.01 for w in seg.get("words", []) if w.get("t_dtw", -1) >= 0]
+        return min(seg["end"], max(ends)) if ends else seg["end"]
 
     def close(self):
         self._proc.terminate()
@@ -196,13 +209,15 @@ def _free_port() -> int:
 
 
 def make(spec: str) -> Engine:
-    """fw-small | fw-large-v3-turbo | wcpp-small | wcpp-small-cpu | wcpp-small-novad | sensevoice | ..."""
+    """fw-small | fw-large-v3-turbo | wcpp-small | wcpp-small-cpu | wcpp-small-novad | wcpp-small-dtw | sensevoice | ..."""
     kind, _, rest = spec.partition("-")
     if kind == "fw":
         return FasterWhisper(rest)
     if kind == "wcpp":
-        cpu, novad = rest.endswith("-cpu"), rest.endswith("-novad")
-        return WhisperCpp(rest.removesuffix("-cpu").removesuffix("-novad"), gpu=not cpu, vad=not novad)
+        parts = rest.split("-")
+        flags = {f: f in parts for f in ("cpu", "novad", "dtw")}
+        size = "-".join(p for p in parts if p not in flags)
+        return WhisperCpp(size, gpu=not flags["cpu"], vad=not flags["novad"], dtw=flags["dtw"])
     if spec == "sensevoice":
         return SenseVoice("cpu")
     if spec == "sensevoice-coreml":
