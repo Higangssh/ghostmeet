@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/meetbutler-engine"]
+
+[workspace.package]
+version = "0.2.0-dev"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
