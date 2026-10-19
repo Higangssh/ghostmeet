@@ -72,7 +72,9 @@ internal project names, no pasted transcript excerpts.
 - `Segment.speaker` exists and is `None` until diarization lands. Keep it in the wire
   format.
 - **Segments are persisted as they are recognised**, not at the end of the meeting, so a
-  crash costs at most the current window. `SessionStore` is shared across threads under a
+  crash costs at most the transcript of the newest window: up to `window_sec` of speech
+  held back or not yet committed, plus the audio that arrived since the last pass. The
+  audio itself is already on disk. `SessionStore` is shared across threads under a
   lock — the transcription worker writes, the event loop reads.
 - Live sessions answer `/transcript` from the running pipeline; finished ones read from
   SQLite. Both paths must stay in sync in shape.
