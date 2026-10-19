@@ -43,6 +43,7 @@ impl SpeechProbs for LoudnessVad {
 struct EchoDecoder {
     spans: Arc<Mutex<Vec<usize>>>,
     words: Arc<Mutex<Vec<(f32, &'static str)>>>,
+    terms: Vec<String>,
 }
 
 impl EchoDecoder {
@@ -54,6 +55,10 @@ impl EchoDecoder {
 }
 
 impl SpanDecode for EchoDecoder {
+    fn vocabulary(&self) -> &[String] {
+        &self.terms
+    }
+
     fn decode(&mut self, audio: &[f32]) -> Result<Vec<RawSegment>, TranscribeError> {
         self.spans.lock().unwrap().push(audio.len());
         let level = audio.iter().cloned().fold(0.0f32, f32::max);
@@ -357,5 +362,40 @@ fn the_final_pass_drops_credits_like_the_live_one() {
     assert_eq!(
         out.iter().map(|s| s.text.as_str()).collect::<Vec<_>>(),
         ["네."]
+    );
+}
+
+#[test]
+fn the_final_pass_drops_the_vocabulary_echoed_back_and_keeps_a_repeated_reply() {
+    let session = audio(&[
+        (1.0, 0.0),
+        (1.5, 0.1),
+        (3.0, 0.0),
+        (0.6, 0.2),
+        (2.0, 0.0),
+        (3.0, 0.3),
+        (1.0, 0.0),
+    ]);
+    let source = Memory(session, Arc::default());
+    let mut decoder = EchoDecoder::says(&[
+        (0.1, "지호, 지호, 지호, 지호."),
+        (0.2, "네, 네."),
+        (0.3, "지호님이 점검표를 정리해 주세요."),
+    ]);
+    decoder.terms = vec!["지호".into(), "주소록 동기화".into()];
+
+    let out = final_transcript(
+        &source,
+        &mut LoudnessVad::default(),
+        &mut decoder,
+        &BENCH,
+        30.0,
+        |_| {},
+    )
+    .unwrap();
+
+    assert_eq!(
+        out.iter().map(|s| s.text.as_str()).collect::<Vec<_>>(),
+        ["네, 네.", "지호님이 점검표를 정리해 주세요."]
     );
 }

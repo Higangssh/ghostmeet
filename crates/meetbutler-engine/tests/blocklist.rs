@@ -4,7 +4,9 @@
 //! The phrases are the ones Whisper produced on the benchmark's short spans (FLEURS and
 //! synthetic replies, `bench/README.md`); none comes from a meeting.
 
-use meetbutler_engine::blocklist::{is_blank, is_hallucination, SHORT_SPAN_SEC};
+use meetbutler_engine::blocklist::{
+    is_blank, is_hallucination, is_vocabulary_echo, SHORT_SPAN_SEC,
+};
 
 const SHORT: f32 = 1.2;
 
@@ -71,4 +73,45 @@ fn punctuation_only_text_is_blank() {
     assert!(is_blank(""));
     assert!(!is_blank("네."));
     assert!(!is_blank("3."));
+}
+
+fn vocabulary(t: &[&str]) -> Vec<String> {
+    t.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn the_vocabulary_echoed_back_is_dropped() {
+    // whisper given the vocabulary as its prompt sometimes writes the prompt out again
+    let terms = vocabulary(&["도윤", "지호", "수아", "주소록 동기화"]);
+    for text in [
+        "지호, 지호, 지호, 지호.",
+        "도윤, 지호, 수아.",
+        "주소록 동기화, 주소록 동기화, 주소록 동기화",
+        "지호 지호 지호",
+    ] {
+        assert!(is_vocabulary_echo(text, &terms), "{text}");
+    }
+}
+
+#[test]
+fn speech_with_vocabulary_terms_in_it_is_kept() {
+    let terms = vocabulary(&["도윤", "지호", "수아", "주소록 동기화"]);
+    for text in [
+        "네, 네.",
+        "네, 네, 네.",
+        "지호.",
+        "지호, 지호.",
+        "지호님, 지호님, 지호님?",
+        "도윤, 지호, 수아 님 다 오셨죠?",
+        "주소록 동기화는 다음 주에 보죠.",
+        "맞아요, 맞아요, 맞아요.",
+    ] {
+        assert!(!is_vocabulary_echo(text, &terms), "{text}");
+    }
+}
+
+#[test]
+fn without_a_vocabulary_nothing_is_an_echo() {
+    assert!(!is_vocabulary_echo("지호, 지호, 지호, 지호.", &[]));
+    assert!(!is_vocabulary_echo("네, 네, 네.", &[]));
 }

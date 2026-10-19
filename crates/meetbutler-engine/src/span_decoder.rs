@@ -3,12 +3,12 @@
 //! Both cut speech with the same rule (`spans::BENCH`) and decode each span on its own,
 //! which is the configuration the benchmark measured (`*-filtered`): segment times are
 //! the decoder's within the span, offset into the input and clipped to the span; blank
-//! text and credits on short spans (`blocklist`) are dropped. The decoder's own VAD and
-//! long-form mode are never used.
+//! text, credits on short spans and the vocabulary echoed back (`blocklist`) are
+//! dropped. The decoder's own VAD and long-form mode are never used.
 //!
 //! The models sit behind two small traits so this wiring is tested without them.
 
-use crate::blocklist::{is_blank, is_hallucination};
+use crate::blocklist::{is_blank, is_hallucination, is_vocabulary_echo};
 use crate::incremental::{RawSegment, Segment};
 use crate::spans::{finish_span, speech_spans, Span, SpanConfig, SpanCutter, FRAME};
 use crate::{AudioSource, Transcribe, TranscribeError, SAMPLE_RATE};
@@ -20,6 +20,12 @@ pub trait SpeechProbs {
 
 /// Whisper over one span, times relative to the span.
 pub trait SpanDecode {
+    /// The user's vocabulary the decoder was primed with (STT-7), if any: text that only
+    /// echoes it back is dropped like a credit.
+    fn vocabulary(&self) -> &[String] {
+        &[]
+    }
+
     fn decode(&mut self, audio: &[f32]) -> Result<Vec<RawSegment>, TranscribeError>;
 }
 
@@ -112,7 +118,7 @@ pub fn final_transcript(
     }
     progress(1.0);
     if dropped > 0 {
-        log::info!("final pass dropped {dropped} credit segment(s) on short spans");
+        log::info!("final pass dropped {dropped} credit or vocabulary-echo segment(s)");
     }
     Ok(out)
 }
@@ -136,7 +142,7 @@ fn decode_span(
         if is_blank(text) {
             continue;
         }
-        if is_hallucination(text, duration) {
+        if is_hallucination(text, duration) || is_vocabulary_echo(text, decoder.vocabulary()) {
             *dropped += 1;
             continue;
         }

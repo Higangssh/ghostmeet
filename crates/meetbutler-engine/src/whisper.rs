@@ -58,6 +58,7 @@ pub struct WhisperDecoder {
     _model: Arc<WhisperModel>,
     language: Option<String>,
     prompt: Option<String>,
+    vocabulary: Vec<String>,
 }
 
 impl WhisperDecoder {
@@ -72,6 +73,7 @@ impl WhisperDecoder {
             _model: model,
             language,
             prompt: None,
+            vocabulary: Vec::new(),
         })
     }
 
@@ -79,11 +81,16 @@ impl WhisperDecoder {
     /// With no terms the decoder stays as `new` made it.
     pub fn with_vocabulary(mut self, terms: &[String]) -> Self {
         self.prompt = crate::vocabulary::prompt(terms);
+        self.vocabulary = crate::vocabulary::kept(terms);
         self
     }
 }
 
 impl SpanDecode for WhisperDecoder {
+    fn vocabulary(&self) -> &[String] {
+        &self.vocabulary
+    }
+
     fn decode(&mut self, audio: &[f32]) -> Result<Vec<RawSegment>, TranscribeError> {
         let mut params = FullParams::new(SamplingStrategy::BeamSearch {
             beam_size: 5,

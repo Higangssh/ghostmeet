@@ -11,6 +11,16 @@
 /// whisper keeps only the end of a prompt longer than its budget, so the terms past
 /// `MAX_PROMPT_CHARS` are dropped here instead, keeping the ones the user put first.
 pub fn prompt(terms: &[String]) -> Option<String> {
+    let kept = kept(terms);
+    if kept.is_empty() {
+        None
+    } else {
+        Some(format!("{}.", kept.join(", ")))
+    }
+}
+
+/// The terms `prompt` gives whisper, in order.
+pub fn kept(terms: &[String]) -> Vec<String> {
     let mut kept: Vec<&str> = Vec::new();
     let mut len = 0;
     for term in terms.iter().map(|t| t.trim()) {
@@ -24,11 +34,7 @@ pub fn prompt(terms: &[String]) -> Option<String> {
         len += add;
         kept.push(term);
     }
-    if kept.is_empty() {
-        None
-    } else {
-        Some(format!("{}.", kept.join(", ")))
-    }
+    kept.into_iter().map(String::from).collect()
 }
 
 /// whisper conditions on at most half its text context (224 tokens); Hangul takes one to
