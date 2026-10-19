@@ -9,7 +9,8 @@
   "decisions_total": 11,
   "actions_total": 9,
   "open_questions_total": 2,
-  "withdrawn_total": 3
+  "withdrawn_total": 3,
+  "decisions_once_total": 9
  },
  "wall_sec": 351.0,
  "load_sec": 0.87,

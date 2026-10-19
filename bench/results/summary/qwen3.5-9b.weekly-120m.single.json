@@ -7,7 +7,12 @@
  "score": {
   "format_ok": true,
   "decisions_found": 28,
-  "decisions_total": 43,
+  "decisions_total": 37,
+  "decisions_wrong_value": 2,
+  "decisions_once_found": 27,
+  "decisions_once_total": 32,
+  "decisions_flagged": 0,
+  "flagged_wrong_value": 0,
   "actions_found": 26,
   "actions_owner_ok": 20,
   "actions_due_ok": 26,

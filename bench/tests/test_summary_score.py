@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -71,6 +72,47 @@ class ScoreTests(unittest.TestCase):
         w = self.m["key"]["withdrawn"][0]
         p["decisions"].append(w["text"])
         self.assertEqual(ss.score(json.dumps(p, ensure_ascii=False), self.m)["withdrawn_listed"], 1)
+
+    def test_a_withdrawn_proposal_written_down_as_taken_back_is_not_counted(self):
+        # "600만 원 취소 후 800만 원으로 확정" names the withdrawn amount and gets it right
+        p = perfect(self.m)
+        w = self.m["key"]["withdrawn"][0]
+        for marked in [f"{w['text']} 취소 후 다시 확정", f"{w['text']} 제안이 거절됨", f"{w['text']} 대신 다른 안"]:
+            q = {**p, "decisions": p["decisions"] + [marked]}
+            self.assertEqual(ss.score(json.dumps(q, ensure_ascii=False), self.m)["withdrawn_listed"], 0, marked)
+
+    def test_identical_key_items_count_once(self):
+        # a meeting that plants the same item twice asks for it once
+        m = meeting()
+        totals = ss.score(json.dumps(perfect(m), ensure_ascii=False), m)
+        m["key"]["decisions"].append(dict(m["key"]["decisions"][0]))
+        m["key"]["withdrawn"].append(dict(m["key"]["withdrawn"][0]))
+        p = perfect(m)
+        p["decisions"].append(m["key"]["withdrawn"][0]["text"])
+        s = ss.score(json.dumps(p, ensure_ascii=False), m)
+        self.assertEqual(s["decisions_total"], totals["decisions_total"])
+        self.assertEqual(s["decisions_found"], s["decisions_total"])
+        self.assertEqual((s["withdrawn_total"], s["withdrawn_listed"]), (totals["withdrawn_total"], 1))
+
+    def test_a_decision_with_the_right_topic_and_another_number_has_a_wrong_value(self):
+        p = perfect(self.m)
+        i, d = next((i, d) for i, d in enumerate(self.m["key"]["decisions"])
+                    if any(re.search(r"\d", k) for k in d["keywords"]))
+        p["decisions"][i] = re.sub(r"\d+", "4321", d["text"])
+        s = ss.score(json.dumps(p, ensure_ascii=False), self.m)
+        self.assertEqual(s["decisions_found"], s["decisions_total"] - 1)
+        self.assertEqual(s["decisions_wrong_value"], 1)
+
+    def test_a_decision_missing_its_number_is_missed_not_wrong(self):
+        p = perfect(self.m)
+        i, d = next((i, d) for i, d in enumerate(self.m["key"]["decisions"])
+                    if any(re.search(r"\d", k) for k in d["keywords"]))
+        p["decisions"][i] = re.sub(r"\d+\S*", "", d["text"])
+        s = ss.score(json.dumps(p, ensure_ascii=False), self.m)
+        self.assertEqual((s["decisions_found"], s["decisions_wrong_value"]), (s["decisions_total"] - 1, 0))
+
+    def test_a_right_summary_has_no_wrong_values(self):
+        self.assertEqual(ss.score(json.dumps(perfect(self.m), ensure_ascii=False), self.m)["decisions_wrong_value"], 0)
 
     def test_a_wrong_owner_is_caught_but_the_action_still_found(self):
         p = perfect(self.m)
@@ -144,3 +186,52 @@ class FieldTests(unittest.TestCase):
         p["chunks_broken"] = 0
         p["chunks"] = 987654
         self.assertEqual(ss.score(json.dumps(p, ensure_ascii=False), m)["invented_numbers"], [])
+
+
+class UnsupportedNumberTests(unittest.TestCase):
+    SOURCE = "관리자 페이지 배포는 11월 11일로 확정하죠. 예산은 750만 원이고 개발자 2명을 뽑아요."
+
+    def test_numbers_said_in_the_source_are_supported(self):
+        for entry in ["관리자 페이지 배포를 11월 11일로 확정", "예산 750만 원", "개발자 2 명 채용", "배포 일정 확정"]:
+            self.assertEqual(ss.unsupported_numbers(entry, self.SOURCE), [], entry)
+
+    def test_a_number_the_source_never_said_is_unsupported(self):
+        self.assertEqual(ss.unsupported_numbers("예산 250만 원", self.SOURCE), ["250만"])
+
+    def test_a_number_inside_a_longer_one_is_not_support(self):
+        # "1일" is not said because "11일" was
+        self.assertEqual(ss.unsupported_numbers("배포를 11월 1일로 확정", self.SOURCE), ["1일"])
+        self.assertEqual(ss.unsupported_numbers("50만 원", self.SOURCE), ["50만"])
+
+
+class SplitAndFlagTests(unittest.TestCase):
+    def test_decisions_planted_once_are_counted_apart_from_repeated_ones(self):
+        m = meeting()
+        d = m["key"]["decisions"]
+        twin = next(x for x in d if re.search(r"\d", x["text"]))
+        other = re.sub(r"\d+", "4321", twin["text"])
+        d.append({"text": other, "keywords": [re.sub(r"\d+", "4321", k) for k in twin["keywords"]]})
+        p = perfect(m)
+        p["decisions"].remove(other)
+        s = ss.score(json.dumps(p, ensure_ascii=False), m)
+        self.assertEqual((s["decisions_once_total"], s["decisions_once_found"]), (len(d) - 2, len(d) - 2))
+        self.assertEqual(s["decisions_found"], len(d) - 1)
+
+    def test_flagged_decisions_are_checked_against_the_wrong_values(self):
+        m = meeting()
+        p = perfect(m)
+        i, d = next((i, d) for i, d in enumerate(m["key"]["decisions"]) if any(re.search(r"\d", k) for k in d["keywords"]))
+        p["decisions"][i] = re.sub(r"\d+", "4321", d["text"])
+        p["unverified"] = [p["decisions"][i], p["decisions"][i - 1]]  # one wrong, one right
+        s = ss.score(json.dumps(p, ensure_ascii=False), m)
+        self.assertEqual((s["decisions_flagged"], s["flagged_wrong_value"]), (2, 1))
+
+
+class BrokenFormatTotalsTests(unittest.TestCase):
+    def test_a_broken_summary_still_reports_what_it_was_asked_for(self):
+        # a run that broke the format counts as having found nothing, out of the same totals
+        m = meeting()
+        bad, good = ss.score("회의 잘 했습니다", m), ss.score(json.dumps(perfect(m), ensure_ascii=False), m)
+        for k in good:
+            if k.endswith("_total"):
+                self.assertEqual(bad.get(k), good[k], k)

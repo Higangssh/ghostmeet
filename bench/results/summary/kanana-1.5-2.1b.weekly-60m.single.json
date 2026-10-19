@@ -6,10 +6,11 @@
  "error": null,
  "score": {
   "format_ok": false,
-  "decisions_total": 22,
+  "decisions_total": 21,
   "actions_total": 17,
   "open_questions_total": 4,
-  "withdrawn_total": 4
+  "withdrawn_total": 4,
+  "decisions_once_total": 18
  },
  "wall_sec": 477.5,
  "load_sec": 0.16,
