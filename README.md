@@ -8,6 +8,12 @@
 
 [Quick Start](#quick-start) • [How It Works](#how-it-works) • [Features](#features) • [API](#api)
 
+> **Renewing as MeetButler.** ghostmeet is becoming MeetButler, a desktop app for Windows
+> and macOS that records in-person meetings as well as web calls, fully on your machine.
+> It is under development in `app/` and `crates/` and not ready to use yet. The Chrome
+> extension and Python backend described below are v0.1, now in [`legacy/`](legacy/), and
+> still work as documented.
+
 ---
 
 <p align="center">
@@ -70,7 +76,7 @@ slower, and keeps memory flat no matter how long you record.
 
 ```bash
 git clone https://github.com/Higangssh/ghostmeet.git
-cd ghostmeet
+cd ghostmeet/legacy
 
 # Copy and edit config (add your Anthropic API key for summaries)
 cp .env.example .env
@@ -98,7 +104,7 @@ Note: First run downloads the Whisper model (~150MB for `base`).
 1. Open **chrome://extensions** in Chrome
 2. Enable **Developer mode** (toggle in top-right)
 3. Click **Load unpacked**
-4. Select the `extension/` folder from this repo
+4. Select the `legacy/extension/` folder from this repo
 5. Pin the 👻 icon in your toolbar
 
 ### 3) Use it
@@ -153,7 +159,16 @@ endpoint above keeps working after the backend restarts.
 
 ## Development
 
+MeetButler (Rust, from the repository root):
+
 ```bash
+cargo test --workspace                               # no model, no network
+```
+
+v0.1 (from `legacy/`):
+
+```bash
+cd legacy
 python -m venv .venv
 ./.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
 
@@ -175,6 +190,12 @@ chromium`). To check the last step by hand: start a capture on a tab with audio 
 
 ```
 ghostmeet/
+├── app/                    # MeetButler desktop app (Tauri 2), in development
+├── crates/                 # MeetButler engine and audio capture (Rust)
+├── bench/                  # Korean STT engine benchmarks
+└── legacy/                 # v0.1, laid out as below
+
+legacy/
 ├── extension/              # Chrome MV3 Extension
 │   ├── manifest.json       # permissions + side panel config
 │   ├── background.js       # service worker: gets a tab stream id, drives capture
@@ -194,7 +215,6 @@ ghostmeet/
 │   ├── summarizer.py       # Claude API integration
 │   └── models.py           # session model
 ├── tests/                  # pytest suite + extension tests
-├── assets/                 # logo, demo GIF
 ├── docker-compose.yml      # one-command deployment
 ├── Dockerfile              # backend container
 └── requirements.txt        # Python dependencies
