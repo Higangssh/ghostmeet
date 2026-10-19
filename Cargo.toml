@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/meetbutler-engine"]
+members = ["crates/meetbutler-engine", "crates/meetbutler-audio"]
 
 [workspace.package]
 version = "0.2.0-dev"

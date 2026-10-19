@@ -1,0 +1,16 @@
+[package]
+name = "meetbutler-audio"
+description = "Microphone and system-audio capture, delivered as 16 kHz mono per source"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+cpal = "0.18"
+log = "0.4.34"
+thiserror = "2.0.21"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+screencapturekit = "11"
