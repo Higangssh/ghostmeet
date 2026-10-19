@@ -1,0 +1,22 @@
+{
+ "engine": "whisper.cpp large-v3-turbo (Metal, Silero spans)",
+ "spec": "wcpp-large-v3-turbo-spans",
+ "mode": "longform",
+ "session_min": 36.1,
+ "utterances": 166,
+ "segments": 205,
+ "cer": 0.0689,
+ "sec": 430.5,
+ "rtf": 0.199,
+ "peak_footprint_mb": 1935,
+ "machine": {
+  "cpu": "Apple M4",
+  "cores": 10,
+  "perf_cores": 4,
+  "eff_cores": 6,
+  "ram_gb": 16,
+  "os": "macOS 26.6.2",
+  "python": "3.12.15"
+ },
+ "load": "1.17 → 3.70 (중간 최대 6.2)"
+}

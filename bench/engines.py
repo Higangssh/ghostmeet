@@ -150,7 +150,6 @@ class SenseVoice(Engine):
     def __init__(self, provider: str = "cpu"):
         import sherpa_onnx
 
-        self._so = sherpa_onnx
         self.name = f"sherpa-onnx SenseVoice-Small ({provider.upper()} int8)"
         self.pid = os.getpid()
         self._rec = sherpa_onnx.OfflineRecognizer.from_sense_voice(
@@ -161,45 +160,87 @@ class SenseVoice(Engine):
             use_itn=True,  # digits and punctuation, as Whisper produces
             provider=provider,
         )
-        cfg = sherpa_onnx.VadModelConfig()
-        cfg.silero_vad.model = str(MODELS / "silero_vad.onnx")
-        cfg.silero_vad.threshold = 0.3
-        cfg.silero_vad.min_silence_duration = 0.5
-        cfg.silero_vad.min_speech_duration = 0.25
-        cfg.silero_vad.max_speech_duration = 25
-        cfg.sample_rate = SAMPLE_RATE
-        cfg.num_threads = 1
-        self._vad_cfg = cfg
-        self._pad = int(0.2 * SAMPLE_RATE)
-
-    def _speech_spans(self, audio):
-        vad = self._so.VoiceActivityDetector(self._vad_cfg, buffer_size_in_seconds=120)
-        win = self._vad_cfg.silero_vad.window_size
-        spans = []
-        for i in range(0, len(audio), win):
-            vad.accept_waveform(audio[i : i + win])
-            while not vad.empty():
-                spans.append((vad.front.start, len(vad.front.samples)))
-                vad.pop()
-        vad.flush()
-        while not vad.empty():
-            spans.append((vad.front.start, len(vad.front.samples)))
-            vad.pop()
-        return spans
 
     def __call__(self, audio):
-        spans = self._speech_spans(audio)
+        spans = speech_spans(audio)
         if not spans:
             return []
-        streams, bounds = [], []
-        for start, n in spans:
-            a, b = max(0, start - self._pad), min(len(audio), start + n + self._pad)
+        streams = []
+        for a, b in spans:
             s = self._rec.create_stream()
             s.accept_waveform(SAMPLE_RATE, audio[a:b])
             streams.append(s)
-            bounds.append((a / SAMPLE_RATE, b / SAMPLE_RATE))
         self._rec.decode_streams(streams)
-        return [Seg(a, b, s.result.text) for s, (a, b) in zip(streams, bounds)]
+        return [Seg(a / SAMPLE_RATE, b / SAMPLE_RATE, s.result.text) for s, (a, b) in zip(streams, spans)]
+
+
+# Silero VAD (MIT, snakers4/silero-vad) through sherpa-onnx. One rule for every engine that
+# is fed VAD spans, live and batch alike; RESULTS.md quotes these values.
+VAD = {
+    "threshold": 0.3,
+    "min_silence_sec": 0.5,  # a pause this long ends a span
+    "min_speech_sec": 0.25,  # shorter blips are dropped
+    "max_speech_sec": 25.0,  # longer speech is split, so a span fits one Whisper window
+    "pad_sec": 0.2,  # context kept on each side of a span
+}
+_vad_cfg = None
+
+
+def speech_spans(audio: np.ndarray) -> List[tuple]:
+    """[(start_sample, end_sample)] of speech in `audio`, padded and clipped to it."""
+    global _vad_cfg
+    import sherpa_onnx
+
+    if _vad_cfg is None:
+        cfg = sherpa_onnx.VadModelConfig()
+        cfg.silero_vad.model = str(MODELS / "silero_vad.onnx")
+        cfg.silero_vad.threshold = VAD["threshold"]
+        cfg.silero_vad.min_silence_duration = VAD["min_silence_sec"]
+        cfg.silero_vad.min_speech_duration = VAD["min_speech_sec"]
+        cfg.silero_vad.max_speech_duration = VAD["max_speech_sec"]
+        cfg.sample_rate = SAMPLE_RATE
+        cfg.num_threads = 1
+        _vad_cfg = cfg
+    vad = sherpa_onnx.VoiceActivityDetector(_vad_cfg, buffer_size_in_seconds=120)
+    win, pad = _vad_cfg.silero_vad.window_size, int(VAD["pad_sec"] * SAMPLE_RATE)
+    spans = []
+
+    def drain():
+        while not vad.empty():
+            start, n = vad.front.start, len(vad.front.samples)
+            spans.append((max(0, start - pad), min(len(audio), start + n + pad)))
+            vad.pop()
+
+    for i in range(0, len(audio), win):
+        vad.accept_waveform(audio[i : i + win])
+        drain()
+    vad.flush()
+    drain()
+    return spans
+
+
+class SpanDecoded(Engine):
+    """Cut the input into our own VAD spans and decode each one on its own.
+
+    Times come from the spans, so the engine's own VAD and long-form decoding are out of
+    the picture; the inner engine runs with its VAD off.
+    """
+
+    def __init__(self, inner: Engine):
+        self._inner = inner
+        self.name = inner.name.replace(", no VAD", "").rstrip(")") + ", Silero spans)"
+        self.pid = inner.pid
+
+    def __call__(self, audio):
+        out = []
+        for a, b in speech_spans(audio):
+            text = " ".join(s.text.strip() for s in self._inner(audio[a:b]) if s.text.strip())
+            if text:
+                out.append(Seg(a / SAMPLE_RATE, b / SAMPLE_RATE, text))
+        return out
+
+    def close(self):
+        self._inner.close()
 
 
 def _free_port() -> int:
@@ -209,15 +250,17 @@ def _free_port() -> int:
 
 
 def make(spec: str) -> Engine:
-    """fw-small | fw-large-v3-turbo | wcpp-small | wcpp-small-cpu | wcpp-small-novad | wcpp-small-dtw | sensevoice | ..."""
+    """fw-small | fw-large-v3-turbo | wcpp-small | wcpp-small-cpu | wcpp-small-novad | wcpp-small-dtw | wcpp-small-spans | sensevoice | ..."""
     kind, _, rest = spec.partition("-")
     if kind == "fw":
         return FasterWhisper(rest)
     if kind == "wcpp":
         parts = rest.split("-")
-        flags = {f: f in parts for f in ("cpu", "novad", "dtw")}
+        flags = {f: f in parts for f in ("cpu", "novad", "dtw", "spans")}
         size = "-".join(p for p in parts if p not in flags)
-        return WhisperCpp(size, gpu=not flags["cpu"], vad=not flags["novad"], dtw=flags["dtw"])
+        vad = not (flags["novad"] or flags["spans"])
+        engine = WhisperCpp(size, gpu=not flags["cpu"], vad=vad, dtw=flags["dtw"])
+        return SpanDecoded(engine) if flags["spans"] else engine
     if spec == "sensevoice":
         return SenseVoice("cpu")
     if spec == "sensevoice-coreml":

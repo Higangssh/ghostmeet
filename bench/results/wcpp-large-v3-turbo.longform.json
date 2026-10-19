@@ -5,7 +5,7 @@
  "session_min": 36.1,
  "utterances": 166,
  "segments": 218,
- "cer": 0.1742,
+ "cer": 0.1734,
  "sec": 92.8,
  "rtf": 0.043,
  "peak_footprint_mb": 2503,

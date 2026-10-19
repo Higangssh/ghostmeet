@@ -1,25 +1,25 @@
 {
-  "engine": "whisper.cpp small (Metal)",
-  "spec": "wcpp-small",
-  "dataset": "FLEURS ko_kr test",
-  "utterances": 382,
-  "audio_min": 80.1,
-  "cer": 0.0559,
-  "cer_no_digits": 0.0547,
-  "rtf": 0.0562,
-  "load_s": 0.5,
-  "first_result_s": 1.2,
-  "first_result_audio_s": 14.16,
-  "utt_latency_median_s": 0.688,
-  "utt_latency_p95_s": 0.93,
-  "peak_footprint_mb": 865.6,
-  "machine": {
-    "cpu": "Apple M4",
-    "cores": 10,
-    "perf_cores": 4,
-    "eff_cores": 6,
-    "ram_gb": 16,
-    "os": "macOS 26.6.2",
-    "python": "3.12.15"
-  }
+ "engine": "whisper.cpp small (Metal)",
+ "spec": "wcpp-small",
+ "dataset": "FLEURS ko_kr test",
+ "utterances": 382,
+ "audio_min": 80.1,
+ "cer": 0.0536,
+ "cer_no_digits": 0.0518,
+ "rtf": 0.0562,
+ "load_s": 0.5,
+ "first_result_s": 1.2,
+ "first_result_audio_s": 14.16,
+ "utt_latency_median_s": 0.688,
+ "utt_latency_p95_s": 0.93,
+ "peak_footprint_mb": 865.6,
+ "machine": {
+  "cpu": "Apple M4",
+  "cores": 10,
+  "perf_cores": 4,
+  "eff_cores": 6,
+  "ram_gb": 16,
+  "os": "macOS 26.6.2",
+  "python": "3.12.15"
+ }
 }

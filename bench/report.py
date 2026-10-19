@@ -57,7 +57,7 @@ def main() -> None:
     lines += [
         "",
         "- CER: 공백·문장부호를 지운 뒤 글자 편집거리 / 정답 글자 수(코퍼스 합산). 정답의 괄호 안 "
-        "로마자 병기(`비슈케크(Bishkek)`)는 읽히지 않으므로 지웠다.",
+        "로마자 병기(`비슈케크(Bishkek)`)는 읽히지 않으므로 지웠다. 한글이 든 괄호는 읽으므로 남겼다.",
         "- 숫자 없는 문장 CER: 정답에 숫자가 있는 문장을 뺀 값. `2명`/`두 명` 같은 표기 차이가 엔진 "
         "비교를 흐리지 않게 한다. **엔진 비교는 이 열로 본다.**",
         "- RTF = 처리 시간 / 음성 길이. 첫 결과 = 엔진을 만들기 시작해서 첫 문장"
@@ -141,12 +141,44 @@ def main() -> None:
             "| 엔진 | long-form CER | 처리 시간 | RTF | 최대 메모리 | 꼬리 창 backlog CER |",
             "|---|---:|---:|---:|---:|---:|",
         ]
-        for r in longform:
+        for r in (r for r in longform if not r["spec"].endswith("-spans")):  # those are in section 5
             b = backlog.get(r["spec"])
             lines.append(
                 f"| {r['engine']} | **{pct(r['cer'])}** | {r['sec']:.0f}s | {r['rtf']:.3f} | "
                 f"{r['peak_footprint_mb']:.0f}MB | {pct(b['cer']) if b else '—'} |"
             )
+
+    spans = [r for r in stream + longform if r["spec"].endswith("-spans")]
+    if spans:
+        from engines import VAD
+
+        sv = next((r for r in stream if r["spec"] == "sensevoice" and r["mode"] == "live"
+                   and r.get("label") == "after"), None)
+        lines += [
+            "",
+            "## 5. 우리 VAD 구간 + 구간별 디코딩",
+            "",
+            "엔진의 VAD와 long-form을 쓰지 않는다. Silero VAD(MIT)로 음성 구간을 자르고 구간마다 따로 "
+            "디코딩한다. 시각은 구간에서 온다. live(꼬리 창)와 일괄(세션 전체)이 같은 함수"
+            "(`engines.speech_spans`)와 같은 값을 쓴다. SenseVoice 행도 같은 규칙이다.",
+            "",
+            "구간 규칙: " + ", ".join(f"`{k}={v}`" for k, v in VAD.items()) + ".",
+            "",
+            "| 엔진 | 조건 | CER | 문장 단위 CER | 창당 처리 / 처리 시간 | 자막 지연 중앙/p95 | 측정 중 부하(1분 평균) |",
+            "|---|---|---:|---:|---:|---:|---|",
+        ]
+        for r in sorted(spans, key=lambda r: (r["spec"], r["mode"])):
+            u = by_spec.get(r["spec"].removesuffix("-spans"))
+            cost = (f"{r['sec']:.0f}s (RTF {r['rtf']:.3f})" if r["mode"] == "longform"
+                    else f"{r['pass_sec_first10min']:.2f}s → {r['pass_sec_last10min']:.2f}s")
+            lines.append(
+                f"| {r['engine']} | {'일괄' if r['mode'] == 'longform' else 'live(10초 주기)'} | "
+                f"**{pct(r['cer'])}** | {pct(u['cer']) if u else '—'} | {cost} | {lat(r)} | {r.get('load', '—')} |"
+            )
+        if sv:
+            lines.append(f"| {sv['engine']} (기준) | live(10초 주기) | {pct(sv['cer'])} | "
+                         f"{pct(by_spec['sensevoice']['cer'])} | {sv['pass_sec_first10min']:.2f}s → "
+                         f"{sv['pass_sec_last10min']:.2f}s | {lat(sv)} | — |")
 
     out = RESULTS / "RESULTS.md"
     out.write_text("\n".join(lines) + "\n")

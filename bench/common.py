@@ -58,7 +58,9 @@ def load_fleurs(limit: Optional[int] = None) -> List[Utterance]:
     return out[:limit] if limit else out
 
 
-_GLOSS = re.compile(r"\([^)]*\)")  # FLEURS keeps unspoken glosses: 비슈케크(Bishkek)
+# FLEURS keeps unspoken glosses: 비슈케크(Bishkek). A parenthesis with Hangul in it is
+# read aloud (22 of 382 test sentences), so only Hangul-free ones are dropped.
+_GLOSS = re.compile(r"\([^)가-힣]*\)")
 _DROP = re.compile(r"[\s\W_]+", re.UNICODE)
 
 
