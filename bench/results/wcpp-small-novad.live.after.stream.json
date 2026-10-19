@@ -1,0 +1,29 @@
+{
+  "engine": "whisper.cpp small (Metal, no VAD)",
+  "spec": "wcpp-small-novad",
+  "mode": "live",
+  "label": "after",
+  "interval_s": 10.0,
+  "session_min": 36.1,
+  "utterances": 166,
+  "passes": 178,
+  "cer": 0.1383,
+  "pass_sec_first10min": 0.889,
+  "pass_sec_last10min": 0.767,
+  "pass_sec_p95": 1.192,
+  "pass_sec_slope_per_hour": -0.176,
+  "footprint_mb_first10min": 858.7,
+  "footprint_mb_last10min": 863.6,
+  "peak_footprint_mb": 865.9,
+  "machine": {
+    "cpu": "Apple M4",
+    "cores": 10,
+    "perf_cores": 4,
+    "eff_cores": 6,
+    "ram_gb": 16,
+    "os": "macOS 26.6.2",
+    "python": "3.12.15"
+  },
+  "caption_latency_median_s": 7.39,
+  "caption_latency_p95_s": 17.29
+}

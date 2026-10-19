@@ -1,0 +1,27 @@
+{
+  "engine": "faster-whisper large-v3-turbo (CPU int8)",
+  "spec": "fw-large-v3-turbo",
+  "mode": "backlog",
+  "label": "after",
+  "interval_s": null,
+  "session_min": 36.1,
+  "utterances": 166,
+  "passes": 101,
+  "cer": 0.0645,
+  "pass_sec_first10min": 5.608,
+  "pass_sec_last10min": 5.786,
+  "pass_sec_p95": 9.715,
+  "pass_sec_slope_per_hour": 0.686,
+  "footprint_mb_first10min": 1705.9,
+  "footprint_mb_last10min": 1693.1,
+  "peak_footprint_mb": 2404.0,
+  "machine": {
+    "cpu": "Apple M4",
+    "cores": 10,
+    "perf_cores": 4,
+    "eff_cores": 6,
+    "ram_gb": 16,
+    "os": "macOS 26.6.2",
+    "python": "3.12.15"
+  }
+}

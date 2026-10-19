@@ -32,3 +32,7 @@ demo/
 requirements.md
 requirements-demo.md
 IMPLEMENTATION_PLAN.md
+
+# Benchmark inputs and raw outputs — downloaded datasets/models, never commit these
+bench/data/
+bench/results/raw/

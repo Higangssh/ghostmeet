@@ -1,0 +1,25 @@
+{
+  "engine": "faster-whisper small (CPU int8)",
+  "spec": "fw-small",
+  "dataset": "FLEURS ko_kr test",
+  "utterances": 382,
+  "audio_min": 80.1,
+  "cer": 0.0566,
+  "cer_no_digits": 0.0536,
+  "rtf": 0.1183,
+  "load_s": 0.84,
+  "first_result_s": 2.42,
+  "first_result_audio_s": 14.16,
+  "utt_latency_median_s": 1.451,
+  "utt_latency_p95_s": 1.958,
+  "peak_footprint_mb": 944.9,
+  "machine": {
+    "cpu": "Apple M4",
+    "cores": 10,
+    "perf_cores": 4,
+    "eff_cores": 6,
+    "ram_gb": 16,
+    "os": "macOS 26.6.2",
+    "python": "3.12.15"
+  }
+}

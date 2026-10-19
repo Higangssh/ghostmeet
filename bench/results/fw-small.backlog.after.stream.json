@@ -1,0 +1,27 @@
+{
+  "engine": "faster-whisper small (CPU int8)",
+  "spec": "fw-small",
+  "mode": "backlog",
+  "label": "after",
+  "interval_s": null,
+  "session_min": 36.1,
+  "utterances": 166,
+  "passes": 95,
+  "cer": 0.1032,
+  "pass_sec_first10min": 2.381,
+  "pass_sec_last10min": 2.53,
+  "pass_sec_p95": 2.921,
+  "pass_sec_slope_per_hour": 0.354,
+  "footprint_mb_first10min": 1146.9,
+  "footprint_mb_last10min": 1095.5,
+  "peak_footprint_mb": 1398.8,
+  "machine": {
+    "cpu": "Apple M4",
+    "cores": 10,
+    "perf_cores": 4,
+    "eff_cores": 6,
+    "ram_gb": 16,
+    "os": "macOS 26.6.2",
+    "python": "3.12.15"
+  }
+}

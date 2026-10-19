@@ -1,0 +1,27 @@
+{
+  "engine": "whisper.cpp large-v3-turbo (Metal)",
+  "spec": "wcpp-large-v3-turbo",
+  "mode": "backlog",
+  "interval_s": null,
+  "session_min": 36.1,
+  "utterances": 166,
+  "passes": 83,
+  "cer": 0.1448,
+  "pass_sec_first10min": 2.352,
+  "pass_sec_last10min": 2.358,
+  "pass_sec_p95": 2.553,
+  "pass_sec_slope_per_hour": 0.038,
+  "footprint_mb_first10min": 1943.1,
+  "footprint_mb_last10min": 1955.7,
+  "peak_footprint_mb": 1955.9,
+  "machine": {
+    "cpu": "Apple M4",
+    "cores": 10,
+    "perf_cores": 4,
+    "eff_cores": 6,
+    "ram_gb": 16,
+    "os": "macOS 26.6.2",
+    "python": "3.12.15"
+  },
+  "label": "before"
+}

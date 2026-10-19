@@ -1,0 +1,27 @@
+{
+  "engine": "sherpa-onnx SenseVoice-Small (CPU int8)",
+  "spec": "sensevoice",
+  "mode": "backlog",
+  "interval_s": null,
+  "session_min": 36.1,
+  "utterances": 166,
+  "passes": 80,
+  "cer": 0.1068,
+  "pass_sec_first10min": 0.436,
+  "pass_sec_last10min": 0.381,
+  "pass_sec_p95": 0.584,
+  "pass_sec_slope_per_hour": -0.141,
+  "footprint_mb_first10min": 1184.5,
+  "footprint_mb_last10min": 1133.4,
+  "peak_footprint_mb": 1211.8,
+  "machine": {
+    "cpu": "Apple M4",
+    "cores": 10,
+    "perf_cores": 4,
+    "eff_cores": 6,
+    "ram_gb": 16,
+    "os": "macOS 26.6.2",
+    "python": "3.12.15"
+  },
+  "label": "before"
+}

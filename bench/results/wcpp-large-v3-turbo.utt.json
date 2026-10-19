@@ -1,0 +1,25 @@
+{
+  "engine": "whisper.cpp large-v3-turbo (Metal)",
+  "spec": "wcpp-large-v3-turbo",
+  "dataset": "FLEURS ko_kr test",
+  "utterances": 382,
+  "audio_min": 80.1,
+  "cer": 0.0276,
+  "cer_no_digits": 0.026,
+  "rtf": 0.1654,
+  "load_s": 1.02,
+  "first_result_s": 3.41,
+  "first_result_audio_s": 14.16,
+  "utt_latency_median_s": 2.067,
+  "utt_latency_p95_s": 2.264,
+  "peak_footprint_mb": 1936.3,
+  "machine": {
+    "cpu": "Apple M4",
+    "cores": 10,
+    "perf_cores": 4,
+    "eff_cores": 6,
+    "ram_gb": 16,
+    "os": "macOS 26.6.2",
+    "python": "3.12.15"
+  }
+}
