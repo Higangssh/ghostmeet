@@ -47,6 +47,15 @@ Recording
 - [ ] Stop: the final pass runs ("최종본을 만드는 중… n%"), then the transcript switches
       from grey provisional captions to the final one.
 
+Vocabulary (STT-7) — real speech; the benchmark only had synthetic voices
+- [ ] Put the attendees' names and a few terms in the vocabulary, hold a short meeting
+      that says each one: the final transcript spells them as written. Note any name heard
+      as another attendee's name (the benchmark saw this: "시온" heard as "지호").
+- [ ] Short replies and pauses: no segment is just vocabulary names repeated
+      ("지호, 지호, 지호."); a real repeated reply ("네, 네.") is still there.
+- [ ] A term in the vocabulary that nobody says does not appear in the transcript.
+- [ ] An empty vocabulary: the final transcript is as before.
+
 Quitting — every path must end without a crash report and keep the recording
 - [ ] Cmd+Q while recording: the app quits; on relaunch the session is there, stopped,
       with its audio and captions so far.
