@@ -190,6 +190,52 @@ def v2_section(v2: list[dict], asr: list[dict]) -> list[str]:
     return out
 
 
+def vocabulary_section(plain: list[dict], vocab: list[dict]) -> list[str]:
+    """STT-7: the same recordings heard with and without the user's vocabulary."""
+    data = BENCH / "data"
+    meetings = sorted({r["meeting"] for r in vocab})
+    out = [
+        "",
+        "### 단어장(STT-7): 같은 녹음을 단어장 없이, 있게",
+        "",
+        "음성 경로의 녹음을 그대로 두고(`asr_meetings.py --keep-audio`) 최종본 경로에 단어장을 whisper "
+        "initial prompt로 줬다(`--vocabulary`, `WhisperDecoder::with_vocabulary`). 단어장은 사용자가 적을 법한 "
+        "것: 회의에 나온 사람 이름, 회의에서 말하지 않은 기능 이름 1~2개(미끼), 회사 이름, 많이 나온 기능 이름 "
+        "순으로 100자까지. 이름·용어는 대본에서 말한 횟수 중 전사에서 들린 횟수를 셌고(\"들림\"), 말한 것보다 "
+        "많이 들린 횟수(\"더 들림\")와 미끼가 들린 횟수를 따로 셌다. 요약은 4B chunked p2.",
+        "",
+        "| 조건 | 이름·용어 들림 | 그중 단어장 안 | 더 들림 | 미끼 들림 | CER | 디코딩 | 결정 | 할 일 | 담당자 맞음 | 지어낸 담당자 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for label, folder, rows in (("단어장 없음", "meetings_asr", plain), ("단어장", "meetings_asr_vocab", vocab)):
+        files = [data / folder / f"{m}.json" for m in meetings]
+        if not all(f.exists() for f in files):
+            continue
+        a = [json.loads(f.read_text())["asr"] for f in files]
+        t = {k: sum(x["terms"][k] for x in a) for k in a[0]["terms"] if k != "vocabulary"}
+        sc = [r["score"] for r in rows if r["meeting"] in meetings and r["score"].get("format_ok")]
+        tot = lambda k: sum(x[k] for x in sc)  # noqa: E731
+        out.append(
+            f"| {label} | {t['heard']}/{t['said']} ({t['heard'] / t['said']:.0%}) "
+            f"| {t['in_vocabulary_heard']}/{t['in_vocabulary_said']} ({t['in_vocabulary_heard'] / t['in_vocabulary_said']:.0%}) "
+            f"| {t['extra']} | {t['decoys_heard']} | {sum(x['cer'] for x in a) / len(a):.1%} "
+            f"| {sum(x['decode_sec'] for x in a):.0f}s "
+            f"| {tot('decisions_found')}/{tot('decisions_total')} | {tot('actions_found')}/{tot('actions_total')} "
+            f"| {tot('actions_owner_ok')}/{tot('actions_found')} | {sum(len(x['unknown_owners']) for x in sc)} |"
+        )
+    out += [
+        "",
+        "단어장이 없으면 전사가 이전 음성 경로 실행과 글자 하나까지 같았다(회귀 없음). 단어장은 이름·용어를 "
+        "65%→74%, 결정을 48→57개로 올렸고 디코딩은 1.8% 늘었다. 미끼는 한 번도 들리지 않았다. 더 들린 14번은 "
+        "두 종류다: 짧은 구간 하나가 \"지호, 지호, 지호, 지호.\"로 단어장 이름을 되풀이했고(4번), 나머지 10번은 "
+        "다른 이름을 말한 자리에서 단어장의 다른 이름이 들렸다(\"시온 님이\"가 단어장 없이는 \"시원님이\", "
+        "단어장으로는 \"지호님이\"). 없는 이름보다 실제 참석자 이름으로 틀리는 쪽이 더 그럴듯해 해롭지만, "
+        "담당자 맞음은 전체로 올랐다. 할 일 수가 준 것(44→39)은 같은 묶음 안의 흔들림인지 아직 "
+        "가르지 못했다.",
+    ]
+    return out
+
+
 def summary_section(rows: list[dict]) -> list[str]:
     """Section 8: local summary models on the synthetic meetings (run_summary.py)."""
     short = [r for r in rows if not r["meeting"].endswith("-120m")]
@@ -508,6 +554,9 @@ def main() -> None:
         v2, asr = load("summary_v2/*.json"), load("summary_asr/*.json")
         if v2 or asr:
             lines += v2_section(v2, asr)
+        vocab = load("summary_asr_vocab/*.json")
+        if vocab:
+            lines += vocabulary_section([r for r in asr if r.get("prompt") == "p2"], vocab)
 
     out = RESULTS / "RESULTS.md"
     out.write_text("\n".join(lines) + "\n")
