@@ -13,6 +13,7 @@ pub mod model_cache;
 pub mod pcm_store;
 pub mod pipeline;
 pub mod recorder;
+pub mod span_decoder;
 pub mod spans;
 pub mod store;
 
