@@ -9,8 +9,10 @@ use std::io;
 
 pub mod blocklist;
 pub mod incremental;
+pub mod model_cache;
 pub mod pcm_store;
 pub mod pipeline;
+pub mod recorder;
 pub mod spans;
 pub mod store;
 
