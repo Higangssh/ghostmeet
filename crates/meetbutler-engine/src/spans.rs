@@ -135,7 +135,10 @@ impl SpanCutter {
         let (threshold, min_silence) = if long {
             (LONG_THRESHOLD, secs_to_samples(LONG_MIN_SILENCE_SEC))
         } else {
-            (self.cfg.threshold, secs_to_samples(self.cfg.min_silence_sec))
+            (
+                self.cfg.threshold,
+                secs_to_samples(self.cfg.min_silence_sec),
+            )
         };
 
         self.tail += FRAME;
@@ -221,7 +224,9 @@ pub fn speech_spans(probs: &[f32], total_samples: usize, cfg: &SpanConfig) -> Ve
     let mut cutter = SpanCutter::new(*cfg);
     let mut raw: Vec<Span> = probs.iter().filter_map(|&p| cutter.push(p)).collect();
     raw.extend(cutter.finish());
-    raw.into_iter().flat_map(|s| finish_span(s, total_samples, cfg)).collect()
+    raw.into_iter()
+        .flat_map(|s| finish_span(s, total_samples, cfg))
+        .collect()
 }
 
 /// Pad a raw span, clip it to the audio, and split it if it is longer than a window.
@@ -242,6 +247,11 @@ fn split(span: Span, max: usize) -> Vec<Span> {
     let pieces = span.len().div_ceil(max);
     let step = span.len().div_ceil(pieces);
     (0..pieces)
-        .map(|i| Span::new(span.start + i * step, (span.start + (i + 1) * step).min(span.end)))
+        .map(|i| {
+            Span::new(
+                span.start + i * step,
+                (span.start + (i + 1) * step).min(span.end),
+            )
+        })
         .collect()
 }

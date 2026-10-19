@@ -28,8 +28,21 @@ fn subtitle_credits_on_a_short_span_are_dropped() {
 #[test]
 fn real_short_replies_are_kept() {
     for text in [
-        "네.", "네", "아니요.", "맞아요.", "알겠습니다.", "좋습니다.", "잠깐만요.", "글쎄요.",
-        "그렇죠", "감사합니다.", "감사합니다", "고맙습니다.", "Thank you.", "Yes.", "Okay.",
+        "네.",
+        "네",
+        "아니요.",
+        "맞아요.",
+        "알겠습니다.",
+        "좋습니다.",
+        "잠깐만요.",
+        "글쎄요.",
+        "그렇죠",
+        "감사합니다.",
+        "감사합니다",
+        "고맙습니다.",
+        "Thank you.",
+        "Yes.",
+        "Okay.",
     ] {
         assert!(!is_hallucination(text, SHORT), "{text}");
     }
@@ -38,7 +51,10 @@ fn real_short_replies_are_kept() {
 #[test]
 fn a_credit_phrase_in_a_long_span_is_kept() {
     // someone can say it out loud; only the short spans at clip edges invent it
-    assert!(!is_hallucination("시청해주셔서 감사합니다.", SHORT_SPAN_SEC));
+    assert!(!is_hallucination(
+        "시청해주셔서 감사합니다.",
+        SHORT_SPAN_SEC
+    ));
     assert!(!is_hallucination("시청해주셔서 감사합니다.", 4.0));
 }
 
