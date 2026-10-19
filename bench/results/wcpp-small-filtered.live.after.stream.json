@@ -1,0 +1,30 @@
+{
+ "engine": "whisper.cpp small (Metal, Silero spans + filter)",
+ "spec": "wcpp-small-filtered",
+ "mode": "live",
+ "label": "after",
+ "interval_s": 10.0,
+ "session_min": 36.1,
+ "utterances": 166,
+ "passes": 184,
+ "cer": 0.083,
+ "pass_sec_first10min": 1.03,
+ "pass_sec_last10min": 1.16,
+ "pass_sec_p95": 1.689,
+ "pass_sec_slope_per_hour": 0.3,
+ "footprint_mb_first10min": 856.6,
+ "footprint_mb_last10min": 787.3,
+ "peak_footprint_mb": 858.7,
+ "machine": {
+  "cpu": "Apple M4",
+  "cores": 10,
+  "perf_cores": 4,
+  "eff_cores": 6,
+  "ram_gb": 16,
+  "os": "macOS 26.6.2",
+  "python": "3.12.15"
+ },
+ "caption_latency_median_s": 8.15,
+ "caption_latency_p95_s": 13.13,
+ "load": "0.57 → 1.35"
+}

@@ -31,6 +31,8 @@ class Seg:
     start: float
     end: float
     text: str
+    no_speech_prob: float = 0.0  # Whisper only; 0 where the engine has no such score
+    avg_logprob: float = 0.0
 
 
 class Engine:
@@ -122,7 +124,10 @@ class WhisperCpp(Engine):
             timeout=3600,  # a long-form run sends a whole session in one request
         )
         r.raise_for_status()
-        return [Seg(s["start"], self._end(s), s["text"]) for s in r.json().get("segments", [])]
+        return [
+            Seg(s["start"], self._end(s), s["text"], s.get("no_speech_prob", 0.0), s.get("avg_logprob", 0.0))
+            for s in r.json().get("segments", [])
+        ]
 
     def _end(self, seg: dict) -> float:
         """Segment end; with DTW, where the last word was actually spoken."""
@@ -243,6 +248,63 @@ class SpanDecoded(Engine):
         self._inner.close()
 
 
+# Packing and the hallucination filter, for engines that score segments (Whisper). Both are
+# plain numbers so the same rule ports to whisper-rs: whisper_full_get_segment_no_speech_prob
+# and the mean token log-probability of the segment.
+PACK = {
+    "max_chunk_sec": 25.0,  # neighbouring spans are decoded together up to this length
+    "no_speech_prob": 0.6,  # drop a segment when no_speech_prob is above this ...
+    "avg_logprob": -1.0,  # ... and avg_logprob is below this (OpenAI/faster-whisper rule)
+}
+
+
+def pack(spans: List[tuple], max_samples: int) -> List[tuple]:
+    """Merge consecutive spans while the merged chunk stays within `max_samples`."""
+    chunks: List[list] = []
+    for a, b in spans:
+        if chunks and b - chunks[-1][0] <= max_samples:
+            chunks[-1][1] = b
+        else:
+            chunks.append([a, b])
+    return [tuple(c) for c in chunks]
+
+
+def hallucinated(seg: Seg) -> bool:
+    return seg.no_speech_prob > PACK["no_speech_prob"] and seg.avg_logprob < PACK["avg_logprob"]
+
+
+class PackedDecoded(Engine):
+    """Our Silero spans, packed into chunks of up to max_chunk_sec, decoded per chunk.
+
+    A lone short span (a "네" between sentences) is decoded with its neighbours instead of
+    on its own, which is where Whisper invents subtitle credits. Segment times are the
+    engine's own within the chunk, offset to the input; the engine's VAD is off. Segments
+    the filter drops are kept in `dropped` so a run can count what the filter cost.
+    """
+
+    def __init__(self, inner: Engine, packed: bool = True):
+        self._inner = inner
+        how = "packed" if packed else "spans"
+        self.name = inner.name.replace(", no VAD", "").rstrip(")") + f", Silero {how} + filter)"
+        self.pid = inner.pid
+        self._limit = int(PACK["max_chunk_sec"] * SAMPLE_RATE) if packed else 0  # 0: one span each
+        self.dropped: List[Seg] = []
+
+    def __call__(self, audio):
+        out = []
+        for a, b in pack(speech_spans(audio), self._limit):
+            off, end = a / SAMPLE_RATE, b / SAMPLE_RATE
+            for s in self._inner(audio[a:b]):
+                if not s.text.strip():
+                    continue
+                seg = Seg(off + s.start, min(end, off + s.end), s.text, s.no_speech_prob, s.avg_logprob)
+                (self.dropped if hallucinated(seg) else out).append(seg)
+        return out
+
+    def close(self):
+        self._inner.close()
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -250,16 +312,18 @@ def _free_port() -> int:
 
 
 def make(spec: str) -> Engine:
-    """fw-small | fw-large-v3-turbo | wcpp-small | wcpp-small-cpu | wcpp-small-novad | wcpp-small-dtw | wcpp-small-spans | sensevoice | ..."""
+    """fw-small | fw-large-v3-turbo | wcpp-small | wcpp-small-cpu | wcpp-small-novad | wcpp-small-dtw | wcpp-small-spans | wcpp-small-packed | wcpp-small-filtered | sensevoice | ..."""
     kind, _, rest = spec.partition("-")
     if kind == "fw":
         return FasterWhisper(rest)
     if kind == "wcpp":
         parts = rest.split("-")
-        flags = {f: f in parts for f in ("cpu", "novad", "dtw", "spans")}
+        flags = {f: f in parts for f in ("cpu", "novad", "dtw", "spans", "packed", "filtered")}
         size = "-".join(p for p in parts if p not in flags)
-        vad = not (flags["novad"] or flags["spans"])
+        vad = not (flags["novad"] or flags["spans"] or flags["packed"] or flags["filtered"])
         engine = WhisperCpp(size, gpu=not flags["cpu"], vad=vad, dtw=flags["dtw"])
+        if flags["packed"] or flags["filtered"]:  # filtered: our spans one by one, plus the filter
+            return PackedDecoded(engine, packed=flags["packed"])
         return SpanDecoded(engine) if flags["spans"] else engine
     if spec == "sensevoice":
         return SenseVoice("cpu")

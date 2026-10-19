@@ -141,7 +141,7 @@ def main() -> None:
             "| 엔진 | long-form CER | 처리 시간 | RTF | 최대 메모리 | 꼬리 창 backlog CER |",
             "|---|---:|---:|---:|---:|---:|",
         ]
-        for r in (r for r in longform if not r["spec"].endswith("-spans")):  # those are in section 5
+        for r in (r for r in longform if not r["spec"].endswith(("-spans", "-filtered", "-packed"))):  # sections 5, 6
             b = backlog.get(r["spec"])
             lines.append(
                 f"| {r['engine']} | **{pct(r['cer'])}** | {r['sec']:.0f}s | {r['rtf']:.3f} | "
@@ -179,6 +179,48 @@ def main() -> None:
             lines.append(f"| {sv['engine']} (기준) | live(10초 주기) | {pct(sv['cer'])} | "
                          f"{pct(by_spec['sensevoice']['cer'])} | {sv['pass_sec_first10min']:.2f}s → "
                          f"{sv['pass_sec_last10min']:.2f}s | {lat(sv)} | — |")
+
+    final = [r for r in stream + longform  # *.longform.json also matches *.replies.longform.json
+             if r["spec"].endswith(("-filtered", "-packed"))]
+    if final:
+        from engines import PACK
+
+        def row(r, kind):
+            u = by_spec.get(r["spec"].rsplit("-", 1)[0]) or by_spec.get(r["spec"])
+            gap = r["cer"] - u["cer"] if u else None
+            verdict = "—" if gap is None else ("통과" if gap <= 0.02 else "미달")
+            reply = (f"{r['replies_recalled']}/{r['replies']} (필터로 잃음 {r['replies_lost_to_filter']})"
+                     if "replies" in r else "—")
+            cost = (f"{r['sec']:.0f}s (RTF {r['rtf']:.3f})" if r["mode"] == "longform"
+                    else f"{r['pass_sec_first10min']:.2f}s → {r['pass_sec_last10min']:.2f}s")
+            return (f"| {r['engine']} | {kind} | **{pct(r['cer'])}** | {pct(u['cer']) if u else '—'} | "
+                    f"{verdict} | {reply} | {r.get('filter_dropped_segments', '—')} | {cost} | {lat(r)} | "
+                    f"{r.get('load', '—')} |")
+
+        lines += [
+            "",
+            "## 6. 마지막 라운드: 필터, 묶기, 짧은 대답",
+            "",
+            "5절의 구간 규칙에 Whisper 세그먼트 필터를 더했다. 필터는 `no_speech_prob > "
+            f"{PACK['no_speech_prob']}` 이면서 `avg_logprob < {PACK['avg_logprob']}`인 세그먼트를 버린다"
+            "(OpenAI/faster-whisper와 같은 규칙, whisper-rs로 그대로 옮길 수 있다). "
+            f"`packed`는 이웃 구간을 {PACK['max_chunk_sec']:.0f}초까지 묶어 한 번에 디코딩하고, "
+            "`spans`는 구간마다 따로 디코딩한다. 기준은 문장 단위 CER + 2.0%p다.",
+            "",
+            "짧은 대답: macOS `say -v Yuna`로 합성한 8개(네, 아니요, 맞아요, 좋습니다, 그렇죠, 알겠습니다, "
+            "잠깐만요, 글쎄요)를 3문장마다 하나씩 앞뒤 0.8초 간격으로 끼웠다(`make_replies.sh`, "
+            "합성 음성은 bench/data에만 있다). 글자 정렬에서 절반 넘게 그대로 맞으면 나온 것으로 센다.",
+            "",
+            "| 엔진 | 조건 | CER | 문장 단위 CER | 기준 | 짧은 대답 | 필터가 버린 세그먼트 | 창당 처리 / 처리 시간 | 자막 지연 중앙/p95 | 부하(1분 평균) |",
+            "|---|---|---:|---:|---|---:|---:|---:|---:|---|",
+        ]
+        for r in sorted(final, key=lambda r: (r["spec"], r["mode"], "replies" in r)):
+            kind = ("일괄 + 짧은 대답" if "replies" in r else "일괄") if r["mode"] == "longform" else "live(10초 주기)"
+            lines.append(row(r, kind))
+        for spec in ("fw-small", "fw-large-v3-turbo", "sensevoice"):
+            r = next((r for r in stream if r["spec"] == spec and r["mode"] == "live" and r.get("label") == "after"), None)
+            if r:
+                lines.append(row(r, "live(10초 주기), 비교"))
 
     out = RESULTS / "RESULTS.md"
     out.write_text("\n".join(lines) + "\n")

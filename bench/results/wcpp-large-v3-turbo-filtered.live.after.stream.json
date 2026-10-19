@@ -1,0 +1,30 @@
+{
+ "engine": "whisper.cpp large-v3-turbo (Metal, Silero spans + filter)",
+ "spec": "wcpp-large-v3-turbo-filtered",
+ "mode": "live",
+ "label": "after",
+ "interval_s": 10.0,
+ "session_min": 36.1,
+ "utterances": 166,
+ "passes": 149,
+ "cer": 0.065,
+ "pass_sec_first10min": 4.686,
+ "pass_sec_last10min": 4.067,
+ "pass_sec_p95": 5.926,
+ "pass_sec_slope_per_hour": -1.007,
+ "footprint_mb_first10min": 1922.8,
+ "footprint_mb_last10min": 1924.4,
+ "peak_footprint_mb": 1924.5,
+ "machine": {
+  "cpu": "Apple M4",
+  "cores": 10,
+  "perf_cores": 4,
+  "eff_cores": 6,
+  "ram_gb": 16,
+  "os": "macOS 26.6.2",
+  "python": "3.12.15"
+ },
+ "caption_latency_median_s": 13.51,
+ "caption_latency_p95_s": 20.47,
+ "load": "1.35 → 1.24"
+}

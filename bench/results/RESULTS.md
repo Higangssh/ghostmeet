@@ -43,11 +43,13 @@ FLEURS 문장을 이어 붙인 36.1분 세션, 창 30초. `수정 전` = 측정 
 | whisper.cpp large-v3-turbo (Metal) | 수정 후 | backlog(30초 창) | 2.39s → 2.42s | 2.59s | +0.056 | 1942 → 1949MB | — | 5.8% |
 | whisper.cpp large-v3-turbo (Metal) | 수정 전 | live(10초 주기) | 2.12s → 2.10s | 2.26s | -0.029 | 1927 → 1929MB | 5.1 / 12.0s | 21.6% |
 | whisper.cpp large-v3-turbo (Metal) | 수정 후 | live(10초 주기) | 2.15s → 2.13s | 2.34s | -0.022 | 1933 → 1942MB | 9.3 / 16.0s | 5.8% |
+| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | 수정 후 | live(10초 주기) | 4.69s → 4.07s | 5.93s | -1.007 | 1923 → 1924MB | 13.5 / 20.5s | 6.5% |
 | whisper.cpp large-v3-turbo (Metal, Silero spans) | 수정 후 | live(10초 주기) | 4.71s → 4.49s | 6.27s | -1.027 | 1924 → 1932MB | 13.2 / 21.8s | 5.9% |
 | whisper.cpp small (Metal) | 수정 전 | backlog(30초 창) | 0.94s → 0.86s | 1.28s | -0.119 | 862 → 866MB | — | 29.9% |
 | whisper.cpp small (Metal) | 수정 후 | backlog(30초 창) | 1.13s → 1.04s | 1.55s | -0.223 | 862 → 864MB | — | 8.6% |
 | whisper.cpp small (Metal) | 수정 전 | live(10초 주기) | 0.68s → 0.68s | 0.93s | -0.018 | 857 → 836MB | 4.7 / 11.3s | 31.9% |
 | whisper.cpp small (Metal) | 수정 후 | live(10초 주기) | 0.76s → 0.72s | 0.95s | -0.104 | 856 → 863MB | 6.8 / 12.5s | 8.9% |
+| whisper.cpp small (Metal, Silero spans + filter) | 수정 후 | live(10초 주기) | 1.03s → 1.16s | 1.69s | +0.300 | 857 → 787MB | 8.2 / 13.1s | 8.3% |
 | whisper.cpp small (Metal, no VAD) | 수정 후 | live(10초 주기) | 0.89s → 0.77s | 1.19s | -0.176 | 859 → 864MB | 7.4 / 17.3s | 13.2% |
 | whisper.cpp small (Metal, no VAD, DTW) | 수정 후 | live(10초 주기) | 0.93s → 0.81s | 1.22s | -0.201 | 899 → 926MB | 8.4 / 15.5s | 12.2% |
 | whisper.cpp small (Metal, Silero spans) | 수정 후 | live(10초 주기) | 1.32s → 1.22s | 1.88s | -0.301 | 858 → 820MB | 7.8 / 13.7s | 8.6% |
@@ -91,3 +93,20 @@ FLEURS 문장을 이어 붙인 36.1분 세션, 창 30초. `수정 전` = 측정 
 | whisper.cpp large-v3-turbo (Metal, Silero spans) | 일괄 | **6.9%** | 2.5% | 430s (RTF 0.199) | — | 1.17 → 3.70 (중간 최대 6.2) |
 | whisper.cpp small (Metal, Silero spans) | live(10초 주기) | **8.6%** | 5.4% | 1.32s → 1.22s | 7.8 / 13.7s | 1.93 → 1.17 |
 | sherpa-onnx SenseVoice-Small (CPU int8) (기준) | live(10초 주기) | 6.0% | 6.1% | 0.24s → 0.21s | 6.5 / 11.2s | — |
+
+## 6. 마지막 라운드: 필터, 묶기, 짧은 대답
+
+5절의 구간 규칙에 Whisper 세그먼트 필터를 더했다. 필터는 `no_speech_prob > 0.6` 이면서 `avg_logprob < -1.0`인 세그먼트를 버린다(OpenAI/faster-whisper와 같은 규칙, whisper-rs로 그대로 옮길 수 있다). `packed`는 이웃 구간을 25초까지 묶어 한 번에 디코딩하고, `spans`는 구간마다 따로 디코딩한다. 기준은 문장 단위 CER + 2.0%p다.
+
+짧은 대답: macOS `say -v Yuna`로 합성한 8개(네, 아니요, 맞아요, 좋습니다, 그렇죠, 알겠습니다, 잠깐만요, 글쎄요)를 3문장마다 하나씩 앞뒤 0.8초 간격으로 끼웠다(`make_replies.sh`, 합성 음성은 bench/data에만 있다). 글자 정렬에서 절반 넘게 그대로 맞으면 나온 것으로 센다.
+
+| 엔진 | 조건 | CER | 문장 단위 CER | 기준 | 짧은 대답 | 필터가 버린 세그먼트 | 창당 처리 / 처리 시간 | 자막 지연 중앙/p95 | 부하(1분 평균) |
+|---|---|---:|---:|---|---:|---:|---:|---:|---|
+| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | live(10초 주기) | **6.5%** | 2.5% | 미달 | — | — | 4.69s → 4.07s | 13.5 / 20.5s | 1.35 → 1.24 |
+| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | 일괄 | **6.9%** | 2.5% | 미달 | — | 0 | 418s (RTF 0.193) | — | 1.63 → 0.57 |
+| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | 일괄 + 짧은 대답 | **3.2%** | 2.5% | 통과 | 49/53 (필터로 잃음 0) | 0 | 471s (RTF 0.217) | — | 0.97 → 1.09 |
+| whisper.cpp large-v3-turbo (Metal, Silero packed + filter) | 일괄 + 짧은 대답 | **3.8%** | 2.5% | 통과 | 31/53 (필터로 잃음 0) | 0 | 222s (RTF 0.103) | — | 1.60 → 0.97 |
+| whisper.cpp small (Metal, Silero spans + filter) | live(10초 주기) | **8.3%** | 5.4% | 미달 | — | — | 1.03s → 1.16s | 8.2 / 13.1s | 0.57 → 1.35 |
+| faster-whisper small (CPU int8) | live(10초 주기), 비교 | **6.6%** | 5.4% | 통과 | — | — | 1.62s → 1.62s | 8.1 / 14.7s | — |
+| faster-whisper large-v3-turbo (CPU int8) | live(10초 주기), 비교 | **3.4%** | 2.5% | 통과 | — | — | 4.96s → 4.92s | 12.4 / 20.8s | — |
+| sherpa-onnx SenseVoice-Small (CPU int8) | live(10초 주기), 비교 | **6.0%** | 6.1% | 통과 | — | — | 0.24s → 0.21s | 6.5 / 11.2s | — |

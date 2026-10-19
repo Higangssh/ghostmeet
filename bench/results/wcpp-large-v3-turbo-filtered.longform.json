@@ -1,0 +1,23 @@
+{
+ "engine": "whisper.cpp large-v3-turbo (Metal, Silero spans + filter)",
+ "spec": "wcpp-large-v3-turbo-filtered",
+ "mode": "longform",
+ "session_min": 36.1,
+ "utterances": 166,
+ "segments": 289,
+ "cer": 0.0689,
+ "sec": 418.4,
+ "rtf": 0.193,
+ "peak_footprint_mb": 1932,
+ "machine": {
+  "cpu": "Apple M4",
+  "cores": 10,
+  "perf_cores": 4,
+  "eff_cores": 6,
+  "ram_gb": 16,
+  "os": "macOS 26.6.2",
+  "python": "3.12.15"
+ },
+ "filter_dropped_segments": 0,
+ "load": "1.63 → 0.57"
+}
