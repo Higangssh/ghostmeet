@@ -96,7 +96,8 @@ def score(output: str, meeting: dict) -> dict:
     # a withdrawn proposal counts against the summary only when it is listed as decided
     withdrawn = sum(any(has_all(d, w["keywords"]) for d in decisions) for w in key["withdrawn"])
 
-    everything = json.dumps(summary, ensure_ascii=False)
+    # only the format's own fields; anything else a caller attached is not the summary
+    everything = json.dumps({f: summary[f] for f in FIELDS}, ensure_ascii=False)
     present = set(key["participants"])
     invented_people = sorted({p for p in PEOPLE if p in everything and p not in present})
     owners = {squash(a.get("owner", "")) for a in actions}

@@ -72,16 +72,21 @@ class ScoreTests(unittest.TestCase):
         p["decisions"].append(w["text"])
         self.assertEqual(ss.score(json.dumps(p, ensure_ascii=False), self.m)["withdrawn_listed"], 1)
 
-    def test_a_wrong_owner_or_deadline_is_caught_but_the_action_still_found(self):
+    def test_a_wrong_owner_is_caught_but_the_action_still_found(self):
         p = perfect(self.m)
         k = self.m["key"]
         others = [x for x in k["participants"] if x != k["actions"][0]["owner"]]
         p["action_items"][0]["owner"] = others[0]
-        p["action_items"][1]["due"] = "언젠가"
         s = ss.score(json.dumps(p, ensure_ascii=False), self.m)
         self.assertEqual(s["actions_found"], s["actions_total"])
         self.assertEqual(s["actions_owner_ok"], s["actions_total"] - 1)
-        self.assertEqual(s["actions_due_ok"], s["actions_total"] - 1)
+
+    def test_an_action_with_the_wrong_deadline_is_not_that_action(self):
+        # the deadline is what picks an action out; without it "점검표" could be any
+        p = perfect(self.m)
+        p["action_items"][1]["due"] = "언젠가"
+        s = ss.score(json.dumps(p, ensure_ascii=False), self.m)
+        self.assertEqual(s["actions_found"], s["actions_total"] - 1)
 
     def test_an_owner_written_with_honorifics_is_still_right(self):
         p = perfect(self.m)
@@ -107,3 +112,35 @@ class ScoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActionMatchTests(unittest.TestCase):
+    def test_an_action_is_found_by_its_deadline_and_task_word_however_it_is_worded(self):
+        # "배포 전 점검표 작성" without the feature name is still that action: deadlines do
+        # not repeat within a meeting
+        m = meeting()
+        a = m["key"]["actions"][0]
+        word = a["keywords"][1]
+        out = {"summary": "", "decisions": [], "open_questions": [],
+               "action_items": [{"owner": a["owner"], "task": f"{word} 마무리", "due": a["due"]}]}
+        s = ss.score(json.dumps(out, ensure_ascii=False), m)
+        self.assertEqual(s["actions_found"], 1)
+        self.assertEqual((s["actions_owner_ok"], s["actions_due_ok"]), (1, 1))
+
+    def test_a_deadline_written_into_the_task_finds_the_action_but_not_the_due_field(self):
+        m = meeting()
+        a = m["key"]["actions"][0]
+        out = {"summary": "", "decisions": [], "open_questions": [],
+               "action_items": [{"owner": a["owner"], "task": f"{a['keywords'][1]} ({a['due']}까지)", "due": ""}]}
+        s = ss.score(json.dumps(out, ensure_ascii=False), m)
+        self.assertEqual((s["actions_found"], s["actions_due_ok"]), (1, 0))
+
+
+class FieldTests(unittest.TestCase):
+    def test_fields_a_caller_attached_are_not_scored(self):
+        # chunked runs attach their own counters; a 0 there is not an invented number
+        m = meeting()
+        p = perfect(m)
+        p["chunks_broken"] = 0
+        p["chunks"] = 987654
+        self.assertEqual(ss.score(json.dumps(p, ensure_ascii=False), m)["invented_numbers"], [])

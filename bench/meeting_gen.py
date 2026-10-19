@@ -136,6 +136,8 @@ class Action:
     owner: str
     task: str
     due: str
+    # the deadline and the word that names the task: deadlines never repeat within a
+    # meeting, so these two pick out one action however the summary words it
     keywords: list[str]
 
 
@@ -222,7 +224,7 @@ def item_release(b: Builder, key: Key, lead: str) -> list[str]:
     f, date, owner = b.feature(), b.date(), b.person((lead,))
     bugs = b.number(3, 30)
     key.decisions.append(Decision(f"{f} 배포를 {date}로 확정", [f, date]))
-    key.actions.append(Action(owner, f"{f} 배포 전 점검표 정리", date, [f, "점검표"]))
+    key.actions.append(Action(owner, f"{f} 배포 전 점검표 정리", date, [date, "점검표"]))
     key.numbers.append(str(bugs))
     return [
         f"다음은 {f} 배포 일정입니다. 지금 남은 버그가 {bugs}개 정도예요.",
@@ -240,7 +242,7 @@ def item_budget(b: Builder, key: Key, lead: str) -> list[str]:
     owner, date = b.person((lead,)), b.date()
     key.withdrawn.append(Decision(f"{f} 외주 예산 {first}만 원", [f, f"{first}만 원"]))
     key.decisions.append(Decision(f"{f} 외주 예산을 {final}만 원으로 확정", [f, f"{final}만 원"]))
-    key.actions.append(Action(owner, f"{f} 외주 업체에 견적 다시 요청", date, [f, "견적"]))
+    key.actions.append(Action(owner, f"{f} 외주 업체에 견적 다시 요청", date, [date, "견적"]))
     key.numbers += [str(first), str(final)]
     return [
         f"{f} 외주 건인데요, 처음 제안은 {first}만 원이었어요.",
@@ -269,7 +271,7 @@ def item_metrics(b: Builder, key: Key, lead: str) -> list[str]:
 def item_question(b: Builder, key: Key, lead: str) -> list[str]:
     f = b.feature()
     q = f"{f}의 개인정보 보관 기간을 몇 년으로 할지"
-    key.open_questions.append(Decision(q, [f, "보관 기간"]))
+    key.open_questions.append(Decision(q, [f, "보관"]))
     return [
         f"하나 더 있는데요, {f}에서 개인정보를 얼마나 보관할지 아직 안 정했어요.",
         "법무팀 의견을 먼저 들어야 할 것 같은데요.",
@@ -282,7 +284,7 @@ def item_hiring(b: Builder, key: Key, lead: str) -> list[str]:
     n, owner, date = b.number(1, 4), b.person((lead,)), b.date()
     key.numbers.append(str(n))
     key.decisions.append(Decision(f"개발자 {n}명 추가 채용 진행", ["채용", f"{n}명"]))
-    key.actions.append(Action(owner, "채용 공고 초안 작성", date, ["채용 공고"]))
+    key.actions.append(Action(owner, "채용 공고 초안 작성", date, [date, "채용 공고"]))
     return [
         "인력 얘기도 해야 할 것 같아요. 지금 인원으로는 다음 분기가 힘들어요.",
         f"몇 명 정도 필요하다고 보세요?",
@@ -297,7 +299,7 @@ def item_incident(b: Builder, key: Key, lead: str) -> list[str]:
     f, minutes, owner, date = b.feature(), b.number(10, 90), b.person((lead,)), b.date()
     key.numbers.append(str(minutes))
     key.decisions.append(Decision(f"{f} 장애 재발 방지를 위해 모니터링 경보 추가", [f, "경보"]))
-    key.actions.append(Action(owner, f"{f} 장애 보고서 작성", date, [f, "보고서"]))
+    key.actions.append(Action(owner, f"{f} 장애 보고서 작성", date, [date, "보고서"]))
     return [
         f"지난주에 {f}가 {minutes}분 동안 멈췄던 건 다들 아시죠.",
         "원인은 설정 파일이 잘못 올라간 거였어요.",
@@ -312,7 +314,7 @@ def item_incident(b: Builder, key: Key, lead: str) -> list[str]:
 def item_goal(b: Builder, key: Key, lead: str) -> list[str]:
     f, owner, date = b.feature(), b.person((lead,)), b.date()
     key.decisions.append(Decision(f"다음 분기 목표를 {f} 개선으로 설정", [f, "목표"]))
-    key.actions.append(Action(owner, f"{f} 개선 계획서 작성", date, [f, "계획서"]))
+    key.actions.append(Action(owner, f"{f} 개선 계획서 작성", date, [date, "계획서"]))
     return [
         "다음 분기 목표를 같이 정해 보죠. 어떤 걸 해 보고 싶어요?",
         f"저는 {f}를 제대로 고쳐 보고 싶어요. 불만이 제일 많이 들어오는 부분이라서요.",
@@ -340,7 +342,7 @@ def item_training(b: Builder, key: Key, lead: str) -> list[str]:
     key.numbers.append(str(amount))
     key.withdrawn.append(Decision("외부 컨퍼런스 참가", ["컨퍼런스"]))
     key.decisions.append(Decision(f"온라인 강의 수강비 {amount}만 원 지원", ["강의", f"{amount}만 원"]))
-    key.actions.append(Action(owner, "수강할 강의 목록 공유", date, ["강의 목록"]))
+    key.actions.append(Action(owner, "수강할 강의 목록 공유", date, [date, "강의 목록"]))
     return [
         "교육 지원 얘기도 해 볼까요? 지난번에 컨퍼런스 가고 싶다고 했잖아요.",
         "네, 외부 컨퍼런스에 가 보고 싶었어요.",
@@ -380,7 +382,7 @@ def item_price(b: Builder, key: Key, lead: str) -> list[str]:
 def item_timeline(b: Builder, key: Key, lead: str) -> list[str]:
     f, date, owner = b.feature(), b.date(), b.person((lead,))
     key.decisions.append(Decision(f"{f} 시범 운영을 {date}에 시작", [f, "시범", date]))
-    key.actions.append(Action(owner, f"{f} 시범 운영 계정 발급", date, [f, "계정"]))
+    key.actions.append(Action(owner, f"{f} 시범 운영 계정 발급", date, [date, "계정"]))
     return [
         f"{f}는 언제부터 써 볼 수 있을까요?",
         f"{date}부터 시범 운영이 가능합니다.",

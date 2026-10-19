@@ -146,5 +146,6 @@ VAD 기준값: `silero_reference.py`가 WAV(또는 `--fleurs 분`으로 만든 F
 
 ```bash
 bench/.venv/bin/python -I bench/meeting_gen.py                                 # 대본 9개
-bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench         # 생성기·채점기 테스트
+bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench         # 생성기·채점기 테스트 21개
+# (표준 라이브러리 unittest라 pytest가 필요 없다. bench/.venv는 위 "준비"에서 만든 venv다)
 ```
