@@ -60,6 +60,19 @@ class MeetingTests(unittest.TestCase):
                 later = text[at:]
                 self.assertTrue(any(word in later for word in ("취소", "철회", "없던 걸로")), w.text)
 
+    def test_no_item_is_planted_twice_with_only_its_numbers_changed(self):
+        # "개발자 1명 채용" and later "개발자 3명 채용" in one meeting read as the same item
+        # revised, and a summary that keeps one is right to; items differ in what they are about
+        for m in self.meetings + [mg.generate(kind, 120) for kind in mg.KINDS]:
+            for items in (m.key.decisions, m.key.open_questions, m.key.withdrawn):
+                shapes = [re.sub(r"\d+", "#", i.text) for i in items]
+                self.assertEqual(len(shapes), len(set(shapes)), f"{m.kind}-{m.minutes}: {shapes}")
+
+    def test_a_long_meeting_is_still_as_long_as_asked(self):
+        for kind in mg.KINDS:
+            m = mg.generate(kind, 120)
+            self.assertAlmostEqual(m.estimated_minutes(), 120, delta=12, msg=kind)
+
     def test_deadlines_never_repeat_within_a_meeting(self):
         for m in self.meetings:
             dues = [a.due for a in m.key.actions]

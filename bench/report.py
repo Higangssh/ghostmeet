@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common import RESULTS  # noqa: E402
 
+BENCH = Path(__file__).resolve().parent
+
 
 def load(pattern: str) -> list[dict]:
     return [json.loads(p.read_text()) for p in sorted(RESULTS.glob(pattern))]
@@ -55,11 +57,12 @@ def summary_table(rows: list[dict]) -> list[str]:
 
     by = defaultdict(list)
     for r in rows:
-        by[(r["model"], r["mode"])].append(r)
+        prompt = r.get("prompt", "p1")
+        by[(r["model"], r["mode"] + ("" if prompt == "p1" else f" · {prompt}"))].append(r)
     out = [
-        "| 모델 | 묶음 | 방식 | 실행 실패 | 형식 깨짐 | 결정 | 할 일 | 담당자 맞음 | 기한 맞음 | 미해결 | 철회를 결정으로 "
-        "| 지어낸 담당자 | 지어낸 숫자 | 회의당 시간 | 최대 메모리 | 생성 tok/s | 판정 |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| 모델 | 묶음 | 방식 | 실행 실패 | 형식 깨짐 | 결정 | 한 번 나온 결정 | 값 틀림 | 할 일 | 담당자 맞음 | 기한 맞음 "
+        "| 미해결 | 철회를 결정으로 | 지어낸 담당자 | 지어낸 숫자 | 회의당 시간 | 최대 메모리 | 생성 tok/s | 판정 |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     order = {"8GB": 0, "16GB": 1}
     for (model, mode), rs in sorted(by.items(), key=lambda kv: (order.get(kv[1][0]["tier"], 9), kv[0])):
@@ -80,6 +83,7 @@ def summary_table(rows: list[dict]) -> list[str]:
         out.append(
             f"| {model} | {tier} | {mode} | {failed}/{len(rs)} | {len(ran) - len(scored)}/{len(ran)} | "
             f"{ratio(tot('decisions_found'), key('decisions_total'))} | "
+            f"{ratio(tot('decisions_once_found'), key('decisions_once_total'))} | {tot('decisions_wrong_value')} | "
             f"{ratio(found_a, key('actions_total'))} | "
             f"{ratio(tot('actions_owner_ok'), found_a)} | {ratio(tot('actions_due_ok'), found_a)} | "
             f"{ratio(tot('open_questions_found'), key('open_questions_total'))} | "
@@ -122,6 +126,70 @@ def single_memory_estimate(rows: list[dict]) -> list[str]:
     return out
 
 
+def v2_section(v2: list[dict], asr: list[dict]) -> list[str]:
+    """The clean baseline on meeting_gen v2, the second prompt, and the speech route."""
+    out = [
+        "",
+        "### 새 기준선(v2 대본), 프롬프트 개선, 음성 경로",
+        "",
+        "v2 대본은 같은 항목 틀을 한 회의에 두 번 심지 않는다. qwen3.5-4b chunked만 쟀다. p2는 첫 프롬프트에 "
+        "규칙 셋을 더했다: 정하는 말(확정, 승인, 유지, 진행, 채택)이 나오면 결정이다, 할 일을 정했어도 결정은 따로 "
+        "적는다, 숫자와 날짜는 전사 그대로 옮기고 바뀐 값은 마지막 값을 적는다. 정하는 말은 대본 생성기의 문장이 "
+        "아닌 일반 낱말로 적었다.",
+        "",
+        "음성 경로(asr)는 v2 대본을 macOS 한국어 음성 여섯 개로 번갈아 읽어(`asr_meetings.py`) 앱의 회의 후 "
+        "최종본 경로(`final_pass`, Silero 구간 + large-v3-turbo)로 받아 적고, 그 전사를 요약했다. 채점은 대본의 "
+        "정답지 그대로다.",
+        "",
+    ]
+    out += summary_table(v2 + [{**r, "mode": r["mode"] + " · asr"} for r in asr])
+    flagged = [r["score"] for r in v2 + asr if not r.get("error") and r["score"].get("format_ok")]
+    if flagged and any("decisions_flagged" in s for s in flagged):
+        from collections import defaultdict
+
+        agg = defaultdict(lambda: [0, 0, 0])
+        for r in v2 + asr:
+            if r.get("error") or not r["score"].get("format_ok"):
+                continue
+            s = r["score"]
+            k = ("asr · " if r in asr else "") + r.get("prompt", "p1")
+            agg[k][0] += s.get("decisions_flagged", 0)
+            agg[k][1] += s.get("flagged_wrong_value", 0)
+            agg[k][2] += s.get("decisions_wrong_value", 0)
+        out += [
+            "",
+            "\"확인 필요\" 표시 후보: chunked가 구간마다 결정의 숫자(단위 한 글자까지, \"11월\", \"250만\")가 그 "
+            "구간 전사에 그대로 있는지 보고, 없으면 표시한다(`summary_score.unsupported_numbers`).",
+            "",
+            "| 조건 | 표시한 결정 | 그중 값 틀림 | 값 틀림 전체 | 값 틀림을 잡은 비율 |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for k, (n, hit, wrong) in sorted(agg.items()):
+            out.append(f"| {k} | {n} | {hit} | {wrong} | {f'{hit / wrong:.0%}' if wrong else '—'} |")
+        out += [
+            "",
+            "표시는 한 번도 켜지지 않았다. 값 틀림의 숫자는 모두 그 구간 전사에 있었다: 정답 대본에서는 같은 안건의 "
+            "다른 숫자(남은 버그 수, 철회된 첫 제안 금액)를 결정 값으로 옮겼고, 음성 경로에서는 받아 적기가 숫자를 "
+            "바꿨다(\"28일\"→\"18일\", \"20일\"→\"21일\")는 것을 요약이 그대로 옮겼다. 전사와 대조하는 검사로는 "
+            "어느 쪽도 잡을 수 없다.",
+        ]
+    if asr:
+        a = [json.loads((BENCH / "data" / "meetings_asr" / f"{m}.json").read_text())["asr"]
+             for m in sorted({r["meeting"] for r in asr}) if (BENCH / "data" / "meetings_asr" / f"{m}.json").exists()]
+        if a:
+            out += [
+                "",
+                f"음성 경로의 전사: {len(a)}개 회의, 음성 {sum(x['audio_sec'] for x in a) / 60:.0f}분, "
+                f"CER {sum(x['cer'] for x in a) / len(a):.1%}(회의 평균), 처리 RTF "
+                f"{sum(x['decode_sec'] for x in a) / sum(x['audio_sec'] for x in a):.3f}. "
+                "CER은 낮아도 틀린 글자가 기능 이름과 사람 이름에 몰린다(\"주소록 동기화\"→\"수소로 전기화\", "
+                "지어낸 담당자 20). p1이 음성 경로에서 놓친 결정 52개 중 18개는 열쇠말이 전사 어디에도 없었고, "
+                "나머지는 전사에 맞게 적힌 곳이 있어도 요약이 다른 곳의 잘못 적힌 이름을 쓰거나 빠뜨렸다. "
+                "이름이 한 글자 틀린 것까지 맞다고 쳐도 48→51개다.",
+            ]
+    return out
+
+
 def summary_section(rows: list[dict]) -> list[str]:
     """Section 8: local summary models on the synthetic meetings (run_summary.py)."""
     short = [r for r in rows if not r["meeting"].endswith("-120m")]
@@ -136,20 +204,27 @@ def summary_section(rows: list[dict]) -> list[str]:
         "(`summary_score.py`). 모든 모델에 같은 프롬프트를 썼다. single은 전사를 통째로 넣고, chunked는 "
         "약 10분씩 요약한 뒤 목록을 잇는다.",
         "",
-        "재현율은 대본 합계다(형식이 깨진 요약은 하나도 못 찾은 것으로 센다). 지어낸 담당자는 회의에 없는 "
+        "재현율은 대본 합계다(형식이 깨진 요약은 하나도 못 찾은 것으로 센다). 값 틀림은 안건은 맞게 적었는데 "
+        "숫자나 날짜가 정답과 다른 결정의 수다(읽는 사람에게 가장 해로운 오류라 재현율과 같은 무게로 본다). "
+        "한 번 나온 결정은 같은 틀이 숫자만 바뀌어 다시 나오지 않은 결정만의 재현율이다. 지어낸 담당자는 회의에 없는 "
         "이름이나 사람이 아닌 담당자의 수이고, 지어낸 숫자는 회의에서 말하지 않은 숫자의 수다. "
         "최대 메모리는 peak footprint와 max RSS 중 큰 값이다. "
         f"기기 상한은 8GB 묶음 {TIER_LIMIT_MB['8GB'] / 1024:.0f}GB, 16GB 묶음 {TIER_LIMIT_MB['16GB'] / 1024:.0f}GB이고, "
         "넘으면 탈락이다. single의 n_ctx는 전사 + 8192(출력 상한)로 잡았다.",
         "",
-        "### 30·60분 대본 6개, 모든 모델",
+        "아래 두 표는 이전 생성기(v1, 1ac7bf2)의 대본으로 쟀다. v1은 같은 항목 틀을 한 회의에 숫자만 바꿔 여러 번 "
+        "심었다(\"개발자 N명 채용\"이 한 회의에 네 번). 채점기를 고친 뒤 다시 채점해 b76f90b의 표와 수치가 다르다: "
+        "철회를 결정으로는 철회를 밝힌 문장(\"600만 원 취소 후 800만 원으로 확정\")을 더는 세지 않아 거의 0이 됐고, "
+        "같은 정답 항목은 한 번만 세어 결정 분모가 줄었다.",
+        "",
+        "### 30·60분 대본 6개, 모든 모델 (이전 생성기 v1)",
         "",
     ]
     out += summary_table(short)
     if long:
         out += [
             "",
-            "### 120분 대본 3개, 30·60분 결과로 고른 모델",
+            "### 120분 대본 3개, 30·60분 결과로 고른 모델 (이전 생성기 v1)",
             "",
             "묶음마다 상한 안에 든 방식의 결정+할 일 재현율이 높은 두 모델이다. llama 구조 모델(Kanana, Mi:dm)의 "
             "single은 시작하자마자 디코딩이 실패했다(`Decode Error -3`, 최대 메모리 11GB대). 실패한 실행은 n_ctx를 "
@@ -430,6 +505,9 @@ def main() -> None:
     summaries = load("summary/*.json")
     if summaries:
         lines += summary_section(summaries)
+        v2, asr = load("summary_v2/*.json"), load("summary_asr/*.json")
+        if v2 or asr:
+            lines += v2_section(v2, asr)
 
     out = RESULTS / "RESULTS.md"
     out.write_text("\n".join(lines) + "\n")

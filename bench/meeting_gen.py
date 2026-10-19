@@ -1,6 +1,6 @@
 """Synthetic Korean meetings with an answer key, for scoring local summary models.
 
-    bench/.venv/bin/python -I bench/meeting_gen.py            # writes bench/data/meetings/
+    bench/.venv/bin/python -I bench/meeting_gen.py            # writes bench/data/meetings_v2/
 
 Real meeting transcripts cannot be used, so meetings are assembled from made-up parts:
 agenda items with a decision, owners and deadlines for follow-ups, numbers, a question
@@ -13,6 +13,10 @@ The app does not know who is speaking (0.2 has only the me/them channel), so the
 transcript has no speaker labels and owners are named out loud, as in a real meeting.
 Generation is deterministic per (kind, minutes, seed). Script text stays in the ignored
 bench/data/; only this generator, the key format and scores are committed.
+
+Version 2 never plants an item again with only its numbers changed (a second "개발자 N명
+채용"); version 1 (1ac7bf2) did, and wrote bench/data/meetings/, which the first results
+of every model were measured on.
 """
 from __future__ import annotations
 
@@ -23,7 +27,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parent / "data" / "meetings"
+OUT = Path(__file__).resolve().parent / "data" / "meetings_v2"
 
 # Speech rate used to size a meeting: Hangul syllables per minute of read-aloud speech.
 # Calibrated against the macOS Yuna voice when the audio is made; see SYLLABLES_PER_MIN use.
@@ -422,6 +426,21 @@ def participants(kind: str, rng: random.Random) -> list[str]:
     return rng.sample(PEOPLE, n)
 
 
+# the facts whose wording tells items apart; actions differ by their deadline anyway
+REPEATABLE = ("decisions", "open_questions", "withdrawn")
+PLANTED = REPEATABLE + ("actions", "numbers")
+
+
+def shape(text: str) -> str:
+    return re.sub(r"\d+", "#", text)
+
+
+def repeats(items: list, start: int) -> bool:
+    """Whether an item planted from `start` on is an earlier one with other numbers."""
+    before = {shape(i.text) for i in items[:start]}
+    return any(shape(i.text) in before for i in items[start:])
+
+
 def generate(kind: str, minutes: int, seed: int = 0) -> Meeting:
     rng = random.Random(f"{kind}-{minutes}-{seed}")
     people = participants(kind, rng)
@@ -443,12 +462,27 @@ def generate(kind: str, minutes: int, seed: int = 0) -> Meeting:
     lines.append(rng.choice(SHORT_REPLIES))
 
     target = minutes * SYLLABLES_PER_MIN
-    items = ITEMS[kind]
+    items = list(ITEMS[kind])
+    misses = {i: 0 for i in items}
     order: list = []
-    while syllables("\n".join(lines)) < target * 0.92:
+    while syllables("\n".join(lines)) < target * 0.92 and items:
         if not order:
             order = rng.sample(items, len(items))
-        block = order.pop()(b, key, lead)
+        item = order.pop()
+        planted = {f: len(getattr(key, f)) for f in PLANTED}
+        drawn = set(b.used_dates), set(b.used_numbers)
+        block = item(b, key, lead)
+        if any(repeats(getattr(key, f), planted[f]) for f in REPEATABLE):
+            # take back what it planted; an item that keeps coming out the same has
+            # nothing new to be about (a second hiring round) and is left out from here on
+            for f, n in planted.items():
+                del getattr(key, f)[n:]
+            b.used_dates, b.used_numbers = drawn  # the feature stays drawn, so a retry differs
+            misses[item] += 1
+            if misses[item] >= 10:
+                items.remove(item)
+                order = [i for i in order if i is not item]
+            continue
         # talk the item over before it is settled: after its opening line, a stretch
         # of discussion that plants nothing
         # (kept in bank order, so a question still comes before its answer)

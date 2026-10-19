@@ -83,6 +83,19 @@ INSTRUCTIONS = """다음은 회의를 받아 적은 전사입니다. 누가 말�
 - 전사에 없는 사람, 숫자, 날짜를 지어내지 않습니다.
 - 한국어로 씁니다."""
 
+# the second prompt, aimed at what the first one missed on the synthetic meetings: decisions
+# written down only as the action that follows them, and numbers changed on the way out
+INSTRUCTIONS_P2 = INSTRUCTIONS.replace(
+    "- 결정마다 무엇에 대한 결정인지(기능이나 안건 이름)와 정한 내용(날짜, 금액, 인원 등)을 함께 적습니다.\n",
+    # generic words for settling something, not the generator's own sentences
+    "- 확정, 승인, 유지, 진행, 채택처럼 무언가를 정하는 말이 나오면 그것은 결정입니다. 안건마다 빠짐없이 적습니다.\n"
+    "- 결정에 이어 할 일과 담당자를 정했어도 결정은 decisions에 따로 적습니다. 할 일만 적고 결정을 빼지 않습니다.\n"
+    "- 결정마다 무엇에 대한 결정인지(기능이나 안건 이름)와 정한 내용(날짜, 금액, 인원 등)을 함께 적습니다.\n"
+    "- 숫자와 날짜는 전사에 나온 글자 그대로 옮겨 적습니다. 처음 제안한 값이 바뀌었으면 마지막에 확정한 값을 적습니다.\n",
+)
+assert INSTRUCTIONS_P2 != INSTRUCTIONS
+PROMPTS = {"p1": INSTRUCTIONS, "p2": INSTRUCTIONS_P2}
+
 MERGE = """다음은 한 회의를 부분별로 요약한 글입니다. 이 내용을 바탕으로 회의 전체를 3~5문장으로
 요약하세요. 요약문만 쓰고 다른 말은 덧붙이지 마세요."""
 
@@ -172,12 +185,24 @@ class Sidecar:
         }
 
 
-def summarise(model: Path, template: str, lines: list[str], mode: str, sidecar: Sidecar) -> tuple[str, list[dict]]:
+def unverified(decisions: list, lines: list[str]) -> list[str]:
+    """Decisions with a number their own stretch of transcript never says: what the app
+    would mark "확인 필요". Kept beside the summary, not in it, so scoring ignores it."""
+    source = "\n".join(lines)
+    return [str(d) for d in decisions if summary_score.unsupported_numbers(str(d), source)]
+
+
+def summarise(model: Path, template: str, lines: list[str], mode: str, sidecar: Sidecar,
+              instructions: str = INSTRUCTIONS) -> tuple[str, list[dict]]:
     """The summary JSON text and the stats of every generation it took."""
     if mode == "single":
-        prompt = render(template, INSTRUCTIONS + "\n\n전사:\n" + "\n".join(lines))
+        prompt = render(template, instructions + "\n\n전사:\n" + "\n".join(lines))
         done = sidecar.generate(model, prompt, GRAMMAR, MAX_TOKENS)
-        return done["text"], [done]
+        whole = summary_score.parse(done["text"])
+        if whole is None:
+            return done["text"], [done]
+        whole["unverified"] = unverified(whole["decisions"], lines)
+        return json.dumps(whole, ensure_ascii=False), [done]
 
     chunks, cur = [], []
     for line in lines:
@@ -187,16 +212,17 @@ def summarise(model: Path, template: str, lines: list[str], mode: str, sidecar: 
             cur = []
     if cur:
         chunks.append(cur)
-    merged = {"summary": "", "decisions": [], "action_items": [], "open_questions": []}
+    merged = {"summary": "", "decisions": [], "action_items": [], "open_questions": [], "unverified": []}
     parts, runs = [], []
     for chunk in chunks:
-        done = sidecar.generate(model, render(template, INSTRUCTIONS + "\n\n전사:\n" + "\n".join(chunk)),
+        done = sidecar.generate(model, render(template, instructions + "\n\n전사:\n" + "\n".join(chunk)),
                                 GRAMMAR, MAX_TOKENS_CHUNK)
         runs.append(done)
         part = summary_score.parse(done["text"])
         if part is None:
             continue  # counted below: a chunk that broke the format loses its items
         parts.append(str(part["summary"]))
+        merged["unverified"] += [d for d in unverified(part["decisions"], chunk) if d not in merged["unverified"]]
         for field in ("decisions", "action_items", "open_questions"):
             for item in part[field]:
                 if item not in merged[field]:
@@ -209,12 +235,36 @@ def summarise(model: Path, template: str, lines: list[str], mode: str, sidecar: 
     return json.dumps(merged, ensure_ascii=False), runs
 
 
+def rescore() -> None:
+    for path in sorted(RESULTS.glob("*.json")):
+        result = json.loads(path.read_text())
+        if result["error"]:
+            continue
+        tag = path.name.removesuffix(".json")
+        meeting = json.loads((MEETINGS / f"{result['meeting']}.json").read_text())
+        result["score"] = summary_score.score((RAW / f"{tag}.out.json").read_text(), meeting)
+        path.write_text(json.dumps(result, ensure_ascii=False, indent=1))
+    print(f"rescored {RESULTS}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("models", nargs="+")
+    ap.add_argument("models", nargs="*")
     ap.add_argument("--meetings", nargs="*")
     ap.add_argument("--mode", choices=["single", "chunked", "both"], default="both")
+    ap.add_argument("--set", default="",
+                    help="another meeting set: bench/data/meetings_SET, results in summary_SET "
+                         "(asr: what the engine heard, from asr_meetings.py; v2: meeting_gen.py version 2)")
+    ap.add_argument("--prompt", choices=list(PROMPTS), default="p1")
+    ap.add_argument("--rescore", action="store_true",
+                    help="score the saved outputs again with the current scorer; runs nothing")
     args = ap.parse_args()
+    global MEETINGS, RESULTS, RAW
+    if args.set:
+        MEETINGS, RESULTS, RAW = (d.with_name(f"{d.name}_{args.set}") for d in (MEETINGS, RESULTS, RAW))
+    if args.rescore:
+        rescore()
+        return
 
     manifest = json.loads(MANIFEST.read_text())
     meetings = args.meetings or sorted(p.stem for p in MEETINGS.glob("*.json"))
@@ -228,11 +278,12 @@ def main() -> None:
         for meeting_name in meetings:
             meeting = json.loads((MEETINGS / f"{meeting_name}.json").read_text())
             for mode in modes:
-                tag = f"{name}.{meeting_name}.{mode}"
+                tag = f"{name}.{meeting_name}.{mode}" + (f".{args.prompt}" if args.prompt != "p1" else "")
                 sidecar = Sidecar(RAW / f"{tag}.stderr")
                 t = time.perf_counter()
                 try:
-                    text, runs = summarise(model, template, meeting["lines"], mode, sidecar)
+                    text, runs = summarise(model, template, meeting.get("transcript", meeting["lines"]), mode, sidecar,
+                                           PROMPTS[args.prompt])
                     error = None
                 except RuntimeError as exc:
                     text, runs, error = "", [], str(exc)
@@ -243,6 +294,7 @@ def main() -> None:
                     "tier": manifest[name]["tier"],
                     "meeting": meeting_name,
                     "mode": mode,
+                    "prompt": args.prompt,
                     "error": error,
                     "score": summary_score.score(text, meeting) if not error else None,
                     "wall_sec": round(wall, 1),

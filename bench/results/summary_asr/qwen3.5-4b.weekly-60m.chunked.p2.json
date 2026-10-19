@@ -1,0 +1,52 @@
+{
+ "model": "qwen3.5-4b",
+ "tier": "8GB",
+ "meeting": "weekly-60m",
+ "mode": "chunked",
+ "prompt": "p2",
+ "error": null,
+ "score": {
+  "format_ok": true,
+  "decisions_found": 8,
+  "decisions_total": 21,
+  "decisions_wrong_value": 0,
+  "decisions_once_found": 8,
+  "decisions_once_total": 21,
+  "decisions_flagged": 0,
+  "flagged_wrong_value": 0,
+  "actions_found": 10,
+  "actions_owner_ok": 5,
+  "actions_due_ok": 10,
+  "actions_total": 16,
+  "open_questions_found": 1,
+  "open_questions_total": 5,
+  "withdrawn_listed": 1,
+  "withdrawn_total": 5,
+  "invented_people": [],
+  "unknown_owners": [
+   "사이",
+   "사인",
+   "사인님",
+   "시원",
+   "시원님",
+   "저"
+  ],
+  "invented_numbers": [
+   "110"
+  ],
+  "summary_chars": 213
+ },
+ "wall_sec": 130.8,
+ "load_sec": 0.27,
+ "prompt_tokens": 15919,
+ "gen_tokens": 1773,
+ "prompt_tok_s": 404.9,
+ "gen_tok_s": 19.5,
+ "n_ctx": 8192,
+ "generations": 7,
+ "process_sec": 130.92,
+ "peak_footprint_mb": 716,
+ "max_rss_mb": 3284,
+ "peak_mb": 3284,
+ "exit": 0
+}
