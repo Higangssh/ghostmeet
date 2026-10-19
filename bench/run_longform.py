@@ -95,7 +95,8 @@ def main() -> None:
     t = time.perf_counter()
     segs = eng(audio)
     dt = time.perf_counter() - t
-    peak_mb = footprint_mb(eng.pid)[1]
+    # an engine in a child process that has already exited reports its own peak
+    peak_mb = getattr(eng, "peak_mb", None) or footprint_mb(eng.pid)[1]
     eng.close()
 
     def text(ss):
@@ -118,6 +119,9 @@ def main() -> None:
         "peak_footprint_mb": round(peak_mb),
         "machine": machine(),
     }
+    if hasattr(eng, "decode_sec"):  # wall time above includes loading the model
+        out["decode_sec"] = round(eng.decode_sec, 1)
+        out["decode_rtf"] = round(eng.decode_sec / session_s, 3)
     if hasattr(eng, "dropped"):
         out["filter_dropped_segments"] = len(dropped)
     tag = "longform"

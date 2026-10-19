@@ -1,0 +1,30 @@
+{
+ "engine": "Rust engine large-v3-turbo (Metal, Silero spans + blocklist)",
+ "spec": "rust-large-v3-turbo",
+ "mode": "longform",
+ "session_min": 36.1,
+ "utterances": 159,
+ "segments": 268,
+ "cer": 0.0327,
+ "sec": 261.3,
+ "rtf": 0.121,
+ "peak_footprint_mb": 1961,
+ "machine": {
+  "cpu": "Apple M4",
+  "cores": 10,
+  "perf_cores": 4,
+  "eff_cores": 6,
+  "ram_gb": 16,
+  "os": "macOS 26.6.2",
+  "python": "3.12.15"
+ },
+ "decode_sec": 260.3,
+ "decode_rtf": 0.12,
+ "replies": 53,
+ "replies_recalled": 52,
+ "replies_lost_to_filter": 0,
+ "replies_missed": [
+  "좋습니다"
+ ],
+ "load": "0.73 → 1.03"
+}

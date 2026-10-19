@@ -7,6 +7,7 @@ threshold 0.3 / min silence 500 ms / pad 200 ms, no text context carried between
 from __future__ import annotations
 
 import io
+import json
 import os
 import socket
 import subprocess
@@ -18,7 +19,7 @@ from typing import List
 import numpy as np
 import soundfile as sf
 
-from common import MODELS, REPO, SAMPLE_RATE
+from common import DATA, MODELS, REPO, SAMPLE_RATE
 
 sys.path.insert(0, str(REPO))  # reuse the production transcriber/incremental code
 
@@ -305,6 +306,47 @@ class PackedDecoded(Engine):
         self._inner.close()
 
 
+class RustFinal(Engine):
+    """The app's own after-meeting pass: the Rust engine's `final_pass` example.
+
+    Same rule as `PackedDecoded(packed=False)` (our spans one by one, credits on short
+    spans dropped) but end to end in Rust: the same silero_vad.onnx on tract, the Rust
+    span rule and blocklist, whisper-rs for decoding. Build it first:
+    cargo build --release -p meetbutler-engine --features whisper,silero --example final_pass
+    """
+
+    BINARY = REPO / "target/release/examples/final_pass"
+
+    def __init__(self, size: str):
+        if not self.BINARY.exists():
+            raise SystemExit(f"{self.BINARY} missing; see RustFinal")
+        self.name = f"Rust engine {size} (Metal, Silero spans + blocklist)"
+        self.pid = os.getpid()
+        self._model = MODELS / f"ggml-{size}.bin"
+        self.peak_mb = 0.0
+        self.decode_sec = 0.0
+
+    def __call__(self, audio):
+        tmp = DATA / "tmp"
+        tmp.mkdir(parents=True, exist_ok=True)
+        pcm = tmp / f"rust-final-{os.getpid()}.pcm"
+        pcm.write_bytes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
+        try:
+            run = subprocess.run(
+                ["/usr/bin/time", "-l", str(self.BINARY), str(self._model),
+                 str(MODELS / "silero_vad.onnx"), LANG, str(pcm)],
+                capture_output=True, text=True, check=True,
+            )
+        finally:
+            pcm.unlink(missing_ok=True)
+        out = json.loads(run.stdout)
+        self.decode_sec = out["decode_sec"]
+        for line in run.stderr.splitlines():
+            if "peak memory footprint" in line:
+                self.peak_mb = max(self.peak_mb, int(line.split()[0]) / 2**20)
+        return [Seg(a, b, t) for a, b, t in out["segments"]]
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -325,6 +367,8 @@ def make(spec: str) -> Engine:
         if flags["packed"] or flags["filtered"]:  # filtered: our spans one by one, plus the filter
             return PackedDecoded(engine, packed=flags["packed"])
         return SpanDecoded(engine) if flags["spans"] else engine
+    if kind == "rust":
+        return RustFinal(rest)
     if spec == "sensevoice":
         return SenseVoice("cpu")
     if spec == "sensevoice-coreml":

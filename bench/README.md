@@ -12,7 +12,7 @@ MeetButler 0.2의 엔진 결정(requirements.md §8, §13)을 위한 측정 스�
 | whisper.cpp 모델 | ggerganov/whisper.cpp `ggml-small.bin`, `ggml-large-v3-turbo.bin` | MIT |
 | whisper.cpp VAD | ggml-org/whisper-vad `ggml-silero-v5.1.2.bin` | MIT |
 | SenseVoice | k2-fsa/sherpa-onnx `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` (int8) | FunASR Model License (모델 출처 표기 조건, 앱 배포 전 확인 필요) |
-| sherpa-onnx VAD | k2-fsa/sherpa-onnx `silero_vad.onnx` | MIT |
+| sherpa-onnx VAD | k2-fsa/sherpa-onnx `silero_vad.onnx` (Silero v4 export, [release asset](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx), sha256 `9e2449e1…cbb1fd6`). The Rust engine runs the same file | MIT |
 
 실제 회의 녹음은 쓰지 않는다. 다운로드한 음성·모델은 전부 `bench/data/`(gitignore)에만 있고,
 `bench/results/raw/`(gitignore)에 엔진 출력 원문이 남는다. 커밋되는 것은 숫자뿐이다.
@@ -46,7 +46,12 @@ bench/.venv/bin/python -I bench/run_stream.py fw-small --mode live
 ```
 
 엔진 이름: `fw-small`, `fw-large-v3-turbo`, `wcpp-small`, `wcpp-large-v3-turbo`,
-`wcpp-small-cpu`, `sensevoice`, `sensevoice-coreml`.
+`wcpp-small-cpu`, `sensevoice`, `sensevoice-coreml`, 그리고 앱의 Rust 엔진 `rust-<모델>`
+(`run_longform.py` 전용, 먼저 `cargo build --release -p meetbutler-engine --features whisper,silero
+--example final_pass`).
+
+VAD 기준값: `silero_reference.py`가 WAV(또는 `--fleurs 분`으로 만든 FLEURS 세션)의 onnxruntime
+프레임 확률과 sherpa 구간을 JSON으로 쓴다. Rust 쪽 `tests/slow_vad.rs`가 이것과 비교한다.
 
 `bench/`는 pytest가 수집하지 않는다(`pytest.ini`의 `norecursedirs`). 기존 테스트 스위트는
 계속 모델·네트워크 없이 돈다.
@@ -114,3 +119,10 @@ bench/.venv/bin/python -I bench/run_stream.py fw-small --mode live
   환각이 1개뿐이라 8.2%로 그대로다. 측정이 아니라 추정이며, 회의의 진짜 "감사합니다"도 버린다.
 - 이 라운드의 짧은 대답 세션은 원래 세션보다 환각이 훨씬 적다(2개 대 37개). 끼워 넣기로 간격과
   잡음 배열이 달라진 탓으로 보이지만 확인하지 않았다. 대답 재현율 비교는 같은 세션 안에서만 하라.
+- whisper.cpp의 ggml Silero v5.1.2는 쓰지 않는다(RESULTS.md 7절). 원래 모델은 이전 프레임의 마지막
+  64샘플을 문맥으로 붙이는데 ggml 이식판은 프레임마다 반사 패딩을 한다. FLEURS 36분에서 말을 23.0분만
+  찾았고(같은 int16 입력에서 v4 onnx는 26.9분) 발화를 통째로 놓쳐 Rust 최종본 CER이 6.0%였다. 합성 음성
+  세션에서는 v5가 오히려 더 많이 잡아서 이 차이가 보이지 않았다. VAD·엔진을 바꿀 때는 합성 음성만으로
+  판단하지 않는다.
+- 같은 Silero라도 float 입력과 int16 입력의 구간이 다르다(36분 세션 sherpa 구간 205개 대 174개).
+  5·6절은 float, 7절은 앱이 녹음하는 int16이다. 같은 형식끼리만 비교하라.

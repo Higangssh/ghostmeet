@@ -1,0 +1,31 @@
+{
+ "engine": "Rust engine large-v3-turbo (Metal, whisper.cpp ggml Silero v5.1.2 spans + blocklist)",
+ "spec": "rust-large-v3-turbo-ggmlvad",
+ "mode": "longform",
+ "session_min": 36.1,
+ "utterances": 159,
+ "segments": 282,
+ "cer": 0.067,
+ "sec": 282.8,
+ "rtf": 0.13,
+ "peak_footprint_mb": 1963,
+ "machine": {
+  "cpu": "Apple M4",
+  "cores": 10,
+  "perf_cores": 4,
+  "eff_cores": 6,
+  "ram_gb": 16,
+  "os": "macOS 26.6.2",
+  "python": "3.12.15"
+ },
+ "decode_sec": 282.2,
+ "decode_rtf": 0.13,
+ "replies": 53,
+ "replies_recalled": 52,
+ "replies_lost_to_filter": 0,
+ "replies_missed": [
+  "네"
+ ],
+ "load": "3.60 → 1.26",
+ "note": "superseded: ggml Silero v5.1.2 reflect-pads each frame instead of carrying 64 samples of context"
+}

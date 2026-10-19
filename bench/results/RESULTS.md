@@ -110,3 +110,18 @@ FLEURS 문장을 이어 붙인 36.1분 세션, 창 30초. `수정 전` = 측정 
 | faster-whisper small (CPU int8) | live(10초 주기), 비교 | **6.6%** | 5.4% | 통과 | — | — | 1.62s → 1.62s | 8.1 / 14.7s | — |
 | faster-whisper large-v3-turbo (CPU int8) | live(10초 주기), 비교 | **3.4%** | 2.5% | 통과 | — | — | 4.96s → 4.92s | 12.4 / 20.8s | — |
 | sherpa-onnx SenseVoice-Small (CPU int8) | live(10초 주기), 비교 | **6.0%** | 6.1% | 통과 | — | — | 0.24s → 0.21s | 6.5 / 11.2s | — |
+
+## 7. Rust 엔진의 회의 후 최종본 (앱이 쓸 경로 그대로)
+
+`crates/meetbutler-engine`의 `final_transcript`를 그대로 돌렸다(`examples/final_pass`). 6절 `*-filtered`와 같은 규칙(우리 구간을 하나씩 디코딩, 2초 미만 구간의 자막 문구 차단)이지만 VAD 확률, 구간 규칙, 차단 목록, whisper.cpp 호출이 모두 Rust다. 오디오는 앱이 녹음하는 형식(16 kHz s16le)으로 넘긴다. 합격선은 최종본 CER 3% 이하다.
+
+| 엔진 | 조건 | CER | 기준 | 짧은 대답 | 처리 시간 | RTF | 최대 메모리 | 부하(1분 평균) |
+|---|---|---:|---|---:|---:|---:|---:|---|
+| Rust engine large-v3-turbo (Metal, Silero spans + blocklist) | 일괄 | **2.7%** | 통과 | — | 203s | 0.094 | 1965MB | 1.81 → 0.73 |
+| Rust engine large-v3-turbo (Metal, Silero spans + blocklist) | 일괄 + 짧은 대답 | **3.3%** | 미달 | 52/53 | 261s | 0.121 | 1961MB | 0.73 → 1.03 |
+| Rust engine large-v3-turbo (Metal, whisper.cpp ggml Silero v5.1.2 spans + blocklist) | 일괄 | **6.0%** | 미달 | — | 234s | 0.108 | 1963MB | 1.89 → 3.60 |
+| Rust engine large-v3-turbo (Metal, whisper.cpp ggml Silero v5.1.2 spans + blocklist) | 일괄 + 짧은 대답 | **6.7%** | 미달 | 52/53 | 283s | 0.130 | 1963MB | 3.60 → 1.26 |
+
+- whisper.cpp의 ggml Silero v5.1.2(`-ggmlvad` 행)는 쓰지 않는다. 원래 Silero는 프레임마다 이전 프레임의 마지막 64샘플을 문맥으로 붙이는데, ggml 이식판은 프레임마다 반사 패딩(`ggml_pad_reflect_1d(…, 64, 64)`)을 한다. 이 세션에서 말을 23.0분만 찾았고(v4는 int16 입력에서 26.9분), 발화를 통째로 놓쳐 삭제가 314자였다. 합성 음성(TTS)에서는 오히려 더 많이 잡아서 합성 음성 대조로는 드러나지 않았다. VAD나 엔진을 바꿀 때는 FLEURS로도 확인한다(`tests/slow_vad.rs`).
+- 채택한 VAD는 bench와 같은 `silero_vad.onnx`(k2-fsa가 내보낸 Silero v4, MIT)를 tract(순수 Rust ONNX 런타임)로 돌린다. onnxruntime 대비 프레임 확률 차이는 합성 세션 6.2e-6, FLEURS 10분 1.9e-5이고, 같은 입력에서 구간은 sherpa-onnx와 하나도 다르지 않다.
+- 같은 VAD라도 입력이 float인지 int16인지에 따라 구간이 달라진다. 이 36분 세션에서 sherpa 구간은 float 입력 205개, int16 입력 174개였다(겹치지 않는 구간이 많다). 5·6절은 float으로 쟀고, 앱은 int16으로 녹음하므로 이 절은 int16으로 쟀다.
