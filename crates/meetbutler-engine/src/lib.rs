@@ -16,6 +16,8 @@ pub mod recorder;
 pub mod span_decoder;
 pub mod spans;
 pub mod store;
+#[cfg(feature = "whisper")]
+pub mod whisper;
 
 /// Every sample in the engine is 16 kHz mono.
 pub const SAMPLE_RATE: usize = 16_000;
