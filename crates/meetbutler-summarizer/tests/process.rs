@@ -211,3 +211,49 @@ fn an_unknown_backend_fails_to_start_cleanly() {
         .unwrap();
     assert_eq!(status.code(), Some(2));
 }
+
+#[test]
+fn a_whole_summary_runs_through_the_sidecar_and_stops_when_cancelled() {
+    use meetbutler_summarizer::summary::{summarise, Options};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let lines: Vec<String> = (0..4).map(|_| "가".repeat(1000)).collect();
+    let opts = Options {
+        model: "m.gguf".into(),
+    };
+
+    let mut sidecar = spawn(0);
+    let s = summarise(&mut sidecar, &lines, &opts, &AtomicBool::new(false), |_| {}).unwrap();
+    assert_eq!((s.chunks, s.chunks_broken), (2, 0));
+    assert_eq!(
+        s.summary, ANSWER,
+        "the fake answers the overall prompt with its fixed text"
+    );
+
+    // slow enough that the cancel lands mid-generation of the first chunk
+    let mut sidecar = spawn(20);
+    let cancel = AtomicBool::new(false);
+    let started = Instant::now();
+    let err = summarise(&mut sidecar, &lines, &opts, &cancel, |p| {
+        if p > 0.0 {
+            cancel.store(true, Ordering::SeqCst);
+        }
+    })
+    .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ClientError::Failed {
+                kind: ErrorKind::Cancelled,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    // the fake's answer takes about 1.6 s at 20 ms a token; cancelled, far less
+    assert!(
+        started.elapsed() < Duration::from_millis(1000),
+        "{:?}",
+        started.elapsed()
+    );
+}

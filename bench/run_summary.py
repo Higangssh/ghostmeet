@@ -43,6 +43,8 @@ MEETINGS = BENCH / "data/meetings"
 RESULTS = BENCH / "results/summary"
 RAW = BENCH / "results/raw/summary"
 MANIFEST = BENCH / "llm_models.json"
+# the app's prompt texts and grammar, one copy for both (crates/meetbutler-summarizer/src/summary.rs)
+PROMPTS_DIR = REPO / "crates/meetbutler-summarizer/prompts"
 
 CHUNK_SYLLABLES = 3000  # about ten minutes of speech
 # room for the lists of a two-hour meeting (some 80 items) in one answer; a chunk of
@@ -57,15 +59,7 @@ TOKENS_PER_SYLLABLE = 1.3
 
 # the fixed summary format (requirements SUM-1); whitespace bounded so greedy decoding
 # cannot wander off into blank space
-GRAMMAR = r'''
-root ::= "{" ws "\"summary\"" ws ":" ws string "," ws "\"decisions\"" ws ":" ws strlist "," ws "\"action_items\"" ws ":" ws actlist "," ws "\"open_questions\"" ws ":" ws strlist ws "}"
-strlist ::= "[" ws ( string ( ws "," ws string )* )? ws "]"
-actlist ::= "[" ws ( action ( ws "," ws action )* )? ws "]"
-action ::= "{" ws "\"owner\"" ws ":" ws string "," ws "\"task\"" ws ":" ws string "," ws "\"due\"" ws ":" ws string ws "}"
-string ::= "\"" char* "\""
-char ::= [^"\\\x7F\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
-ws ::= [ \t\n]{0,8}
-'''.strip()
+GRAMMAR = (PROMPTS_DIR / "summary.gbnf").read_text()
 
 INSTRUCTIONS = """다음은 회의를 받아 적은 전사입니다. 누가 말했는지는 표시되어 있지 않습니다.
 이 회의를 정리해서 JSON 하나로만 답하세요. 필드는 다음과 같습니다.
@@ -85,7 +79,7 @@ INSTRUCTIONS = """다음은 회의를 받아 적은 전사입니다. 누가 말�
 
 # the second prompt, aimed at what the first one missed on the synthetic meetings: decisions
 # written down only as the action that follows them, and numbers changed on the way out
-INSTRUCTIONS_P2 = INSTRUCTIONS.replace(
+_P2_FROM_P1 = INSTRUCTIONS.replace(
     "- 결정마다 무엇에 대한 결정인지(기능이나 안건 이름)와 정한 내용(날짜, 금액, 인원 등)을 함께 적습니다.\n",
     # generic words for settling something, not the generator's own sentences
     "- 확정, 승인, 유지, 진행, 채택처럼 무언가를 정하는 말이 나오면 그것은 결정입니다. 안건마다 빠짐없이 적습니다.\n"
@@ -93,11 +87,12 @@ INSTRUCTIONS_P2 = INSTRUCTIONS.replace(
     "- 결정마다 무엇에 대한 결정인지(기능이나 안건 이름)와 정한 내용(날짜, 금액, 인원 등)을 함께 적습니다.\n"
     "- 숫자와 날짜는 전사에 나온 글자 그대로 옮겨 적습니다. 처음 제안한 값이 바뀌었으면 마지막에 확정한 값을 적습니다.\n",
 )
+INSTRUCTIONS_P2 = (PROMPTS_DIR / "instructions.txt").read_text()  # what the app sends
+assert INSTRUCTIONS_P2 == _P2_FROM_P1, "p2 is p1 plus its rules; edit both or neither"
 assert INSTRUCTIONS_P2 != INSTRUCTIONS
 PROMPTS = {"p1": INSTRUCTIONS, "p2": INSTRUCTIONS_P2}
 
-MERGE = """다음은 한 회의를 부분별로 요약한 글입니다. 이 내용을 바탕으로 회의 전체를 3~5문장으로
-요약하세요. 요약문만 쓰고 다른 말은 덧붙이지 마세요."""
+MERGE = (PROMPTS_DIR / "merge.txt").read_text()
 
 
 def chat_template(model: Path) -> str:
