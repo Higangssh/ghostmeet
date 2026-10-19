@@ -33,6 +33,7 @@ fn request(prompt: &str) -> GenerateRequest {
         max_tokens: 512,
         n_ctx: 4096,
         grammar: None,
+        repeat_penalty: None,
     }
 }
 

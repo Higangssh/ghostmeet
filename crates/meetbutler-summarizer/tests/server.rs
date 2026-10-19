@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use meetbutler_summarizer::protocol::{Event, Generated, Phase};
+use meetbutler_summarizer::protocol::{Event, GenerateRequest, Generated, Phase};
 use meetbutler_summarizer::server::{serve, Generator};
 use serde_json::{json, Value};
 
@@ -18,6 +18,7 @@ struct Fake {
     delay: Duration,
     loads: Arc<AtomicUsize>,
     contexts: Arc<Mutex<Vec<u32>>>,
+    penalties: Arc<Mutex<Vec<Option<f32>>>>,
 }
 
 impl Fake {
@@ -27,6 +28,7 @@ impl Fake {
             delay: Duration::ZERO,
             loads: Arc::default(),
             contexts: Arc::default(),
+            penalties: Arc::default(),
         }
     }
     fn slow(text: &'static str, ms: u64) -> Self {
@@ -47,13 +49,12 @@ impl Generator for Fake {
     }
     fn generate(
         &mut self,
-        prompt: &str,
-        max_tokens: u32,
-        n_ctx: u32,
-        _grammar: Option<&str>,
+        req: &GenerateRequest,
         on_progress: &mut dyn FnMut(Phase, u32, u32) -> bool,
     ) -> Result<Generated, String> {
-        self.contexts.lock().unwrap().push(n_ctx);
+        let (prompt, max_tokens) = (req.prompt.as_str(), req.max_tokens);
+        self.penalties.lock().unwrap().push(req.repeat_penalty);
+        self.contexts.lock().unwrap().push(req.n_ctx);
         if prompt == "explode" {
             return Err("out of memory".into());
         }
@@ -389,4 +390,17 @@ fn each_request_gets_the_context_it_asks_for_without_a_reload() {
 
     assert_eq!(*contexts.lock().unwrap(), [2048, 32768]);
     assert_eq!(loads.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn sampling_options_reach_the_generator_and_default_to_none() {
+    let fake = Fake::new("ok");
+    let penalties = fake.penalties.clone();
+    let r = start(fake);
+    r.send(generate("plain", "x"));
+    r.send(json!({"type": "generate", "id": "p", "model": "m.gguf", "prompt": "x", "max_tokens": 8, "n_ctx": 512, "repeat_penalty": 1.1}));
+
+    r.out.wait_for("done", "p");
+
+    assert_eq!(*penalties.lock().unwrap(), [None, Some(1.1)]);
 }

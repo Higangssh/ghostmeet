@@ -12,7 +12,7 @@ use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::sampling::LlamaSampler;
 
-use crate::protocol::{Generated, Phase};
+use crate::protocol::{GenerateRequest, Generated, Phase};
 use crate::server::Generator;
 
 /// Prompt tokens decoded per batch.
@@ -54,12 +54,10 @@ impl Generator for Llama {
 
     fn generate(
         &mut self,
-        prompt: &str,
-        max_tokens: u32,
-        n_ctx: u32,
-        grammar: Option<&str>,
+        req: &GenerateRequest,
         on_progress: &mut dyn FnMut(Phase, u32, u32) -> bool,
     ) -> Result<Generated, String> {
+        let (prompt, max_tokens, n_ctx) = (req.prompt.as_str(), req.max_tokens, req.n_ctx);
         let model = self.model.as_ref().ok_or("no model loaded")?;
         let vocab = model.vocab();
         let tokens = vocab.tokenize(prompt.as_bytes(), true, true);
@@ -99,14 +97,24 @@ impl Generator for Llama {
         }
         let prompt_sec = started.elapsed().as_secs_f64();
 
-        // write the answer
-        let mut sampler = match grammar {
-            Some(g) => LlamaSampler::chain_simple([
+        // write the answer: optional repeat penalty, optional grammar, then greedy
+        let mut chain = Vec::new();
+        if let Some(penalty) = req.repeat_penalty {
+            chain.push(LlamaSampler::penalties(
+                vocab.n_tokens(),
+                256,
+                penalty,
+                0.0,
+                0.0,
+            ));
+        }
+        if let Some(g) = req.grammar.as_deref() {
+            chain.push(
                 LlamaSampler::grammar(model, g, "root").map_err(|e| format!("grammar: {e}"))?,
-                LlamaSampler::greedy(),
-            ]),
-            None => LlamaSampler::greedy(),
-        };
+            );
+        }
+        chain.push(LlamaSampler::greedy());
+        let mut sampler = LlamaSampler::chain_simple(chain);
         let started = Instant::now();
         let mut out = Vec::new();
         let mut pos = tokens.len() as i32;

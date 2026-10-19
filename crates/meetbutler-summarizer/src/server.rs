@@ -19,10 +19,7 @@ pub trait Generator {
     fn load(&mut self, model: &Path) -> Result<(), String>;
     fn generate(
         &mut self,
-        prompt: &str,
-        max_tokens: u32,
-        n_ctx: u32,
-        grammar: Option<&str>,
+        req: &GenerateRequest,
         on_progress: &mut dyn FnMut(Phase, u32, u32) -> bool,
     ) -> Result<Generated, String>;
 }
@@ -177,32 +174,26 @@ fn run<W: Write, G: Generator>(
         );
     }
 
-    let result = gen.generate(
-        &req.prompt,
-        req.max_tokens,
-        req.n_ctx,
-        req.grammar.as_deref(),
-        &mut |phase, done, total| {
-            if cancel.load(Ordering::SeqCst) {
-                return false;
-            }
-            // the prompt is reported once per batch; tokens are many, so only every few
-            let report =
-                phase == Phase::Prompt || done == 1 || done % PROGRESS_EVERY == 0 || done == total;
-            if report {
-                emit(
-                    &mut *out,
-                    Event::Progress {
-                        id: req.id.clone(),
-                        phase,
-                        done,
-                        total,
-                    },
-                );
-            }
-            true
-        },
-    );
+    let result = gen.generate(req, &mut |phase, done, total| {
+        if cancel.load(Ordering::SeqCst) {
+            return false;
+        }
+        // the prompt is reported once per batch; tokens are many, so only every few
+        let report =
+            phase == Phase::Prompt || done == 1 || done % PROGRESS_EVERY == 0 || done == total;
+        if report {
+            emit(
+                &mut *out,
+                Event::Progress {
+                    id: req.id.clone(),
+                    phase,
+                    done,
+                    total,
+                },
+            );
+        }
+        true
+    });
 
     if cancel.load(Ordering::SeqCst) {
         cancelled(out, &req.id);

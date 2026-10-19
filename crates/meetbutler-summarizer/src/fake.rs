@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use crate::protocol::{Generated, Phase};
+use crate::protocol::{GenerateRequest, Generated, Phase};
 use crate::server::Generator;
 
 pub const ANSWER: &str =
@@ -24,12 +24,10 @@ impl Generator for Fake {
 
     fn generate(
         &mut self,
-        prompt: &str,
-        max_tokens: u32,
-        _n_ctx: u32,
-        _grammar: Option<&str>,
+        req: &GenerateRequest,
         on_progress: &mut dyn FnMut(Phase, u32, u32) -> bool,
     ) -> Result<Generated, String> {
+        let (prompt, max_tokens) = (req.prompt.as_str(), req.max_tokens);
         let total = (ANSWER.chars().count() as u32).min(max_tokens);
         let mut text = String::new();
         for (i, c) in ANSWER.chars().take(total as usize).enumerate() {

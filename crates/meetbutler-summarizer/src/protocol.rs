@@ -29,6 +29,10 @@ pub struct GenerateRequest {
     /// A GBNF grammar the output must follow (the fixed summary format), if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grammar: Option<String>,
+    /// Penalise repeating the last 256 tokens (llama.cpp's repeat penalty, 1.0 = off).
+    /// Small models can otherwise loop on one list item until max_tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_penalty: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
