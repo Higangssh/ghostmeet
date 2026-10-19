@@ -12,6 +12,7 @@ log = "0.4.34"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.21"
+tract-onnx = { version = "0.23.9", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.16.0", optional = true, features = ["metal"] }
@@ -22,8 +23,18 @@ whisper-rs = { version = "0.16.0", optional = true }
 [features]
 # whisper.cpp (Metal on macOS). Off by default so the fast suite builds without it.
 whisper = ["dep:whisper-rs"]
+# Silero VAD (the benchmark's onnx export) on tract, a pure-Rust ONNX runtime
+silero = ["dep:tract-onnx"]
 
 [dev-dependencies]
 hound = "3.5.1"
 serde_json = "1"
 tempfile = "3.27.0"
+
+[[example]]
+name = "final_pass"
+required-features = ["whisper", "silero"]
+
+[[example]]
+name = "vad_spans"
+required-features = ["silero"]

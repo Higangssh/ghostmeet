@@ -8,6 +8,8 @@ values (`engines.VAD`). The Rust engine reimplements the span rule over probabil
 these two together let it check that rule against sherpa without either model.
 
 Run with the bench venv:  bench/.venv/bin/python -I bench/silero_reference.py WAV
+With --fleurs MINUTES, the WAV is first built from FLEURS the way run_stream.py builds
+its session (real read speech, not synthetic) and written to the given WAV path.
 """
 from __future__ import annotations
 
@@ -63,8 +65,20 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("wav", type=Path)
     ap.add_argument("--out", type=Path)
+    ap.add_argument("--fleurs", type=float, metavar="MINUTES")
     args = ap.parse_args()
 
+    if args.fleurs:
+        from run_stream import build_session
+
+        audio, _, _ = build_session(args.fleurs)
+        pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2")
+        args.wav.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(args.wav), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(engines.SAMPLE_RATE)
+            w.writeframes(pcm.tobytes())
     audio = read_wav(args.wav)
     ref = {
         "sample_rate": engines.SAMPLE_RATE,

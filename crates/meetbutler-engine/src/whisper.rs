@@ -1,21 +1,19 @@
-//! whisper.cpp through whisper-rs: the decoder and the Silero VAD.
+//! whisper.cpp through whisper-rs: the decoder.
 //!
 //! Decoding options are the benchmark's (`bench/engines.py`, `WhisperCpp`): beam search
 //! of 5, no text carried between calls, temperature 0 with whisper.cpp's default
-//! fallback, 4 threads, flash attention on (whisper-server's default). Silero is
-//! whisper.cpp's own ggml port (v5.1.2), used only for its frame probabilities; the spans
-//! are ours.
+//! fallback, 4 threads, flash attention on (whisper-server's default). Speech is cut
+//! before it gets here (`silero`, `spans`); whisper.cpp's own VAD is never used.
 
 use std::path::Path;
 use std::sync::Arc;
 
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
-    WhisperVadContext, WhisperVadContextParams,
 };
 
 use crate::incremental::RawSegment;
-use crate::span_decoder::{SpanDecode, SpeechProbs};
+use crate::span_decoder::SpanDecode;
 use crate::TranscribeError;
 
 /// Performance cores on an M4; the budget every engine had in the benchmark.
@@ -101,33 +99,5 @@ impl SpanDecode for WhisperDecoder {
             });
         }
         Ok(out)
-    }
-}
-
-/// whisper.cpp's Silero, for frame probabilities only.
-pub struct SileroVad {
-    ctx: WhisperVadContext,
-}
-
-impl SileroVad {
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, TranscribeError> {
-        let path = path.as_ref();
-        let mut params = WhisperVadContextParams::new();
-        params.set_n_threads(1);
-        params.set_use_gpu(false); // a tiny LSTM, and it runs beside the decoder
-        let path_str = path.to_str().ok_or("VAD model path is not UTF-8")?;
-        let ctx = WhisperVadContext::new(path_str, params)
-            .map_err(|e| format!("loading {}: {e}", path.display()))?;
-        Ok(Self { ctx })
-    }
-}
-
-impl SpeechProbs for SileroVad {
-    fn probs(&mut self, audio: &[f32]) -> Result<Vec<f32>, TranscribeError> {
-        if audio.is_empty() {
-            return Ok(Vec::new());
-        }
-        self.ctx.detect_speech(audio)?;
-        Ok(self.ctx.probabilities().to_vec())
     }
 }

@@ -1,20 +1,21 @@
 //! Slow tier: the real models on synthetic speech.
 //!
 //!     bench/make_synth.sh && bench/make_replies.sh      # synthetic audio, macOS `say`
-//!     cargo test -p meetbutler-engine --features whisper --test slow -- --ignored --nocapture
+//!     cargo test -p meetbutler-engine --features whisper,silero --test slow -- --ignored --nocapture
 //!
 //! Models are read from `bench/data/models` (or `MEETBUTLER_MODELS`), already downloaded;
 //! nothing here touches the network. The audio is made-up lines in the Yuna voice, never
 //! a meeting.
-#![cfg(feature = "whisper")]
+#![cfg(all(feature = "whisper", feature = "silero"))]
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use meetbutler_engine::incremental::{IncrementalTranscriber, Segment, WindowConfig};
-use meetbutler_engine::span_decoder::{final_transcript, SpanTranscriber, SpeechProbs};
-use meetbutler_engine::spans::{speech_spans, Span, BENCH};
-use meetbutler_engine::whisper::{SileroVad, WhisperDecoder, WhisperModel};
+use meetbutler_engine::silero::SileroOnnx;
+use meetbutler_engine::span_decoder::{final_transcript, SpanTranscriber};
+use meetbutler_engine::spans::BENCH;
+use meetbutler_engine::whisper::{WhisperDecoder, WhisperModel};
 use meetbutler_engine::{AudioSource, SAMPLE_RATE};
 
 fn repo() -> PathBuf {
@@ -42,8 +43,8 @@ fn model(name: &str) -> Arc<WhisperModel> {
     Arc::new(WhisperModel::load(models().join(format!("ggml-{name}.bin")), true).unwrap())
 }
 
-fn vad() -> SileroVad {
-    SileroVad::load(models().join("ggml-silero-v5.1.2.bin")).unwrap()
+fn vad() -> SileroOnnx {
+    SileroOnnx::load(models().join("silero_vad.onnx")).unwrap()
 }
 
 fn decoder(name: &str) -> WhisperDecoder {
@@ -134,100 +135,17 @@ fn script() -> String {
 
 const SHORT_REPLIES: &[&str] = &["네", "감사합니다", "아니요", "맞아요", "잠깐만요", "글쎄요"];
 
+/// Replies the benchmark's VAD itself never puts in a span, so no decoder or blocklist can
+/// keep them: the "네" at 9.3-10.1 s, 0.7 s after a sentence (absent from
+/// `fixtures/silero_synth.json` too). VAD recall is measured in the benchmark; this test
+/// is about what happens to speech once it is in a span.
+const MISSED_BY_THE_VAD: &[&str] = &["네"];
+
 fn text_of(segs: &[Segment]) -> String {
     segs.iter()
         .map(|s| s.text.as_str())
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-#[test]
-#[ignore = "needs bench/data models and synthetic audio"]
-fn whisper_cpp_silero_spans_match_the_benchmark_vad() {
-    let _g = serial();
-    let reference: serde_json::Value =
-        serde_json::from_str(include_str!("fixtures/silero_synth.json")).unwrap();
-    let audio = read_wav(&synth().join("session.wav"));
-    assert_eq!(
-        audio.len() as u64,
-        reference["total_samples"].as_u64().unwrap(),
-        "bench/data/synth/session.wav is not the audio the fixture was made from; \
-         regenerate both (make_synth.sh, silero_reference.py)"
-    );
-    let want: Vec<Span> = reference["spans"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| {
-            Span::new(
-                p[0].as_u64().unwrap() as usize,
-                p[1].as_u64().unwrap() as usize,
-            )
-        })
-        .collect();
-
-    let probs = vad().probs(&audio).unwrap();
-    let got = speech_spans(&probs[..audio.len() / 512], audio.len(), &BENCH);
-
-    // pair spans by overlap: one VAD finding a span the other missed must not shift
-    // every later comparison
-    let overlaps = |a: &Span, b: &Span| a.start < b.end && b.start < a.end;
-    eprintln!("bench (sherpa, Silero v4)  vs  whisper.cpp (Silero v5.1.2), seconds:");
-    let mut worst = 0.0f32;
-    let mut missing = Vec::new();
-    for w in &want {
-        match got.iter().find(|g| overlaps(w, g)) {
-            Some(g) => {
-                let d = (w.start_sec() - g.start_sec())
-                    .abs()
-                    .max((w.end_sec() - g.end_sec()).abs());
-                worst = worst.max(d);
-                eprintln!(
-                    "  {:7.3}-{:7.3}   {:7.3}-{:7.3}   {d:.3}",
-                    w.start_sec(),
-                    w.end_sec(),
-                    g.start_sec(),
-                    g.end_sec()
-                );
-            }
-            None => {
-                missing.push(*w);
-                eprintln!("  {:7.3}-{:7.3}   (none)", w.start_sec(), w.end_sec());
-            }
-        }
-    }
-    let extra: Vec<&Span> = got
-        .iter()
-        .filter(|g| !want.iter().any(|w| overlaps(w, g)))
-        .collect();
-    for g in &extra {
-        eprintln!(
-            "  (none)            {:7.3}-{:7.3}",
-            g.start_sec(),
-            g.end_sec()
-        );
-    }
-    eprintln!(
-        "  {} vs {} spans, {} only in v4, {} only in v5, worst matched boundary {worst:.3} s",
-        want.len(),
-        got.len(),
-        missing.len(),
-        extra.len()
-    );
-
-    // Measured 2026-10-19 on this session: v5 finds one extra 0.8 s span (a "네" v4
-    // missed) and moves one start by 0.224 s; every other boundary is within 0.064 s.
-    // This guards against getting worse than that, not against the difference itself.
-    assert!(
-        missing.is_empty(),
-        "speech the benchmark VAD found is gone: {missing:?}"
-    );
-    assert!(
-        extra.len() <= 1,
-        "{} spans only whisper.cpp finds",
-        extra.len()
-    );
-    assert!(worst <= 0.25, "a boundary moved by {worst:.3} s");
 }
 
 #[test]
@@ -255,7 +173,10 @@ fn the_final_pass_keeps_every_short_reply_in_the_synthetic_session() {
         started.elapsed().as_secs_f32()
     );
     let found: Vec<&str> = out.iter().map(|s| s.text.as_str()).collect();
-    for reply in SHORT_REPLIES {
+    for reply in SHORT_REPLIES
+        .iter()
+        .filter(|r| !MISSED_BY_THE_VAD.contains(r))
+    {
         assert!(
             found
                 .iter()
