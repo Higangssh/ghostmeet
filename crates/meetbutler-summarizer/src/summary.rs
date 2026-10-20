@@ -1,6 +1,6 @@
 //! The meeting summary (SUM-1): the transcript cut into chunks of about ten minutes, each
-//! summarised by the local model in the fixed format, the lists joined, and one short
-//! last prompt for the overall summary. The configuration the benchmark chose
+//! summarised by the local model in the fixed format, the lists joined (`merge`), and
+//! one short last prompt for the overall summary. The configuration the benchmark chose
 //! (`bench/results/RESULTS.md` §8: qwen3.5-4b, chunked, prompt p2); the prompt texts and
 //! grammar are the files in `prompts/`, which `bench/run_summary.py` reads too.
 
@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde::{Deserialize, Serialize};
 
 use crate::client::{ClientError, Sidecar};
+use crate::merge::{merge, Part};
 use crate::protocol::{ErrorKind, Event, GenerateRequest, Phase, Stats};
 
 pub const INSTRUCTIONS: &str = include_str!("../prompts/instructions.txt");
@@ -49,6 +50,9 @@ pub struct Summary {
     pub input_tokens: u64,
     #[serde(default)]
     pub output_tokens: u64,
+    /// Where each listed item was said (SUM-3), from the merge step.
+    #[serde(default)]
+    pub evidence: crate::merge::Evidence,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -209,6 +213,7 @@ pub fn summarise(
     // the chunks are the work; the overall summary is short and counts as one more step
     let steps = ranges.len() as f64 + 1.0;
     let mut parts = Vec::new();
+    let mut summaries = Vec::new();
     for (i, range) in ranges.iter().enumerate() {
         if cancel.load(Ordering::SeqCst) {
             return Err(cancelled());
@@ -245,23 +250,24 @@ pub fn summarise(
             out.chunks_broken += 1;
             continue;
         };
-        parts.push(part.summary);
-        for d in part.decisions {
-            if !out.decisions.contains(&d) {
-                out.decisions.push(d);
-            }
-        }
-        for a in part.action_items {
-            if !out.action_items.contains(&a) {
-                out.action_items.push(a);
-            }
-        }
-        for q in part.open_questions {
-            if !out.open_questions.contains(&q) {
-                out.open_questions.push(q);
-            }
-        }
+        summaries.push(part.summary.clone());
+        parts.push(Part {
+            lines: range.clone(),
+            summary: part,
+        });
     }
+    let merged = merge(lines, parts);
+    (
+        out.decisions,
+        out.action_items,
+        out.open_questions,
+        out.evidence,
+    ) = (
+        merged.decisions,
+        merged.action_items,
+        merged.open_questions,
+        merged.evidence,
+    );
     out.chunks = ranges.len();
     if cancel.load(Ordering::SeqCst) {
         return Err(cancelled());
@@ -270,7 +276,7 @@ pub fn summarise(
     let (text, stats) = run(
         gen,
         opts,
-        chatml(&format!("{MERGE}\n\n{}", parts.join("\n"))),
+        chatml(&format!("{MERGE}\n\n{}", summaries.join("\n"))),
         None,
         MAX_TOKENS_OVERALL,
         &mut on_event,

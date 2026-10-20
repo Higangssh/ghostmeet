@@ -1,0 +1,37 @@
+{
+ "model": "qwen3.5-4b",
+ "tier": "8GB",
+ "meeting": "weekly-30m",
+ "mode": "chunked",
+ "prompt": "p2",
+ "merge": "app",
+ "error": null,
+ "score": {
+  "decisions_evidence_ok": 8,
+  "actions_evidence_ok": 7,
+  "format_ok": true,
+  "decisions_found": 8,
+  "decisions_total": 12,
+  "decisions_wrong_value": 1,
+  "decisions_once_found": 8,
+  "decisions_once_total": 12,
+  "decisions_flagged": 0,
+  "flagged_wrong_value": 0,
+  "actions_found": 7,
+  "actions_owner_ok": 5,
+  "actions_due_ok": 7,
+  "actions_total": 10,
+  "open_questions_found": 0,
+  "open_questions_total": 2,
+  "withdrawn_listed": 1,
+  "withdrawn_total": 3,
+  "invented_people": [],
+  "unknown_owners": [
+   "소유",
+   "시원님"
+  ],
+  "invented_numbers": [],
+  "summary_chars": 263
+ },
+ "wall_sec": 71.6
+}

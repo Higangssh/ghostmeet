@@ -78,14 +78,34 @@ async function open(id, kind) {
 
 // --- summary: model output, so text nodes only ---
 
-function list(title, items) {
+// SUM-3: an item's evidence is the index of the transcript line it came from; the
+// summary was made from the transcript in the order it is listed on screen
+function jumpTo(line) {
+  const li = $("captions").children[line];
+  if (!li) return;
+  li.scrollIntoView({ block: "center", behavior: "smooth" });
+  li.classList.add("evidence");
+  setTimeout(() => li.classList.remove("evidence"), 2000);
+}
+
+function list(title, items, evidence = []) {
   if (!items.length) return [];
   const h = document.createElement("h3");
   h.textContent = title;
   const ul = document.createElement("ul");
-  ul.replaceChildren(...items.map((text) => {
+  ul.replaceChildren(...items.map((text, i) => {
     const li = document.createElement("li");
     li.textContent = text;
+    const at = evidence[i];
+    if (Number.isInteger(at)) {
+      const go = document.createElement("button");
+      go.type = "button";
+      go.className = "go";
+      go.title = "이 내용이 나온 곳";
+      go.textContent = "↗";
+      go.addEventListener("click", () => jumpTo(at));
+      li.append(" ", go);
+    }
     return li;
   }));
   return [h, ul];
@@ -95,11 +115,12 @@ function renderSummary(s) {
   const p = document.createElement("p");
   p.textContent = s.summary;
   const actions = s.action_items.map((a) => [a.owner, a.task, a.due && `(${a.due})`].filter(Boolean).join(" · "));
+  const ev = s.evidence || {};
   $("summary-body").replaceChildren(
     p,
-    ...list("결정", s.decisions),
-    ...list("할 일", actions),
-    ...list("미해결 질문", s.open_questions),
+    ...list("결정", s.decisions, ev.decisions),
+    ...list("할 일", actions, ev.action_items),
+    ...list("미해결 질문", s.open_questions, ev.open_questions),
   );
 }
 

@@ -68,3 +68,5 @@ ol, ul { list-style: none; margin: 0; padding: 0; }
 #captions .who { font-size: 11px; color: var(--muted); margin-right: 6px; }
 #sessions li { padding: 6px 0; border-bottom: 1px solid var(--line); cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
 #sessions .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+#summary-body .go { font: inherit; font-size: 11px; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0 2px; }
+#captions li.evidence { background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 4px; }

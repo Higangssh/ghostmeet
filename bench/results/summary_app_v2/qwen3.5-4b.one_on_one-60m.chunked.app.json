@@ -1,0 +1,36 @@
+{
+ "model": "qwen3.5-4b",
+ "tier": "8GB",
+ "meeting": "one_on_one-60m",
+ "mode": "chunked",
+ "prompt": "p2",
+ "merge": "app",
+ "error": null,
+ "score": {
+  "decisions_evidence_ok": 18,
+  "actions_evidence_ok": 14,
+  "format_ok": true,
+  "decisions_found": 18,
+  "decisions_total": 25,
+  "decisions_wrong_value": 0,
+  "decisions_once_found": 18,
+  "decisions_once_total": 25,
+  "decisions_flagged": 0,
+  "flagged_wrong_value": 0,
+  "actions_found": 14,
+  "actions_owner_ok": 14,
+  "actions_due_ok": 14,
+  "actions_total": 16,
+  "open_questions_found": 0,
+  "open_questions_total": 1,
+  "withdrawn_listed": 0,
+  "withdrawn_total": 1,
+  "invented_people": [],
+  "unknown_owners": [
+   "운영팀"
+  ],
+  "invented_numbers": [],
+  "summary_chars": 473
+ },
+ "wall_sec": 130.3
+}

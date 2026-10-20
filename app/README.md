@@ -11,6 +11,9 @@ cargo test -p meetbutler                      # security posture (no port, CSP, 
 app/bundle.sh                                 # the .app/.dmg with the sidecar inside (needs `cargo tauri`)
 ```
 
+The bundle needs the Tauri CLI, a development tool only: `cargo install tauri-cli
+--version 2.12.3 --locked` (the version this was built with).
+
 The summary runs in `meetbutler-summarizer`, a separate executable the app starts after
 the final pass and that exits when the summary is done. The app looks for it next to its
 own executable (`MEETBUTLER_SUMMARIZER` overrides). A workspace `cargo build --release`

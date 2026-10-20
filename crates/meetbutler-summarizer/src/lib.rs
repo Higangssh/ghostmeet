@@ -13,6 +13,7 @@ pub mod client;
 pub mod fake;
 #[cfg(feature = "llama")]
 pub mod llama;
+pub mod merge;
 pub mod protocol;
 pub mod server;
 pub mod summary;

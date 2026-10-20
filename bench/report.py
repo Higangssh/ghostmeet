@@ -243,6 +243,51 @@ def vocabulary_section(plain: list[dict], vocab: list[dict]) -> list[str]:
     return out
 
 
+def app_section(bench: dict[str, list[dict]], app: dict[str, list[dict]]) -> list[str]:
+    """The app's own summary (Rust, `summary::summarise` with the merge step) against the
+    bench's join, on the same model answers, and how often its evidence is right."""
+    out = [
+        "",
+        "### 앱의 요약: 합치기 단계와 근거 구간(SUM-3)",
+        "",
+        "앱이 쓰는 Rust 경로(`examples/summarise`, `app_summary.py`)로 같은 4B chunked p2를 돌렸다. 프롬프트가 "
+        "같고 greedy라 구간마다 모델의 답은 bench와 같고, 다른 것은 합치기뿐이다. 앱의 합치기는 나중 값이 같은 "
+        "항목의 앞 값을 대신하고, 미룬 결정은 미해결로 옮기고, 의장 선포(\"계속 심사\", \"가결되었음을 "
+        "선포\")가 있는 회의에서는 계속 심사된 안건 구간의 결정을 미해결로 내린다. 근거가 맞음은 찾은 항목의 "
+        "근거 줄(앞뒤 한 줄 포함)이 그 항목의 값(값이 없으면 열쇠말)을 말하는 비율이다.",
+        "",
+        "| 대본 | 합치기 | 결정 | 값 틀림 | 철회를 결정으로 | 미해결 | 할 일 | 결정 근거 맞음 | 할 일 근거 맞음 |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for name in ("v2", "asr"):
+        for label, rows in (("bench", [r for r in bench[name] if r.get("prompt") == "p2"]), ("앱", app[name])):
+            sc = [r["score"] for r in rows if not r.get("error") and r["score"].get("format_ok")]
+            if not sc:
+                continue
+            t = lambda k: sum(x.get(k, 0) for x in sc)  # noqa: E731
+            ev = lambda k, n: f"{t(k)}/{t(n)} ({t(k) / t(n):.0%})" if label == "앱" and t(n) else "—"  # noqa: E731
+            out.append(
+                f"| {name} | {label} | {t('decisions_found')}/{t('decisions_total')} | {t('decisions_wrong_value')} "
+                f"| {t('withdrawn_listed')} | {t('open_questions_found')}/{t('open_questions_total')} "
+                f"| {t('actions_found')}/{t('actions_total')} | {ev('decisions_evidence_ok', 'decisions_found')} "
+                f"| {ev('actions_evidence_ok', 'actions_found')} |"
+            )
+    out += [
+        "",
+        "합성 대본에서 앱의 합치기는 점수를 바꾸지 않았다. 바뀐 것은 한 건뿐으로, 결정에 적힌 \"다음 회의 때 "
+        "다시 보며 오늘 정하지 않습니다\"를 미해결로 옮겼다. 철회된 값이 결정으로 남은 경우는 한 구간 안에서 "
+        "모델이 적은 것이라 합치기가 볼 수 없다(음성 경로의 하나는 받아 적기가 최종 금액을 놓쳤다). 채점기는 "
+        "\"500만 원에서 400만 원으로 확정\"을 철회 값으로 세고 있었다. 이제 \"에서 + 숫자\"를 바뀐 값으로 "
+        "보고, 모든 표를 다시 채점했다(결과 9개에서 \"철회를 결정으로\" 12건이 빠짐).",
+        "",
+        "의장 선포가 있는 회의(국회 상임위 소위 회의록 한 건, 로컬에서만 돌리고 원문과 요약은 커밋하지 "
+        "않음)에서 같은 모델 답에 앱의 합치기를 쓰면: 계속 심사된 두 안건 구간의 결정 18개가 미해결로 "
+        "내려갔고(계속 심사된 법안을 \"통과\"로 적은 오류가 사라짐), 가결된 안건 안에서 미룬 조항 2개만 "
+        "미해결로 갔고, 의장의 선포 문장이 근거 줄과 함께 목록에 들어갔다. 결정 75→62, 미해결 16→38.",
+    ]
+    return out
+
+
 def summary_section(rows: list[dict]) -> list[str]:
     """Section 8: local summary models on the synthetic meetings (run_summary.py)."""
     short = [r for r in rows if not r["meeting"].endswith("-120m")]
@@ -564,6 +609,9 @@ def main() -> None:
         vocab = load("summary_asr_vocab/*.json")
         if vocab:
             lines += vocabulary_section([r for r in asr if r.get("prompt") == "p2"], vocab)
+        app = {k: load(f"summary_app_{k}/*.json") for k in ("v2", "asr")}
+        if any(app.values()):
+            lines += app_section({"v2": v2, "asr": asr}, app)
 
     out = RESULTS / "RESULTS.md"
     out.write_text("\n".join(lines) + "\n")
