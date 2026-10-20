@@ -100,6 +100,8 @@ pub enum RecorderError {
     NoChannels,
     #[error("session ids are letters, digits, '-' and '_'")]
     BadId,
+    #[error("this session is recording or being transcribed")]
+    Busy,
     #[error(transparent)]
     Io(#[from] io::Error),
     #[error(transparent)]
@@ -260,6 +262,46 @@ impl Recorder {
         session.transcript_segments = self.store.load_segments(session_id)?.len() as i64;
         self.store.save_session(&session)?;
         Ok(session)
+    }
+
+    /// Give a session a title (trimmed).
+    pub fn rename(&self, session_id: &str, title: &str) -> Result<()> {
+        let title = title.trim();
+        if let Some(live) = self.live().get_mut(session_id) {
+            live.session.title = title.to_string();
+            return Ok(self.store.save_session(&live.session)?);
+        }
+        if self.store.load_session(session_id)?.is_none() {
+            return Err(RecorderError::NotFound);
+        }
+        Ok(self.store.rename_session(session_id, title)?)
+    }
+
+    /// Delete a session for good: its transcript and summary, then its recording. A
+    /// session still recording or in a pass is refused.
+    pub fn delete(&self, session_id: &str) -> Result<()> {
+        if !valid_id(session_id) {
+            return Err(RecorderError::BadId);
+        }
+        if self.live().contains_key(session_id) {
+            return Err(RecorderError::Busy);
+        }
+        let session = self
+            .store
+            .load_session(session_id)?
+            .ok_or(RecorderError::NotFound)?;
+        if matches!(
+            session.status,
+            SessionStatus::Recording | SessionStatus::Transcribing | SessionStatus::Finalizing
+        ) {
+            return Err(RecorderError::Busy);
+        }
+        self.store.delete_session(session_id)?;
+        let audio = self.dir.join("sessions").join(session_id);
+        match std::fs::remove_dir_all(&audio) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e.into()),
+            _ => Ok(()),
+        }
     }
 
     /// Keep the user's vocabulary (STT-7) with a session, live or stopped, so the final

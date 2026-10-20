@@ -382,3 +382,50 @@ fn audio_arriving_after_stop_is_dropped() {
 
     assert_eq!(audio[0].total_samples(), SAMPLE_RATE);
 }
+
+#[test]
+fn deleting_a_session_removes_its_transcript_summary_and_audio() {
+    let dir = tempfile::tempdir().unwrap();
+    record(&dir, "gone", 2);
+    record(&dir, "kept", 1);
+    let recorder = Recorder::open(dir.path(), config(100_000)).unwrap();
+    let audio = dir.path().join("sessions").join("gone");
+    assert!(audio.join("mic.pcm").exists());
+
+    recorder.delete("gone").unwrap();
+
+    assert!(recorder.session("gone").unwrap().is_none());
+    assert!(recorder.transcript("gone").unwrap().is_none());
+    assert!(!audio.exists(), "the recording is deleted with it");
+    assert!(recorder.session("kept").unwrap().is_some(), "only that one");
+    assert!(dir.path().join("sessions/kept/mic.pcm").exists());
+}
+
+#[test]
+fn a_session_still_recording_cannot_be_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    let recorder = Recorder::open(dir.path(), config(100_000)).unwrap();
+    recorder.start("live", &[Channel::Mic], None, stub).unwrap();
+
+    assert!(recorder.delete("live").is_err());
+    assert!(recorder.session("live").unwrap().is_some());
+    assert!(
+        recorder.delete("../etc").is_err(),
+        "ids never reach the file system unchecked"
+    );
+    recorder.stop("live").unwrap();
+}
+
+#[test]
+fn renaming_a_session_keeps_the_rest() {
+    let dir = tempfile::tempdir().unwrap();
+    record(&dir, "named", 1);
+    let recorder = Recorder::open(dir.path(), config(100_000)).unwrap();
+
+    recorder.rename("named", "  주간 회의  ").unwrap();
+
+    let s = recorder.session("named").unwrap().unwrap();
+    assert_eq!(s.title, "주간 회의");
+    assert_eq!(s.transcript_segments, 1);
+    assert!(recorder.rename("nope", "x").is_err());
+}

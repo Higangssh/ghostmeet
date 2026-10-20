@@ -7,6 +7,8 @@
 //! thread. The summary runs in the sidecar (`meetbutler-summarizer`, shipped next to the
 //! app's executable), which is started for it and exits when it is done.
 
+pub mod markdown;
+
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
