@@ -41,8 +41,8 @@ git log --all --pretty=format: --name-only --diff-filter=A | sort -u \
 
 Expected hits, safe to ignore: the pattern lines in this file,
 `legacy/.env.example:2` (`sk-ant-...`, a placeholder), and
-`app/src-tauri/tauri.conf.json` and `app/make-icons.swift`, where the icon name
-`128x128@2x.png` looks like an email.
+`@2x` image names that look like an email (`128x128@2x.png`, `mascot@2x.png`) in
+`app/src-tauri/tauri.conf.json`, `app/make-icons.swift` and `app/ui/*.html`.
 Anything else is a finding.
 
 **Grep does not read images.** Screenshots, GIFs, icons and the demo asset can show real
