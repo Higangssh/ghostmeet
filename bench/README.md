@@ -146,7 +146,7 @@ VAD 기준값: `silero_reference.py`가 WAV(또는 `--fleurs 분`으로 만든 F
 
 ```bash
 bench/.venv/bin/python -I bench/meeting_gen.py                                 # 대본 9개
-bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench         # 생성기·채점기 테스트 21개
+bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench         # bench 테스트 전부(생성기·채점기·화자 분리)
 # (표준 라이브러리 unittest라 pytest가 필요 없다. bench/.venv는 위 "준비"에서 만든 venv다)
 ```
 
@@ -218,3 +218,5 @@ bench/.venv/bin/python -I bench/run_diar.py preregister            # test를 보
 bench/.venv/bin/python -I bench/run_diar.py extract-test pipe        # test embedding 저장, 사전 등록한 값만 그대로 적용
 bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench    # 모델·데이터 없이 도는 테스트
 ```
+
+테스트는 bench/.venv(위 pip 고정 명령으로 scipy까지 설치한 venv)에서 돌린다. 루트 `.venv`에는 scipy가 없어 diar_pipe 테스트가 실패한다.
