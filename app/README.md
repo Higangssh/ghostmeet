@@ -5,9 +5,17 @@ port; the window talks to Rust over Tauri IPC only.
 
 ```bash
 # models are read from MEETBUTLER_MODELS, else <app data>/models; the app never downloads them
+cargo build --release -p meetbutler-summarizer --features llama   # the summary sidecar, with llama.cpp
 MEETBUTLER_MODELS=$PWD/bench/data/models cargo run -p meetbutler --release
 cargo test -p meetbutler                      # security posture (no port, CSP, no network crates)
+app/bundle.sh                                 # the .app/.dmg with the sidecar inside (needs `cargo tauri`)
 ```
+
+The summary runs in `meetbutler-summarizer`, a separate executable the app starts after
+the final pass and that exits when the summary is done. The app looks for it next to its
+own executable (`MEETBUTLER_SUMMARIZER` overrides). A workspace `cargo build --release`
+without `--features llama` rebuilds it with the test backend only; build it again with
+the feature before running the app.
 
 Models, all downloaded ahead of time into that folder:
 
@@ -15,6 +23,7 @@ Models, all downloaded ahead of time into that folder:
 |---|---|---|---|
 | `ggml-small.bin` | live captions | huggingface.co/ggerganov/whisper.cpp | MIT |
 | `ggml-large-v3-turbo.bin` | final transcript | huggingface.co/ggerganov/whisper.cpp | MIT |
+| `qwen3.5-4b-Q4_K_M.gguf` | summary | built from Qwen/Qwen3.5-4B at `851bf6e`, see `bench/llm_models.json` (bytes, sha256, llama.cpp commit) | Apache-2.0 |
 | `silero_vad.onnx` | speech spans | github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx (k2-fsa's export of snakers4/silero-vad v4), 643,854 bytes, sha256 `9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6` | MIT |
 
 The VAD is that onnx file on tract, not whisper.cpp's `ggml-silero-v5.1.2.bin`: the ggml
@@ -46,6 +55,19 @@ Recording
 - [ ] Captions appear within a few seconds of speech (target: 3 s; measure and record).
 - [ ] Stop: the final pass runs ("최종본을 만드는 중… n%"), then the transcript switches
       from grey provisional captions to the final one.
+
+Summary
+- [ ] After the final pass, the summary runs on its own ("요약하는 중… n%"), then shows
+      the summary, decisions, action items and open questions. Note the time it took and
+      the meeting's length.
+- [ ] Activity Monitor while it runs: one `meetbutler-summarizer` process; it is gone
+      once the summary shows, and the app's memory is back where it was.
+- [ ] 취소 during the summary: it stops within a few seconds, shows 취소됨 and
+      다시 요약; 다시 요약 runs it again.
+- [ ] Without the summary model in the models folder: the transcript is unaffected and
+      the summary says it failed, naming the missing file.
+- [ ] Cmd+Q during the summary: the app quits promptly and no `meetbutler-summarizer`
+      is left running.
 
 Vocabulary (STT-7) — real speech; the benchmark only had synthetic voices
 - [ ] Put the attendees' names and a few terms in the vocabulary, hold a short meeting

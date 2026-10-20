@@ -2,6 +2,10 @@
 //!
 //! The app opens no port. The window talks to Rust over Tauri's IPC only, and the only
 //! audio that leaves a capture callback goes into a PcmStore in the data folder.
+//!
+//! After Stop: the final pass, then the summary, one after the other on one background
+//! thread. The summary runs in the sidecar (`meetbutler-summarizer`, shipped next to the
+//! app's executable), which is started for it and exits when it is done.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,8 +21,11 @@ use meetbutler_engine::recorder::{Channel, Recorder, RecorderConfig};
 use meetbutler_engine::silero::SileroOnnx;
 use meetbutler_engine::span_decoder::SpanTranscriber;
 use meetbutler_engine::spans::BENCH;
-use meetbutler_engine::store::Session;
+use meetbutler_engine::store::{Session, Summary as StoredSummary};
 use meetbutler_engine::whisper::{WhisperDecoder, WhisperModel};
+use meetbutler_summarizer::client::{ClientError, Sidecar};
+use meetbutler_summarizer::protocol::ErrorKind;
+use meetbutler_summarizer::summary::{self, Summary};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 
@@ -26,6 +33,20 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 pub const LIVE_MODEL: &str = "small";
 pub const FINAL_MODEL: &str = "large-v3-turbo";
 pub const VAD_MODEL: &str = "silero_vad.onnx";
+/// The local summary model (`bench/results/RESULTS.md` §8), in the models folder.
+pub const SUMMARY_MODEL: &str = "qwen3.5-4b";
+pub const SUMMARY_MODEL_FILE: &str = "qwen3.5-4b-Q4_K_M.gguf";
+const SIDECAR: &str = "meetbutler-summarizer";
+
+/// The sidecar: `MEETBUTLER_SUMMARIZER`, else next to the app's own executable (where the
+/// bundle puts it, and where cargo builds it).
+fn sidecar_path() -> Result<PathBuf, String> {
+    if let Some(p) = std::env::var_os("MEETBUTLER_SUMMARIZER") {
+        return Ok(PathBuf::from(p));
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    Ok(exe.with_file_name(SIDECAR))
+}
 
 /// Where the ggml models are: `MEETBUTLER_MODELS`, else `<data folder>/models`. They are
 /// downloaded ahead of time; the app does not fetch them.
@@ -38,9 +59,11 @@ pub struct AppState {
     models_dir: PathBuf,
     models: Arc<ModelCache<String, WhisperModel>>,
     current: Mutex<Option<Current>>,
-    /// The after-meeting pass, at most one at a time.
+    /// The after-meeting work (final pass, then summary), at most one at a time.
     finalizing: Mutex<Option<JoinHandle<()>>>,
     quitting: Arc<AtomicBool>,
+    /// Set to stop the summary that is running; cleared when the next one starts.
+    cancel_summary: Arc<AtomicBool>,
 }
 
 struct Current {
@@ -70,6 +93,7 @@ impl AppState {
             current: Mutex::new(None),
             finalizing: Mutex::new(None),
             quitting: Arc::new(AtomicBool::new(false)),
+            cancel_summary: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -97,6 +121,7 @@ impl AppState {
     /// `WhisperModel`), and an abort could cost the end of the recording.
     pub fn shutdown(&self) {
         self.quitting.store(true, Ordering::SeqCst);
+        self.cancel_summary.store(true, Ordering::SeqCst);
         if let Err(err) = self.stop_current() {
             log::error!("stopping the recording at exit: {err}");
         }
@@ -146,6 +171,15 @@ struct Started {
 struct SegmentsEvent {
     session_id: String,
     segments: Vec<Segment>,
+}
+
+#[derive(Clone, Serialize)]
+struct SummaryEvent {
+    session_id: String,
+    progress: f64,
+    done: bool,
+    cancelled: bool,
+    error: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -266,11 +300,16 @@ fn stop_recording(app: AppHandle, state: State<'_, AppState>) -> Result<Option<S
     Ok(session)
 }
 
-fn start_final_pass(app: &AppHandle, state: &AppState, session_id: String) {
+/// Run `work` on the after-meeting thread, after whatever is running there now.
+fn after_meeting(state: &AppState, work: impl FnOnce() + Send + 'static) {
     let mut slot = lock(&state.finalizing);
     if let Some(previous) = slot.take() {
-        let _ = previous.join(); // one at a time: the large model is big
+        let _ = previous.join(); // one at a time: the models are big
     }
+    *slot = Some(std::thread::spawn(work));
+}
+
+fn start_final_pass(app: &AppHandle, state: &AppState, session_id: String) {
     let (app, recorder, models, dir, quitting) = (
         app.clone(),
         state.recorder.clone(),
@@ -278,7 +317,8 @@ fn start_final_pass(app: &AppHandle, state: &AppState, session_id: String) {
         state.models_dir.clone(),
         state.quitting.clone(),
     );
-    *slot = Some(std::thread::spawn(move || {
+    let cancel = state.cancel_summary.clone();
+    after_meeting(state, move || {
         let emit = |progress: f64, done: bool, error: Option<String>| {
             let _ = app.emit(
                 "final",
@@ -309,10 +349,128 @@ fn start_final_pass(app: &AppHandle, state: &AppState, session_id: String) {
         // keep the large model only for the pass: the next meeting needs the memory
         models.evict(&FINAL_MODEL.to_string());
         match result {
-            Ok(_) => emit(1.0, true, None),
+            Ok(_) => {
+                emit(1.0, true, None);
+                run_summary(&app, &recorder, &dir, &session_id, &cancel, &quitting);
+            }
             Err(err) => emit(0.0, true, Some(err)),
         }
-    }));
+    });
+}
+
+/// Summarise a session's transcript through the sidecar and keep the result. Emits
+/// "summary" events; a failure or a cancel is kept with the session, not raised.
+fn run_summary(
+    app: &AppHandle,
+    recorder: &Recorder,
+    models_dir: &std::path::Path,
+    session_id: &str,
+    cancel: &AtomicBool,
+    quitting: &AtomicBool,
+) {
+    // a fresh summary is not cancelled; shutdown sets quitting before cancel, so a quit
+    // that lands around this line is still seen
+    cancel.store(false, Ordering::SeqCst);
+    if quitting.load(Ordering::SeqCst) {
+        return;
+    }
+    let emit = |progress: f64, done: bool, cancelled: bool, error: Option<String>| {
+        let _ = app.emit(
+            "summary",
+            SummaryEvent {
+                session_id: session_id.to_string(),
+                progress,
+                done,
+                cancelled,
+                error,
+            },
+        );
+    };
+    let result = (|| -> Result<Summary, ClientError> {
+        let lines: Vec<String> = recorder
+            .transcript(session_id)
+            .map_err(|e| ClientError::Io(std::io::Error::other(e.to_string())))?
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.text)
+            .collect();
+        let model = models_dir.join(SUMMARY_MODEL_FILE);
+        if !model.exists() {
+            return Err(ClientError::Failed {
+                kind: ErrorKind::Model,
+                message: format!("summary model not found: {}", model.display()),
+            });
+        }
+        let program = sidecar_path().map_err(|e| ClientError::Io(std::io::Error::other(e)))?;
+        let mut sidecar = Sidecar::spawn(&program, &[])?;
+        summary::summarise(
+            &mut sidecar,
+            &lines,
+            &summary::Options { model },
+            cancel,
+            |p| emit(p, false, false, None),
+        )
+        // dropping the sidecar here ends the process and gives its memory back
+    })();
+    let mut stored = StoredSummary::new(session_id);
+    stored.model = SUMMARY_MODEL.into();
+    let event = match result {
+        Ok(s) => {
+            stored.input_tokens = s.input_tokens as i64;
+            stored.output_tokens = s.output_tokens as i64;
+            stored.content = serde_json::to_string(&s).unwrap_or_default();
+            (1.0, true, false, None)
+        }
+        Err(ClientError::Failed {
+            kind: ErrorKind::Cancelled,
+            ..
+        }) => {
+            stored.status = "cancelled".into();
+            (0.0, true, true, None)
+        }
+        Err(err) => {
+            stored.status = "error".into();
+            stored.error = Some(err.to_string());
+            (0.0, true, false, Some(err.to_string()))
+        }
+    };
+    if let Err(err) = recorder.store().save_summary(&stored) {
+        log::error!("{session_id}: saving the summary failed: {err}");
+    }
+    emit(event.0, event.1, event.2, event.3);
+}
+
+/// Summarise a session again (after a cancel, a failure, or a newer model).
+#[tauri::command]
+fn summarize(app: AppHandle, state: State<'_, AppState>, session_id: String) {
+    let (recorder, dir, cancel, quitting) = (
+        state.recorder.clone(),
+        state.models_dir.clone(),
+        state.cancel_summary.clone(),
+        state.quitting.clone(),
+    );
+    after_meeting(&state, move || {
+        run_summary(&app, &recorder, &dir, &session_id, &cancel, &quitting)
+    });
+}
+
+/// Stop the summary that is running; what it had is not kept.
+#[tauri::command]
+fn cancel_summary(state: State<'_, AppState>) {
+    state.cancel_summary.store(true, Ordering::SeqCst);
+}
+
+/// The kept summary of a session, if any: its status and, when done, the fixed format.
+#[tauri::command]
+fn get_summary(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<Option<StoredSummary>, String> {
+    state
+        .recorder
+        .store()
+        .load_summary(&session_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -358,7 +516,10 @@ pub fn run() {
             stop_recording,
             list_sessions,
             get_transcript,
-            recording
+            recording,
+            summarize,
+            cancel_summary,
+            get_summary
         ])
         .build(tauri::generate_context!())
         .expect("building the app");

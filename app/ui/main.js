@@ -1,5 +1,6 @@
-// MeetButler window. Talks to Rust over Tauri IPC only; transcript text is model output
-// derived from meeting audio, so it only ever goes into the page through textContent.
+// MeetButler window. Talks to Rust over Tauri IPC only; transcript and summary text are
+// model output derived from meeting audio, so they only ever go into the page through
+// textContent.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
@@ -72,7 +73,75 @@ async function refreshSessions() {
 async function open(id, kind) {
   shown = id;
   showTranscript((await invoke("get_transcript", { sessionId: id })) || [], kind);
+  await showSummary(id);
 }
+
+// --- summary: model output, so text nodes only ---
+
+function list(title, items) {
+  if (!items.length) return [];
+  const h = document.createElement("h3");
+  h.textContent = title;
+  const ul = document.createElement("ul");
+  ul.replaceChildren(...items.map((text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    return li;
+  }));
+  return [h, ul];
+}
+
+function renderSummary(s) {
+  const p = document.createElement("p");
+  p.textContent = s.summary;
+  const actions = s.action_items.map((a) => [a.owner, a.task, a.due && `(${a.due})`].filter(Boolean).join(" · "));
+  $("summary-body").replaceChildren(
+    p,
+    ...list("결정", s.decisions),
+    ...list("할 일", actions),
+    ...list("미해결 질문", s.open_questions),
+  );
+}
+
+function summaryRunning(on, progress = 0) {
+  $("summary-run").hidden = !on;
+  $("summary-progress").value = progress;
+  $("summary-cancel").disabled = false;
+  if (on) $("summary-again").hidden = true;
+}
+
+async function showSummary(id) {
+  const kept = await invoke("get_summary", { sessionId: id });
+  $("summary").hidden = !kept;
+  summaryRunning(false);
+  $("summary-body").replaceChildren();
+  if (!kept) return;
+  $("summary-again").hidden = kept.status === "done";
+  if (kept.status === "done") {
+    $("summary-state").textContent = "로컬 모델";
+    try {
+      renderSummary(JSON.parse(kept.content));
+    } catch {
+      $("summary-state").textContent = "요약을 읽지 못했습니다";
+    }
+  } else {
+    $("summary-state").textContent = kept.status === "cancelled" ? "취소됨" : `실패: ${kept.error || ""}`;
+  }
+}
+
+$("summary-cancel").addEventListener("click", async () => {
+  $("summary-cancel").disabled = true;
+  await invoke("cancel_summary");
+});
+
+$("summary-again").addEventListener("click", async () => {
+  if (!shown) return;
+  $("summary").hidden = false;
+  $("summary-state").textContent = "요약하는 중…";
+  $("summary-body").replaceChildren();
+  summaryRunning(true);
+  await invoke("summarize", { sessionId: shown });
+});
 
 $("toggle").addEventListener("click", async () => {
   $("toggle").disabled = true;
@@ -114,6 +183,17 @@ listen("final", async ({ payload }) => {
   notice(payload.error ? `최종본을 만들지 못했습니다. 임시 자막은 그대로 있습니다. (${payload.error})` : "최종본으로 바꿨습니다.");
   if (!payload.error && payload.session_id === shown) await open(shown, "final");
   await refreshSessions();
+});
+
+listen("summary", async ({ payload }) => {
+  if (payload.session_id !== shown) return;
+  if (!payload.done) {
+    $("summary").hidden = false;
+    $("summary-state").textContent = `요약하는 중… ${Math.round(payload.progress * 100)}%`;
+    summaryRunning(true, payload.progress);
+    return;
+  }
+  await showSummary(shown);
 });
 
 (async () => {

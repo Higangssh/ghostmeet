@@ -49,7 +49,16 @@ select { font: inherit; }
 .toggle.recording { background: var(--surface); color: var(--recording); border: 1px solid var(--recording); }
 .toggle:disabled { opacity: .5; cursor: default; }
 .notice { font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
-.captions, .library { margin-top: 16px; }
+.captions, .library, .summary { margin-top: 16px; }
+.summary[hidden], .summary-run[hidden], .link[hidden] { display: none; }
+#summary-body { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+#summary-body:empty { display: none; }
+#summary-body p { margin: 4px 0; }
+#summary-body h3 { font-size: 12px; color: var(--muted); margin: 10px 0 2px; }
+#summary-body ul { list-style: disc; padding-left: 18px; }
+.summary-run { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.summary-run progress { flex: 1; accent-color: var(--accent); }
+.summary-run button, .link { font: inherit; font-size: 12px; background: none; border: 1px solid var(--line); border-radius: 6px; color: var(--text); padding: 2px 8px; cursor: pointer; }
 .captions-head { display: flex; justify-content: space-between; align-items: baseline; }
 .kind { font-size: 12px; color: var(--muted); }
 ol, ul { list-style: none; margin: 0; padding: 0; }

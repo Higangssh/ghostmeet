@@ -42,3 +42,6 @@ bench/results/raw/
 
 # Tauri
 app/src-tauri/gen/
+
+# the sidecar copied in by app/bundle.sh
+app/src-tauri/binaries/

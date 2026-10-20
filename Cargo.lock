@@ -2301,6 +2301,7 @@ dependencies = [
  "log",
  "meetbutler-audio",
  "meetbutler-engine",
+ "meetbutler-summarizer",
  "serde",
  "serde_json",
  "tauri",

@@ -42,6 +42,19 @@
     <ol id="captions"></ol>
   </section>
 
+  <section class="summary" id="summary" hidden>
+    <div class="captions-head">
+      <h2>요약</h2>
+      <span id="summary-state" class="kind"></span>
+    </div>
+    <div id="summary-run" class="summary-run" hidden>
+      <progress id="summary-progress" max="1" value="0"></progress>
+      <button id="summary-cancel" type="button">취소</button>
+    </div>
+    <button id="summary-again" class="link" type="button" hidden>다시 요약</button>
+    <div id="summary-body"></div>
+  </section>
+
   <section class="library">
     <h2>지난 회의</h2>
     <ul id="sessions"></ul>

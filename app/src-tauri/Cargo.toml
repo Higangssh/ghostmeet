@@ -21,6 +21,8 @@ serde_json = "1"
 log = "0.4"
 meetbutler-engine = { path = "../../crates/meetbutler-engine", features = ["whisper", "silero"] }
 meetbutler-audio = { path = "../../crates/meetbutler-audio" }
+# the client and summary pipeline only; llama.cpp lives in the sidecar executable
+meetbutler-summarizer = { path = "../../crates/meetbutler-summarizer" }
 
 [dev-dependencies]
 tempfile = "3"
