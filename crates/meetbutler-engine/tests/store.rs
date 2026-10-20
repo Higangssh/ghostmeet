@@ -500,7 +500,7 @@ fn a_version_1_database_moves_the_channel_out_of_the_speaker_field() {
     assert_eq!(segs[0].timestamp, 5.0, "nothing else changes");
     assert!(store.load_session("old").unwrap().is_some());
     drop(store);
-    assert_eq!(user_version(&path), 2);
+    assert_eq!(user_version(&path), 3);
 }
 
 #[test]
@@ -526,7 +526,51 @@ fn migrating_twice_changes_nothing() {
 fn a_fresh_database_starts_at_the_current_version() {
     let dir = tempfile::tempdir().unwrap();
     drop(open(&dir));
-    assert_eq!(user_version(&dir.path().join("meetbutler.db")), 2);
+    assert_eq!(user_version(&dir.path().join("meetbutler.db")), 3);
+}
+
+#[test]
+fn a_sessions_vocabulary_is_kept_in_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = open(&dir);
+    let mut s = make_session("v");
+    s.vocabulary = vec![
+        "지호".into(),
+        "주소록 동기화".into(),
+        "누리온, 주식회사".into(),
+    ];
+    store.save_session(&s).unwrap();
+    assert_eq!(
+        store.load_session("v").unwrap().unwrap().vocabulary,
+        s.vocabulary
+    );
+
+    store.save_session(&make_session("none")).unwrap();
+    assert!(store
+        .load_session("none")
+        .unwrap()
+        .unwrap()
+        .vocabulary
+        .is_empty());
+}
+
+#[test]
+fn an_older_database_gets_an_empty_vocabulary_for_every_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("meetbutler.db");
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch(V1)
+        .unwrap();
+
+    let store = SessionStore::open(&path).unwrap();
+
+    assert!(store
+        .load_session("old")
+        .unwrap()
+        .unwrap()
+        .vocabulary
+        .is_empty());
 }
 
 #[test]

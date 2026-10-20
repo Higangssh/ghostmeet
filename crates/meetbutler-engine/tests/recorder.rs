@@ -122,6 +122,23 @@ fn session_list_survives_a_restart() {
 }
 
 #[test]
+fn a_vocabulary_given_at_the_start_stays_with_the_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let recorder = Recorder::open(dir.path(), config(100_000)).unwrap();
+    recorder.start("v", &[Channel::Mic], None, stub).unwrap();
+    let terms = vec!["지호".to_string(), "누리온".to_string()];
+
+    recorder.set_vocabulary("v", &terms).unwrap();
+
+    assert_eq!(recorder.session("v").unwrap().unwrap().vocabulary, terms);
+    let stopped = recorder.stop("v").unwrap();
+    assert_eq!(stopped.vocabulary, terms, "stopping keeps it");
+    let reopened = Recorder::open(dir.path(), config(100_000)).unwrap();
+    assert_eq!(reopened.session("v").unwrap().unwrap().vocabulary, terms);
+    assert!(reopened.set_vocabulary("nope", &terms).is_err());
+}
+
+#[test]
 fn segments_are_stored_with_their_channel_and_no_speaker_yet() {
     let dir = tempfile::tempdir().unwrap();
     record(&dir, "persisted", 1);

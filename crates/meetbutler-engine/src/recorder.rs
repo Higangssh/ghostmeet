@@ -262,6 +262,21 @@ impl Recorder {
         Ok(session)
     }
 
+    /// Keep the user's vocabulary (STT-7) with a session, live or stopped, so the final
+    /// pass and the next meeting can use it.
+    pub fn set_vocabulary(&self, session_id: &str, terms: &[String]) -> Result<()> {
+        if let Some(live) = self.live().get_mut(session_id) {
+            live.session.vocabulary = terms.to_vec();
+            return Ok(self.store.save_session(&live.session)?);
+        }
+        let mut session = self
+            .store
+            .load_session(session_id)?
+            .ok_or(RecorderError::NotFound)?;
+        session.vocabulary = terms.to_vec();
+        Ok(self.store.save_session(&session)?)
+    }
+
     pub fn session(&self, session_id: &str) -> Result<Option<Session>> {
         if let Some(live) = self.live().get(session_id) {
             return Ok(Some(live.session.clone()));

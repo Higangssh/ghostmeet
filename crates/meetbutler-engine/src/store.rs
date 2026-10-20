@@ -21,7 +21,8 @@ pub use rusqlite::Error as StoreError;
 pub type Result<T> = std::result::Result<T, StoreError>;
 
 /// 1: the first desktop schema. 2: `segments.channel` split out of `speaker`.
-const SCHEMA_VERSION: i64 = 2;
+/// 3: `sessions.vocabulary`, the user's vocabulary for that meeting (STT-7).
+const SCHEMA_VERSION: i64 = 3;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS sessions (
@@ -35,7 +36,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     duration_sec        REAL NOT NULL DEFAULT 0,
     transcript          TEXT NOT NULL DEFAULT 'live',
     transcript_segments INTEGER NOT NULL DEFAULT 0,
-    error               TEXT
+    error               TEXT,
+    vocabulary          TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS segments (
@@ -143,6 +145,9 @@ pub struct Session {
     pub transcript: TranscriptKind,
     pub transcript_segments: i64,
     pub error: Option<String>,
+    /// Names and terms the user gave for this meeting (STT-7), in their order.
+    #[serde(default)]
+    pub vocabulary: Vec<String>,
 }
 
 impl Session {
@@ -159,6 +164,7 @@ impl Session {
             transcript: TranscriptKind::Live,
             transcript_segments: 0,
             error: None,
+            vocabulary: Vec::new(),
         }
     }
 }
@@ -220,8 +226,9 @@ impl SessionStore {
     pub fn save_session(&self, s: &Session) -> Result<()> {
         self.conn().execute(
             "INSERT INTO sessions (session_id, title, started_at, stopped_at, status, sources,
-                                   language, duration_sec, transcript, transcript_segments, error)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                                   language, duration_sec, transcript, transcript_segments, error,
+                                   vocabulary)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
              ON CONFLICT(session_id) DO UPDATE SET
                  title=excluded.title,
                  started_at=excluded.started_at,
@@ -232,7 +239,8 @@ impl SessionStore {
                  duration_sec=excluded.duration_sec,
                  transcript=excluded.transcript,
                  transcript_segments=excluded.transcript_segments,
-                 error=excluded.error",
+                 error=excluded.error,
+                 vocabulary=excluded.vocabulary",
             params![
                 s.session_id,
                 s.title,
@@ -245,6 +253,7 @@ impl SessionStore {
                 s.transcript.as_str(),
                 s.transcript_segments,
                 s.error,
+                vocabulary_column(&s.vocabulary),
             ],
         )?;
         Ok(())
@@ -419,6 +428,14 @@ fn migrate(conn: &Connection) -> Result<()> {
              COMMIT;",
         )?;
     }
+    if version < 3 {
+        conn.execute_batch(
+            "BEGIN;
+             ALTER TABLE sessions ADD COLUMN vocabulary TEXT NOT NULL DEFAULT '';
+             PRAGMA user_version = 3;
+             COMMIT;",
+        )?;
+    }
     Ok(())
 }
 
@@ -463,5 +480,15 @@ fn row_to_session(r: &Row) -> rusqlite::Result<Session> {
         transcript: TranscriptKind::parse(&r.get::<_, String>("transcript")?),
         transcript_segments: r.get("transcript_segments")?,
         error: r.get("error")?,
+        vocabulary: serde_json::from_str(&r.get::<_, String>("vocabulary")?).unwrap_or_default(),
     })
+}
+
+/// A JSON array, or empty for none: terms may hold commas.
+fn vocabulary_column(terms: &[String]) -> String {
+    if terms.is_empty() {
+        String::new()
+    } else {
+        serde_json::to_string(terms).unwrap_or_default()
+    }
 }
