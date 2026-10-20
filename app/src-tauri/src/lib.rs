@@ -197,6 +197,7 @@ fn start_recording(
     state: State<'_, AppState>,
     sources: Vec<String>,
     language: Option<String>,
+    vocabulary: Option<Vec<String>>,
 ) -> Result<Started, String> {
     let mut current = lock(&state.current);
     if current.is_some() {
@@ -211,6 +212,12 @@ fn start_recording(
         })
         .collect::<Result<_, _>>()?;
     let language = language.filter(|l| !l.is_empty() && l != "auto");
+    let vocabulary: Vec<String> = vocabulary
+        .unwrap_or_default()
+        .into_iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
 
     let model = state.model(LIVE_MODEL)?;
     let vad_path = state.models_dir.join(VAD_MODEL);
@@ -243,8 +250,9 @@ fn start_recording(
     let mut transcribers = Vec::new();
     for _ in &channels {
         let vad = SileroOnnx::load(&vad_path).map_err(|e| e.to_string())?;
-        let decoder =
-            WhisperDecoder::new(model.clone(), language.clone()).map_err(|e| e.to_string())?;
+        let decoder = WhisperDecoder::new(model.clone(), language.clone())
+            .map_err(|e| e.to_string())?
+            .with_vocabulary(&vocabulary);
         transcribers.push(Some(SpanTranscriber::new(vad, decoder, BENCH)));
     }
     let session_id = format!("m{}", now_ms());
@@ -258,6 +266,9 @@ fn start_recording(
             transcribers[i].take().expect("one transcriber per channel")
         })
         .map_err(|e| e.to_string())?;
+    if let Err(err) = state.recorder.set_vocabulary(&session_id, &vocabulary) {
+        log::error!("{session_id}: keeping the vocabulary failed: {err}");
+    }
 
     let writers = feeds
         .into_iter()
@@ -331,16 +342,17 @@ fn start_final_pass(app: &AppHandle, state: &AppState, session_id: String) {
             );
         };
         let result = load_model(&models, &dir, FINAL_MODEL).and_then(|model| {
-            let language = recorder
-                .session(&session_id)
-                .ok()
-                .flatten()
-                .and_then(|s| s.language);
+            let session = recorder.session(&session_id).ok().flatten();
+            let language = session.as_ref().and_then(|s| s.language.clone());
+            let vocabulary = session.map(|s| s.vocabulary).unwrap_or_default();
             recorder
                 .finalize(
                     &session_id,
                     || SileroOnnx::load(dir.join(VAD_MODEL)),
-                    |_| WhisperDecoder::new(model.clone(), language.clone()),
+                    |_| {
+                        WhisperDecoder::new(model.clone(), language.clone())
+                            .map(|d| d.with_vocabulary(&vocabulary))
+                    },
                     &quitting,
                     |p| emit(p, false, None),
                 )
@@ -489,6 +501,18 @@ fn get_transcript(
         .map_err(|e| e.to_string())
 }
 
+/// The vocabulary of the latest meeting that had one, to start the next one with.
+#[tauri::command]
+fn last_vocabulary(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let sessions = state.recorder.sessions().map_err(|e| e.to_string())?;
+    Ok(sessions
+        .into_iter()
+        .rev()
+        .map(|s| s.vocabulary)
+        .find(|v| !v.is_empty())
+        .unwrap_or_default())
+}
+
 #[tauri::command]
 fn recording(state: State<'_, AppState>) -> Option<String> {
     lock(&state.current).as_ref().map(|c| c.session_id.clone())
@@ -497,7 +521,11 @@ fn recording(state: State<'_, AppState>) -> Option<String> {
 pub fn run() {
     let app = tauri::Builder::default()
         .setup(|app| {
-            let data = app.path().app_data_dir()?;
+            // MEETBUTLER_DATA_DIR keeps a development or screenshot run away from real meetings
+            let data = match std::env::var_os("MEETBUTLER_DATA_DIR") {
+                Some(dir) => PathBuf::from(dir),
+                None => app.path().app_data_dir()?,
+            };
             let handle = app.handle().clone();
             let state = AppState::open(data, move |id, segs| {
                 let _ = handle.emit(
@@ -519,7 +547,8 @@ pub fn run() {
             recording,
             summarize,
             cancel_summary,
-            get_summary
+            get_summary,
+            last_vocabulary
         ])
         .build(tauri::generate_context!())
         .expect("building the app");

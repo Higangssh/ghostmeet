@@ -169,7 +169,8 @@ $("toggle").addEventListener("click", async () => {
   try {
     if (!recording) {
       const sources = [...document.querySelectorAll("input[name=source]:checked")].map((el) => el.value);
-      const started = await invoke("start_recording", { sources, language: $("language").value });
+      const vocabulary = $("vocabulary").value.split(/[,\n]/).map((t) => t.trim()).filter(Boolean);
+      const started = await invoke("start_recording", { sources, language: $("language").value, vocabulary });
       shown = started.session_id;
       showTranscript([], "live");
       notice(started.warnings.length ? `일부 소스 없이 녹음합니다: ${started.warnings.join(" / ")}` : "");
@@ -218,6 +219,8 @@ listen("summary", async ({ payload }) => {
 });
 
 (async () => {
+  // the next meeting starts with the last one's vocabulary; the user edits it before Start
+  $("vocabulary").value = (await invoke("last_vocabulary")).join(", ");
   const id = await invoke("recording");
   if (id) {
     shown = id;

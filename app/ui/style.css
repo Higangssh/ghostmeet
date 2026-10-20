@@ -40,7 +40,10 @@ h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: v
 .controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
 fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 0; display: grid; gap: 2px; }
 legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
-.language { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+.language, .vocabulary { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+.vocabulary { flex-basis: 100%; }
+.vocabulary .hint { font-size: 11px; }
+.vocabulary input { font: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 select { font: inherit; }
 .toggle {
   width: 100%; padding: 10px; border: 0; border-radius: 8px;
