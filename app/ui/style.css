@@ -4,7 +4,11 @@
   --text: #1d1d1f;
   --muted: #6e6e73;
   --line: #e3e3e0;
-  --accent: #2f5d50;      /* brand placeholder: not red, red means recording */
+  /* the periwinkle of the call-and-voice glyph on the mascot's tray (#b6c8fc), darkened
+     to 5.5:1 on white for text and for white text on it (WCAG AA); never red, red means
+     recording, and blue, not the grey of provisional captions */
+  --accent: #4664b9;
+  --on-accent: #ffffff;
   --recording: #d7263d;
   --provisional: #8a8a8f;
   color-scheme: light dark;
@@ -16,7 +20,8 @@
     --text: #f2f2f7;
     --muted: #a1a1a6;
     --line: #3a3a3c;
-    --accent: #7fb8a4;
+    --accent: #b6c8fc;    /* the glyph's own colour: 10:1 on the dark background */
+    --on-accent: #1c1c1e; /* white on it would not read */
     --provisional: #8e8e93;
   }
 }
@@ -43,7 +48,7 @@ button:disabled { opacity: .5; cursor: default; }
 @keyframes pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
 .elapsed { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 500; }
-.toggle { padding: 8px 12px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; }
+.toggle { padding: 8px 12px; border: 0; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .toggle.small { padding: 4px 10px; font-size: 13px; }
 .toggle.recording { background: var(--surface); color: var(--recording); border: 1px solid var(--recording); }
 .kind, .hint, .facts, .status, .meta { font-size: 12px; color: var(--muted); font-weight: 400; }
