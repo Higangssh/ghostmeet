@@ -110,6 +110,7 @@ pub fn open_sources(
 
 /// Keep a backend's stream object on a thread of its own until stopped. Some backends'
 /// streams may not leave the thread that built them; this way none has to.
+#[cfg(target_os = "macos")]
 pub(crate) fn on_own_thread<T: 'static>(
     name: &str,
     build: impl FnOnce() -> Result<T, CaptureError> + Send + 'static,

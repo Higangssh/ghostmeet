@@ -30,12 +30,27 @@ impl Rebuild {
     }
 }
 
+/// How often a running stream is asked whether it is stale.
+const WATCH_EVERY: Duration = Duration::from_secs(1);
+
 /// Run `build`'s result on a thread of its own until stopped, building it again when asked.
 /// The first build's error is the open's error; later ones are logged and retried.
 pub fn supervised<T: 'static>(
     name: &str,
     retry: Duration,
+    build: impl FnMut(&Rebuild) -> Result<T, CaptureError> + Send + 'static,
+) -> Result<Box<dyn Capture>, CaptureError> {
+    supervised_watching(name, retry, build, |_: &T| false)
+}
+
+/// As [`supervised`], and also built again when `stale` says so, asked about once a
+/// second: for a change no callback reports (on macOS an input stream stays on its
+/// device when the default input changes).
+pub fn supervised_watching<T: 'static>(
+    name: &str,
+    retry: Duration,
     mut build: impl FnMut(&Rebuild) -> Result<T, CaptureError> + Send + 'static,
+    mut stale: impl FnMut(&T) -> bool + Send + 'static,
 ) -> Result<Box<dyn Capture>, CaptureError> {
     let (ready_tx, ready_rx) = mpsc::channel();
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
@@ -56,14 +71,23 @@ pub fn supervised<T: 'static>(
             };
             // poll often enough that a device change costs little audio
             let tick = retry.min(Duration::from_millis(100));
-            let mut since_try = Duration::ZERO;
+            let (mut since_try, mut since_watch) = (Duration::ZERO, Duration::ZERO);
             loop {
                 match stop_rx.recv_timeout(tick) {
                     Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
                     Err(RecvTimeoutError::Timeout) => {}
                 }
+                since_watch += tick;
+                if since_watch >= WATCH_EVERY {
+                    since_watch = Duration::ZERO;
+                    if current.as_ref().is_some_and(&mut stale) {
+                        rebuild.request();
+                    }
+                }
                 if rebuild.take() {
-                    log::info!("{label}: the stream ended; building it again");
+                    log::info!(
+                        "{label}: the stream ended or its device changed; building it again"
+                    );
                     current = None; // the old stream goes before the new one opens
                     since_try = retry; // try at once
                 }

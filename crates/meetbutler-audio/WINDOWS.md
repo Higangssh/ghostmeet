@@ -60,9 +60,9 @@ The default output device is cpal's `DeviceHandle::DefaultOutput`, opened throug
    flag) or a WASAPI path of our own (below).
 3. **Device changes end the stream.** Plugging a headset in, or Bluetooth switching to
    its call profile, changes the default device; cpal reports it through the error
-   callback (`DeviceChanged`/`StreamInvalidated`-type errors). We rebuild the stream on
-   the new default, and the gap filler covers the time in between. The mic path needs the
-   same and does not have it yet on any platform.
+   callback (`StreamInvalidated` for a new default, `DeviceNotAvailable` when none is
+   left). We rebuild the stream on the new default, and the gap filler covers the time
+   in between.
 4. **No exclusion of our own sound.** Loopback captures everything the endpoint plays.
    MeetButler plays nothing, so this is fine today; it matters if the app ever plays
    audio (a "listen back" button). Process loopback (`AUDIOCLIENT_ACTIVATION_TYPE_
@@ -144,5 +144,6 @@ caption delay on a 6-core Windows laptop (requirements §7).
 Not done: the fake-device test of the loopback setup itself. cpal's `Device` is a
 concrete type, so testing that glue without Windows would mean wrapping cpal in a trait
 for a dozen lines of calls; CI compiling it for Windows plus the manual checks were
-judged enough. The microphone does not yet rebuild on a device change either (on any
-platform); `supervise` is ready for it.
+judged enough. The microphone follows its device too, on every platform: rebuilt on the
+errors above, and also when the default input changes without one (on macOS an input
+stream stays on the device it opened, so the supervisor asks about once a second).

@@ -1,5 +1,6 @@
-//! The default microphone, through cpal. Conformed to 16 kHz mono, then kept on the clock
-//! by the capture times cpal gives each packet (`gap`).
+//! The default microphone, through cpal. Conformed to 16 kHz mono, kept on the clock by
+//! the capture times cpal gives each packet (`gap`), and built again when the default
+//! microphone changes or goes away (`supervise`).
 //!
 //! [`conformed_input`] is the cpal input stream every cpal source uses: the mic here, and
 //! on Windows the loopback of the default output device (`system`).
@@ -7,17 +8,56 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample};
 
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
 use crate::conform::Conformer;
 use crate::gap::GapFiller;
-use crate::{on_own_thread, AudioSink, Capture, CaptureError};
+use crate::supervise::{supervised_watching, Rebuild};
+use crate::{AudioSink, Capture, CaptureError};
 
-/// Open the default input device. Capture stops when the returned handle is stopped or
-/// dropped.
-pub fn open(sink: AudioSink) -> Result<Box<dyn Capture>, CaptureError> {
-    on_own_thread("mic", move || build(sink))
+/// Between tries to open the new default microphone after a change.
+const RETRY: Duration = Duration::from_secs(1);
+
+/// What outlives a rebuild: the channel's clock and where its audio goes.
+struct Shared {
+    sink: AudioSink,
+    gaps: GapFiller,
+    out: Vec<f32>,
 }
 
-fn build(mut sink: AudioSink) -> Result<cpal::Stream, CaptureError> {
+/// A stream and the device it was opened on.
+struct Running {
+    _stream: cpal::Stream,
+    device: Option<cpal::DeviceId>,
+}
+
+/// Open the default input device, and follow it: when the default microphone changes (a
+/// headset plugged in) or goes away, the stream is built again on the new one, and the
+/// time in between is silence on the channel. Capture stops when the returned handle is
+/// stopped or dropped.
+pub fn open(sink: AudioSink) -> Result<Box<dyn Capture>, CaptureError> {
+    let shared = Arc::new(Mutex::new(Shared {
+        sink,
+        gaps: GapFiller::named("mic"),
+        out: Vec::new(),
+    }));
+    supervised_watching(
+        "mic",
+        RETRY,
+        move |rebuild| build(&shared, rebuild),
+        // an input stream stays on its device when the default changes, and says nothing
+        |running: &Running| running.device.is_some() && default_input_id() != running.device,
+    )
+}
+
+fn default_input_id() -> Option<cpal::DeviceId> {
+    cpal::default_host()
+        .default_input_device()
+        .and_then(|d| d.id().ok())
+}
+
+fn build(shared: &Arc<Mutex<Shared>>, rebuild: &Rebuild) -> Result<Running, CaptureError> {
     let host = cpal::default_host();
     let device = host.default_input_device().ok_or(CaptureError::NoDevice)?;
     let supported = device.default_input_config().map_err(backend)?;
@@ -27,22 +67,33 @@ fn build(mut sink: AudioSink) -> Result<cpal::Stream, CaptureError> {
         supported.channels(),
         supported.sample_format()
     );
-    let mut gaps = GapFiller::named("mic");
-    let mut out = Vec::new();
+    let shared = shared.clone();
+    let rebuild = rebuild.clone();
     let stream = conformed_input(
         &device,
         supported,
         move |at, audio| {
+            let mut s = shared.lock().unwrap_or_else(|e| e.into_inner());
+            let Shared { sink, gaps, out } = &mut *s;
             out.clear();
-            gaps.push(at, audio, &mut out);
+            gaps.push(at, audio, out);
             if !out.is_empty() {
-                sink(&out);
+                sink(out);
             }
         },
-        |err| log::warn!("mic stream: {err}"),
+        move |err| {
+            if ends_stream(err.kind()) {
+                rebuild.request();
+            } else {
+                log::warn!("mic stream: {err}");
+            }
+        },
     )?;
     stream.play().map_err(backend)?;
-    Ok(stream)
+    Ok(Running {
+        _stream: stream,
+        device: device.id().ok(),
+    })
 }
 
 /// An input stream on `device` in `supported`'s format, handing `on_audio` each packet as

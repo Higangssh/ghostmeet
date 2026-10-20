@@ -141,3 +141,41 @@ fn a_changed_or_vanished_device_ends_the_stream_and_little_else_does() {
         assert!(!ends_stream(kind), "{kind:?}");
     }
 }
+
+#[test]
+fn a_stream_found_stale_is_built_again_without_its_callback_asking() {
+    // the default microphone changed (a headset plugged in): the old stream still runs,
+    // on the old device, and says nothing
+    use meetbutler_audio::supervise::supervised_watching;
+    let t = Tally::default();
+    let tb = t.clone();
+    let switched = Arc::new(AtomicUsize::new(0)); // which device is the default now
+    let (sw_build, sw_check) = (switched.clone(), switched.clone());
+    let mut cap = supervised_watching(
+        "t",
+        RETRY,
+        move |_| {
+            tb.built.fetch_add(1, Ordering::SeqCst);
+            tb.alive.fetch_add(1, Ordering::SeqCst);
+            Ok((Stream(tb.clone()), sw_build.load(Ordering::SeqCst)))
+        },
+        move |(_, device): &(Stream, usize)| *device != sw_check.load(Ordering::SeqCst),
+    )
+    .unwrap();
+
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(
+        t.built.load(Ordering::SeqCst),
+        1,
+        "nothing changed, nothing rebuilt"
+    );
+    switched.store(1, Ordering::SeqCst);
+    assert!(
+        until(|| t.built.load(Ordering::SeqCst) == 2),
+        "built on the new default"
+    );
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(t.built.load(Ordering::SeqCst), 2, "and only once");
+    cap.stop();
+    assert_eq!(t.alive.load(Ordering::SeqCst), 0);
+}

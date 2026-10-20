@@ -102,6 +102,10 @@ next to one that did not.
 - [ ] Captions appear within a few seconds of speech (target: 3 s; measure and record).
       The mini bar shows the newest line.
 - [ ] The vocabulary field cannot be changed while recording.
+- [ ] Plug a headset in mid-meeting, speak, then pull it out and speak again: "나" keeps
+      captioning from whichever microphone is the default; the log shows "mic: the stream
+      ended or its device changed; building it again" each time, and `mic.pcm` stays as
+      long as the meeting.
 - [ ] Stop from the mini bar (another time: start from the panel, stop from the menu bar):
       every window follows.
 - [ ] Silence on the other side: with nothing playing on the Mac, record one minute
