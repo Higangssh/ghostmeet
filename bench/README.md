@@ -169,3 +169,51 @@ bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench         #
 - Gemma 4 E4B는 llama.cpp가 고정한 transformers 4.57.6이 `gemma4`를 몰라서 5.20.1로 변환했다(별도 venv). 나머지는 4.57.6.
 - Gemma 4 E4B는 "유효 4B"지만 레이어별 임베딩까지 합치면 약 8B라 Q4_K_M이 4.97 GiB다. 8GB 묶음 상한(최대 메모리 4GB)을 넘는다.
 - 라이선스 원문 확인 결과와 제외한 모델(EXAONE 4.0, Kanana-2, HyperCLOVA X SEED, Llama 계열)은 0.2 마일스톤 3 보고에 있다.
+
+## 화자 분리 측정 (requirements §12 위험 1)
+
+`run_diar.py`가 sherpa-onnx의 회의 후 화자 분리(pyannote segmentation-3.0 + 화자 embedding +
+군집)를 한국어 모의 회의와 AMI에서 잰다. `diar_pipe.py`는 같은 과정을 저장한 embedding 위에서
+numpy로 다시 해서, 다시 뽑지 않고 군집 방법·threshold·작은 군집 바닥을 바꿔 본다. 결과는
+`results/RESULTS.md` §9.
+
+| 무엇 | 출처 | 라이선스 |
+|---|---|---|
+| 한국어 음성 | [Zeroth-Korean](https://www.openslr.org/40/) (OpenSLR 40) 낭독. test 10명은 test 회의에, train 중 12명(124 139 151 158 164 169 183 187 194 200 207 208)은 dev 회의에 섞는다(`diar_mix.py`) | CC BY 4.0 |
+| 영어 회의 | [AMI](https://groups.inf.ed.ac.uk/ami/corpus/) test 16회의, Mix-Headset과 Array1-01 | CC BY 4.0 |
+| AMI 정답 | [BUTSpeechFIT/AMI-diarization-setup](https://github.com/BUTSpeechFIT/AMI-diarization-setup) `2509d8933721023fab4def2618aabd5c28eb82e9`, `only_words/rttms/test`, `uems/test` | Apache-2.0 |
+| 모델 | sherpa-onnx GitHub releases. 출처·라이선스·sha256은 `diar_models.json` | segmentation MIT, 3D-Speaker(CAM++, ERes2Net, ERes2NetV2) Apache-2.0, TitaNet·WeSpeaker CC BY 4.0(출처 표기 필요) |
+
+받기와 확인은 `fetch_diar.sh` 하나로 한다. 받은 파일은 `bench/data/diar/`(gitignore)에만 두고,
+파일 3542개의 sha256을 `diar_data.sha256`에 커밋해 두었다. 받을 때는 Content-Length와 맞는지,
+.wav가 RIFF로 시작하는지 확인하고 다섯 번까지 다시 받는다. Zeroth는 10.3 GB 압축 파일을 한 번
+흘려 읽으면서 위 화자만 남긴다.
+
+```bash
+bench/.venv/bin/pip install sherpa-onnx==1.13.8 onnxruntime==1.31.0 scipy==1.16.2 numpy==2.5.4 soundfile==0.14.0
+bench/fetch_diar.sh                       # models ami zeroth, 끝에 sha256 확인
+```
+
+| 패키지 | 버전 | 라이선스 | 쓰는 곳 |
+|---|---|---|---|
+| sherpa-onnx | 1.13.8 (자체 onnxruntime 1.28.2 포함) | Apache-2.0 | 화자 분리 전체, embedding 추출 |
+| onnxruntime | 1.31.0 | MIT | `diar_pipe`의 segmentation |
+| scipy | 1.16.2 | BSD-3-Clause | `diar_pipe`의 계층 군집 |
+| numpy | 2.5.4 | BSD-3-Clause | |
+| soundfile | 0.14.0 | BSD-3-Clause | 음성 읽기 |
+
+결과 JSON마다 `env`에 sherpa-onnx·onnxruntime·scipy·numpy 버전과 segmentation·embedding 모델의
+sha256이 들어간다.
+
+다시 돌리는 순서. 단계마다 결과가 저장되어 있으면 건너뛰고, `bench/data/diar/STOP`이 있으면 다음
+단위 앞에서 멈춘다.
+
+```bash
+bench/.venv/bin/python -I bench/run_diar.py tune korean ami          # 5분 dev로 고른 threshold, test 회의(한국어 12, AMI 32)
+bench/.venv/bin/python -I bench/run_diar.py online long              # 60초 조각 실시간 대 회의 후, 4시간 회의의 시간·메모리
+bench/.venv/bin/python -I bench/run_diar.py absorb                   # 30분 dev로 고른 threshold×비율 흡수(diar_post), 탐색용
+bench/.venv/bin/python -I bench/run_diar.py extract-dev verify       # 30분 dev embedding 저장, sherpa 재현 확인(DER 0.5%p 이내, 화자 수 동일)
+bench/.venv/bin/python -I bench/run_diar.py grid                     # 군집 방법 × threshold × 바닥, 공통·room·call 따로 고름
+bench/.venv/bin/python -I bench/run_diar.py extract-test pipe        # test embedding 저장, dev에서 고른 값 그대로 적용
+bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench    # 모델·데이터 없이 도는 테스트
+```

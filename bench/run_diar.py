@@ -11,14 +11,14 @@
 Pipeline: sherpa-onnx's offline diarization (pyannote segmentation-3.0 + a speaker
 embedding + clustering), the one the app would embed; the embedding is what varies.
 
-Data (bench/data/diar/, never committed):
+Data (bench/data/diar/, never committed; bench/fetch_diar.sh fetches and checks it):
 - zeroth/: Zeroth-Korean (OpenSLR 40, CC BY 4.0), read speech laid out as meetings by
   `diar_mix` (room and call scenes, overlap, short replies): the test set's 10 speakers
   for the test meetings (raw/), 12 other speakers from the training set for tuning
   (train/; streamed out of the archive, the rest never kept)
 - ami/: the AMI Meeting Corpus test set (CC BY 4.0), 16 real meetings of 4, headset mix
   and the first far-field array microphone, with BUT's reference RTTMs and UEMs
-- models/: the ONNX files from sherpa-onnx's releases (SHA256SUMS there; bench/diar_models.json)
+- models/: the ONNX files from sherpa-onnx's releases (bench/diar_models.json)
 
 Writes bench/results/diar/<set>/<meeting>.<system>.json (scores only; hypotheses go to
 bench/results/raw/diar/).
@@ -193,7 +193,33 @@ def scored(ref, hyp, segments) -> dict:
     }
 
 
+_SHA: dict[Path, str] = {}
+
+
+def sha256(path: Path) -> str:
+    if path not in _SHA:
+        import hashlib
+
+        _SHA[path] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return _SHA[path]
+
+
+def env(emb: str | None) -> dict:
+    """What produced a result: library versions and the model files' checksums."""
+    import onnxruntime
+    import scipy
+    import sherpa_onnx
+
+    out = {"sherpa_onnx": sherpa_onnx.__version__, "onnxruntime": onnxruntime.__version__,
+           "scipy": scipy.__version__, "numpy": np.__version__,
+           "segmentation_sha256": sha256(SEGMENTATION)}
+    if emb in EMBEDDINGS:
+        out["embedding_sha256"] = sha256(MODELS / EMBEDDINGS[emb])
+    return out
+
+
 def save(set_name: str, meeting: str, system: str, result: dict, hyp: list[der.Turn]) -> None:
+    result = {**result, "env": env(system.split(".")[0])}
     (RESULTS / set_name).mkdir(parents=True, exist_ok=True)
     (RAW / set_name).mkdir(parents=True, exist_ok=True)
     (RESULTS / set_name / f"{meeting}.{system}.json").write_text(json.dumps(result, indent=1))
@@ -534,7 +560,7 @@ def extract_set(set_name: str, meetings) -> None:
             store.save(path)
             path.with_suffix(".json").write_text(json.dumps(
                 {"audio_sec": round(len(audio) / RATE, 1), "extract_sec": round(sec, 1),
-                 "embeddings": int(len(store.embeddings))}))
+                 "embeddings": int(len(store.embeddings)), "env": env(emb)}))
             print(f"extract {set_name} {meeting} {emb}: {len(store.embeddings)} embeddings {sec:.0f}s", flush=True)
 
 
@@ -562,7 +588,7 @@ def verify(threshold: float = 0.7, n_meetings: int = 2) -> None:
             print(f"verify {meeting} {emb}: DER {row['der_sherpa']:.4f} vs {row['der_ours']:.4f}, "
                   f"speakers {row['speakers_sherpa']} vs {row['speakers_ours']}, "
                   f"disagree {row['disagreement']:.2%}", flush=True)
-    (RESULTS / "verify.json").write_text(json.dumps(out, indent=1))
+    (RESULTS / "verify.json").write_text(json.dumps({"rows": out, "env": {e: env(e) for e in PIPE_EMBEDDINGS}}, indent=1))
 
 
 def floors(n_emb: int):
@@ -615,7 +641,7 @@ def grid(emb: str) -> dict:
         return out
 
     out = {"dev_minutes": ABSORB_DEV_MINUTES, "exploratory": True, "inversions": inv, "scenes": scenes,
-           "true_speakers": true}
+           "true_speakers": true, "env": env(emb)}
     for scene, ms in scenes.items():
         table = summary(ms)
         der_of = lambda k: table[k]["der"]  # noqa: E731
