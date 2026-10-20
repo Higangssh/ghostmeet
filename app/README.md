@@ -57,87 +57,111 @@ Data lives in the app data folder
 
 ## Manual checks
 
-There is no automated runtime coverage of capture or the window. Run these by hand on a
-real Mac before calling a build good, and note the macOS version.
+There is no automated runtime coverage of capture or the windows. Run these by hand on a
+real Mac before calling a build good, in this order (one sitting, about an hour), and
+note the macOS version and the Mac. Tick a box only when it held; write what happened
+next to one that did not.
 
-Permissions
+**0. Setup — keep real meetings out of it**
+- [ ] `app/bundle.sh`, then copy `MeetButler.app` out of the dmg into /Applications.
+- [ ] A test folder with the models: `mkdir -p ~/MeetButler-test/models` and copy (or
+      link) the four model files there (`ggml-small.bin`, `ggml-large-v3-turbo.bin`,
+      `silero_vad.onnx`, `qwen3.5-4b-Q4_K_M.gguf`).
+- [ ] Launch it on that folder from Terminal:
+      `open -n --env MEETBUTLER_DATA_DIR=$HOME/MeetButler-test --env MEETBUTLER_MODELS=$HOME/MeetButler-test/models /Applications/MeetButler.app`
+
+**1. First launch, icon, menu bar**
+- [ ] It opens (it is signed ad hoc and not quarantined; a downloaded copy would not).
+- [ ] Dock icon: the whole mascot on a navy tile. Finder list view and the Cmd+Tab
+      switcher show the closer crop (face and tray). Both read in light and dark mode.
+- [ ] Only the mini bar shows, on top of other apps, draggable by its title bar.
+- [ ] Menu bar: the camera-and-voice glyph, tinted to match the menu bar in light and dark;
+      its menu has 녹음 시작, 패널 열기, 라이브러리, MeetButler 종료.
+- [ ] ▢ opens the panel, ☰ the library; closing either hides it, and the button or the
+      menu brings it back.
+- [ ] Activity Monitor: no `meetbutler-summarizer` running.
+
+**2. Permissions** (reset between runs: `tccutil reset Microphone` / `ScreenCapture`)
 - [ ] First recording with both sources: macOS asks for the microphone, then for screen
-      recording (system audio comes through ScreenCaptureKit). Check this in the bundle
-      from `app/bundle.sh` too: its hardened runtime needs the microphone entitlement.
+      recording (system audio comes through ScreenCaptureKit). In the bundle this needs
+      the microphone entitlement of its hardened runtime.
 - [ ] Deny screen recording: recording still starts from the mic alone, and the window
       says system audio was left out. The session lists `mic` only.
 - [ ] Deny the microphone, allow screen recording: recording runs on system audio alone.
 - [ ] Deny both: nothing starts, and the window says why.
 
-Recording
-- [ ] Nothing records until Start is pressed. While recording, the red indicator and the
-      elapsed time are always visible.
+**3. Recording and the windows**
+- [ ] Panel 기록 tab: set sources, language and a vocabulary (the attendees' names and a
+      few terms) for the next meeting.
+- [ ] Start from the menu bar with the panel closed: it records with that setup. The menu
+      bar glyph gets its dot, its tooltip says 녹음 중, the first menu item reads 녹음 정지.
+- [ ] Nothing records until Start. While recording, the red indicator and the elapsed time
+      are always visible in the mini bar; the panel's elapsed time matches it.
 - [ ] Play a video in a browser during a call-like test: its speech shows as "상대", your
       voice as "나". MeetButler's own sound is not captured.
 - [ ] Captions appear within a few seconds of speech (target: 3 s; measure and record).
-- [ ] Stop: the final pass runs ("최종본을 만드는 중… n%"), then the transcript switches
-      from grey provisional captions to the final one.
+      The mini bar shows the newest line.
+- [ ] The vocabulary field cannot be changed while recording.
+- [ ] Stop from the mini bar (another time: start from the panel, stop from the menu bar):
+      every window follows.
+- [ ] Accent: buttons, the selected tab and the ↗ links are periwinkle, never red or the
+      grey of provisional captions; text on them reads in light and dark.
 
-Bundle
-- [ ] Open the .app from the dmg (`app/bundle.sh`): it starts, and Activity Monitor shows
-      no `meetbutler-summarizer` until a summary runs.
-
-Summary
-- [ ] After the final pass, the summary runs on its own ("요약하는 중… n%"), then shows
-      the summary, decisions, action items and open questions. Note the time it took and
-      the meeting's length.
-- [ ] Activity Monitor while it runs: one `meetbutler-summarizer` process; it is gone
-      once the summary shows, and the app's memory is back where it was.
-- [ ] 취소 during the summary: it stops within a few seconds, shows 취소됨 and
-      다시 요약; 다시 요약 runs it again.
-- [ ] Without the summary model in the models folder: the transcript is unaffected and
-      the summary says it failed, naming the missing file.
-- [ ] Cmd+Q during the summary: the app quits promptly and no `meetbutler-summarizer`
-      is left running.
-
-Vocabulary (STT-7) — real speech; the benchmark only had synthetic voices
-- [ ] The 단어장 field before Start: it holds the last meeting's vocabulary; edit it,
-      record, and the next launch shows the edited one. It cannot be changed while
-      recording.
-- [ ] Put the attendees' names and a few terms in the vocabulary, hold a short meeting
-      that says each one: the final transcript spells them as written. Note any name heard
-      as another attendee's name (the benchmark saw this: "시온" heard as "지호").
-- [ ] Short replies and pauses: no segment is just vocabulary names repeated
-      ("지호, 지호, 지호."); a real repeated reply ("네, 네.") is still there.
+**4. Vocabulary (STT-7)** — real speech; the benchmark only had synthetic voices
+- [ ] In the meeting of step 3, say each vocabulary term at least once, plus a few short
+      replies ("네, 네.", "맞아요").
+- [ ] The final transcript spells the terms as written. Note any name heard as another
+      attendee's name (the benchmark saw "시온" heard as "지호").
+- [ ] No segment is just vocabulary names repeated ("지호, 지호, 지호."); the real repeated
+      replies are still there.
 - [ ] A term in the vocabulary that nobody says does not appear in the transcript.
-- [ ] An empty vocabulary: the final transcript is as before.
+- [ ] Next launch: the field holds this meeting's vocabulary. A meeting with an empty
+      vocabulary transcribes as before.
 
-Windows
-- [ ] Launch: only the mini bar shows, on top of other apps, and it can be dragged by
-      its title bar. ▢ opens the panel, ☰ the library; closing either hides it and the
-      button brings it back.
-- [ ] Start from the mini bar with the panel closed: it records with the panel's 기록
-      setup (sources, language, vocabulary); opening the panel then shows the live
-      captions and the elapsed time matches the bar's.
-- [ ] Start from the panel, stop from the mini bar (and the other way round): both
-      windows and the library follow.
-- [ ] 요약 tab: a summary item's ↗ switches to 자막 and highlights the line it came from.
-- [ ] Library: the filter narrows by title; renaming in the library shows in the panel
-      and the other way round; Markdown 복사 pastes into a text editor as the meeting;
-      Markdown 저장 writes into Downloads and shows it in Finder.
-- [ ] Library delete: the first click asks again, the second deletes; the meeting's
-      folder under `sessions/` is gone; a meeting recording or being finalised refuses.
+**5. After Stop: final transcript, then summary**
+- [ ] The final pass runs ("최종본을 만드는 중… n%"), then the transcript switches from
+      grey provisional captions to the final one.
+- [ ] The summary follows on its own ("요약하는 중… n%"), then the 요약 tab shows the
+      summary, decisions, action items and open questions. Note how long it took and the
+      meeting's length.
+- [ ] Activity Monitor while it runs: one `meetbutler-summarizer` (inside the .app); it is
+      gone once the summary shows, and the app's memory is back where it was.
+- [ ] A summary item's ↗ switches to 자막 and highlights the line it came from; the line
+      says what the item says.
+- [ ] Another meeting: 취소 during the summary stops it within a few seconds, shows 취소됨
+      and 다시 요약; 다시 요약 runs it again.
+- [ ] Rename `qwen3.5-4b-Q4_K_M.gguf` away and summarise again: the transcript is
+      unaffected and the summary says it failed, naming the missing file. Rename it back.
+
+**6. Library and Markdown**
+- [ ] The library lists the meetings; the filter narrows by title.
+- [ ] Rename in the library: the panel shows the new title, and the other way round.
+- [ ] Markdown 복사 pastes into a text editor as the meeting (title, date, summary with
+      times, transcript).
+- [ ] Markdown 저장 writes into Downloads and shows it in Finder; a second save does not
+      overwrite the first.
+- [ ] Delete: the first click asks again, the second deletes, and the meeting's folder
+      under `~/MeetButler-test/sessions/` is gone. A meeting recording or being finalised
+      refuses.
 - [ ] Dark mode: every window is readable.
 
-Quitting — every path must end without a crash report and keep the recording
+**7. Quitting** — every path must end without a crash report and keep the recording
 - [ ] Cmd+Q while recording: the app quits; on relaunch the session is there, stopped,
       with its audio and captions so far.
-- [ ] Close the mini bar while recording: same as Cmd+Q.
+- [ ] Close the mini bar while recording: same as Cmd+Q. MeetButler 종료 in the menu bar:
+      same.
 - [ ] Cmd+Q during the final pass: the app quits promptly; the session keeps its live
       transcript (the final pass did not half-apply).
+- [ ] Cmd+Q during the summary: the app quits promptly and no `meetbutler-summarizer` is
+      left running.
 - [ ] Log out (and shut down) while recording: no "quit unexpectedly" dialog on the next
       login; the session is there.
 - [ ] Force quit (Activity Monitor / `kill -9`) while recording: on relaunch the session
       shows as interrupted, with audio and captions up to the last pass.
 
 The quit paths matter because a Metal model still loaded when the process exits makes
-ggml abort; `AppState::shutdown` stops recording, cancels the final pass and drops every
-model on `RunEvent::Exit`.
+ggml abort; `AppState::shutdown` stops recording, cancels the final pass and the summary,
+and drops every model on `RunEvent::Exit`.
 
 ## Backlog (0.2)
 
