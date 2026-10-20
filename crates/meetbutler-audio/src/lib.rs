@@ -5,12 +5,14 @@
 //! its own: capture begins only when the app asks, after the user pressed record.
 //!
 //! Platforms: the microphone through cpal everywhere; system audio through
-//! ScreenCaptureKit on macOS 13+. Windows system audio (WASAPI loopback) has its place in
-//! [`system`] but is not wired up yet, and reports [`CaptureError::Unsupported`].
+//! ScreenCaptureKit on macOS 13+ and WASAPI loopback (through cpal) on Windows, the
+//! latter not yet tried on a real machine (`WINDOWS.md`). Every source is kept on the
+//! clock by [`gap::GapFiller`].
 
 pub mod conform;
 pub mod gap;
 pub mod mic;
+pub mod supervise;
 pub mod system;
 
 /// The rate every sink receives.
@@ -138,9 +140,9 @@ pub(crate) fn on_own_thread<T: 'static>(
     }))
 }
 
-struct ThreadCapture {
-    stop: Option<std::sync::mpsc::Sender<()>>,
-    handle: Option<std::thread::JoinHandle<()>>,
+pub(crate) struct ThreadCapture {
+    pub(crate) stop: Option<std::sync::mpsc::Sender<()>>,
+    pub(crate) handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Capture for ThreadCapture {

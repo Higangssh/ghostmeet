@@ -4,9 +4,12 @@
 //! it opening fails with [`CaptureError::PermissionDenied`] and the app records the mic
 //! alone. The app's own sound is excluded. No virtual audio device is involved.
 //!
-//! Windows: WASAPI loopback goes here (cpal can open the default output device as an
-//! input stream). Not wired up yet; the plan, with what cpal leaves to us (silence is
-//! no data, device changes end the stream), is in `WINDOWS.md`.
+//! Windows: WASAPI loopback of the default output device, through cpal (an input stream
+//! on an output device), with a render stream of silence beside it so loopback keeps
+//! delivering while nothing plays, and the gap filler for what it still misses. A change
+//! of default device ends both; they are built again on the new one (`supervise`).
+//! Untested on a real Windows machine yet; the plan and the open questions are in
+//! `WINDOWS.md`.
 
 use crate::{AudioSink, Capture, CaptureError};
 
@@ -16,10 +19,8 @@ pub fn open(sink: AudioSink) -> Result<Box<dyn Capture>, CaptureError> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn open(_sink: AudioSink) -> Result<Box<dyn Capture>, CaptureError> {
-    Err(CaptureError::Unsupported(
-        "Windows system audio (WASAPI loopback)",
-    ))
+pub fn open(sink: AudioSink) -> Result<Box<dyn Capture>, CaptureError> {
+    windows::open(sink)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -140,7 +141,7 @@ mod macos {
             state: Mutex::new(State {
                 sink,
                 conformer: Conformer::new(RATE as u32, 1),
-                gaps: GapFiller::new(),
+                gaps: GapFiller::named("system"),
                 mono: Vec::new(),
                 conformed: Vec::new(),
                 out: Vec::new(),
@@ -153,5 +154,135 @@ mod macos {
             .start_capture()
             .map_err(|e| CaptureError::PermissionDenied(format!("screen recording ({e})")))?;
         Ok(Running(stream))
+    }
+}
+
+#[cfg(target_os = "windows")]
+mod windows {
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+    use cpal::{SampleFormat, SizedSample};
+
+    use crate::gap::GapFiller;
+    use crate::mic::{backend, conformed_input, ends_stream};
+    use crate::supervise::{supervised, Rebuild};
+    use crate::{AudioSink, Capture, CaptureError};
+
+    /// Between tries to open the new default device after a change.
+    const RETRY: Duration = Duration::from_secs(1);
+
+    /// What outlives a rebuild: the channel's clock and where its audio goes.
+    struct Shared {
+        sink: AudioSink,
+        gaps: GapFiller,
+        out: Vec<f32>,
+    }
+
+    struct Running {
+        _loopback: cpal::Stream,
+        _keepalive: Option<cpal::Stream>,
+    }
+
+    pub(super) fn open(sink: AudioSink) -> Result<Box<dyn Capture>, CaptureError> {
+        let shared = Arc::new(Mutex::new(Shared {
+            sink,
+            gaps: GapFiller::named("system"),
+            out: Vec::new(),
+        }));
+        supervised("system", RETRY, move |rebuild| build(&shared, rebuild))
+    }
+
+    fn on_error(rebuild: &Rebuild, what: &'static str) -> impl FnMut(cpal::Error) + Send + 'static {
+        let rebuild = rebuild.clone();
+        move |err| {
+            if ends_stream(err.kind()) {
+                rebuild.request();
+            } else {
+                log::warn!("system audio {what}: {err}");
+            }
+        }
+    }
+
+    fn build(shared: &Arc<Mutex<Shared>>, rebuild: &Rebuild) -> Result<Running, CaptureError> {
+        let host = cpal::default_host();
+        let device = host.default_output_device().ok_or(CaptureError::NoDevice)?;
+        // loopback takes the output side's format; default_input_config fails on it
+        let supported = device.default_output_config().map_err(backend)?;
+        log::info!(
+            "system: loopback at {} Hz, {} ch, {:?}",
+            supported.sample_rate(),
+            supported.channels(),
+            supported.sample_format()
+        );
+
+        // silence played into the same endpoint keeps loopback delivering while nothing
+        // else plays; without it the gap filler still keeps the clock
+        let keepalive = match silence(&device, supported, on_error(rebuild, "keep-alive")) {
+            Ok(s) => Some(s),
+            Err(err) => {
+                log::warn!("system: no keep-alive stream ({err}); gaps will be filled");
+                None
+            }
+        };
+
+        let shared = shared.clone();
+        let loopback = conformed_input(
+            &device,
+            supported,
+            move |at, audio| {
+                let mut s = shared.lock().unwrap_or_else(|e| e.into_inner());
+                let Shared { sink, gaps, out } = &mut *s;
+                out.clear();
+                gaps.push(at, audio, out);
+                if !out.is_empty() {
+                    sink(out);
+                }
+            },
+            on_error(rebuild, "loopback"),
+        )?;
+        loopback.play().map_err(backend)?;
+        Ok(Running {
+            _loopback: loopback,
+            _keepalive: keepalive,
+        })
+    }
+
+    fn silence(
+        device: &cpal::Device,
+        supported: cpal::SupportedStreamConfig,
+        on_error: impl FnMut(cpal::Error) + Send + 'static,
+    ) -> Result<cpal::Stream, CaptureError> {
+        let format = supported.sample_format();
+        let config: cpal::StreamConfig = supported.into();
+        let stream = match format {
+            SampleFormat::F32 => zeros::<f32>(device, config, on_error),
+            SampleFormat::I16 => zeros::<i16>(device, config, on_error),
+            SampleFormat::I32 => zeros::<i32>(device, config, on_error),
+            SampleFormat::U16 => zeros::<u16>(device, config, on_error),
+            other => {
+                return Err(CaptureError::Backend(format!(
+                    "unsupported sample format {other:?}"
+                )))
+            }
+        }?;
+        stream.play().map_err(backend)?;
+        Ok(stream)
+    }
+
+    fn zeros<T: SizedSample>(
+        device: &cpal::Device,
+        config: cpal::StreamConfig,
+        on_error: impl FnMut(cpal::Error) + Send + 'static,
+    ) -> Result<cpal::Stream, CaptureError> {
+        device
+            .build_output_stream::<T, _, _>(
+                config,
+                |data: &mut [T], _| data.fill(T::EQUILIBRIUM),
+                on_error,
+                None,
+            )
+            .map_err(backend)
     }
 }

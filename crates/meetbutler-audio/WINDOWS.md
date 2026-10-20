@@ -1,7 +1,11 @@
 # Windows system audio (WASAPI loopback): plan
 
-Status: researched 2026-10-20, not implemented. `system::open` on Windows still returns
-`CaptureError::Unsupported`. No Windows machine has been used yet.
+Status (2026-10-20): implemented as below, linted for the Windows target from macOS (CI
+builds it on `windows-latest` once pushed), **never run on a Windows machine**.
+`system::open` opens loopback on the default output device
+with a silent keep-alive stream, under `supervise` (rebuilt when the device changes),
+through `gap::GapFiller`. What is tested without Windows: the gap filler, the supervisor,
+and which cpal errors end a stream.
 
 ## What we need
 
@@ -127,12 +131,18 @@ What only a Windows machine can tell: whether silent packets carry noise, how de
 changes behave on real Bluetooth headsets, the mix formats seen in the wild, and the
 caption delay on a 6-core Windows laptop (requirements §7).
 
-## Order of work, when Windows is next
+## Order of work
 
-1. `GapFiller` with its tests, used by every source (it is harmless where data is
-   continuous).
-2. Windows `system::open`: loopback stream, the silent keep-alive render stream, rebuild
-   on device change; the fake-device tests.
-3. CI: `cargo check`/`clippy` for the Windows target; a `windows-latest` test job.
-4. On a Windows machine: the manual checks above, then decide on the `wasapi` crate only
-   if silent-packet noise or self-capture shows up.
+1. Done: `GapFiller` with its tests, in front of the mic and macOS system audio too; it
+   logs every fill of a second or more and the total at the end.
+2. Done: Windows `system::open` (loopback, the silent keep-alive render stream, rebuilt
+   on a device change through `supervise`).
+3. Done: CI builds and tests on `windows-latest` and lints the audio crate there.
+4. Still to do, on a Windows machine: the manual checks in `app/README.md`, then decide
+   on the `wasapi` crate only if silent-packet noise or self-capture shows up.
+
+Not done: the fake-device test of the loopback setup itself. cpal's `Device` is a
+concrete type, so testing that glue without Windows would mean wrapping cpal in a trait
+for a dozen lines of calls; CI compiling it for Windows plus the manual checks were
+judged enough. The microphone does not yet rebuild on a device change either (on any
+platform); `supervise` is ready for it.

@@ -122,3 +122,13 @@ fn an_empty_packet_still_moves_the_clock() {
     g.push(2.0, &[], &mut out);
     assert_eq!(out.len(), 160 + (2.0 * RATE) as usize - 160);
 }
+
+#[test]
+fn the_silence_filled_is_counted() {
+    let mut g = GapFiller::new();
+    let mut out = Vec::new();
+    g.push(0.0, &audio(160), &mut out);
+    g.push(3.01, &audio(160), &mut out);
+    g.push(3.02, &audio(160), &mut out);
+    assert!((g.filled_sec() - 3.0).abs() < 1e-3, "{}", g.filled_sec());
+}

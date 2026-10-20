@@ -165,6 +165,20 @@ next to one that did not.
 - [ ] Force quit (Activity Monitor / `kill -9`) while recording: on relaunch the session
       shows as interrupted, with audio and captions up to the last pass.
 
+**8. Windows** (when a Windows machine is at hand; system audio there has only been
+built, never run)
+- [ ] A call with a headset: "나" and "상대" both caption, and nothing echoes.
+- [ ] A quiet minute with nothing playing, then speech: `mic.pcm` and `system.pcm` have
+      the same size to within a fraction of a second, and later captions are not early.
+      The log says how much silence was filled ("system: … filled with silence").
+- [ ] Plug a headset in mid-meeting (and pull it out): recording carries on; the log
+      shows "system: the stream ended; building it again"; the hole is silence.
+- [ ] Speakers, no headset: note how much of "상대" also shows as "나".
+- [ ] Settings > Privacy > Microphone off for desktop apps: recording runs on system
+      audio alone, and the window says the microphone was left out.
+- [ ] Silent packets: with nothing playing, `system.pcm` holds zeros, not noise (open it
+      as raw 16 kHz s16le in Audacity, or check its peak).
+
 The quit paths matter because a Metal model still loaded when the process exits makes
 ggml abort; `AppState::shutdown` stops recording, cancels the final pass and the summary,
 and drops every model on `RunEvent::Exit`.
