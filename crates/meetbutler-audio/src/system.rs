@@ -5,7 +5,8 @@
 //! alone. The app's own sound is excluded. No virtual audio device is involved.
 //!
 //! Windows: WASAPI loopback goes here (cpal can open the default output device as an
-//! input stream). Not wired up yet.
+//! input stream). Not wired up yet; the plan, with what cpal leaves to us (silence is
+//! no data, device changes end the stream), is in `WINDOWS.md`.
 
 use crate::{AudioSink, Capture, CaptureError};
 
