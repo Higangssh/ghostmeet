@@ -12,7 +12,9 @@ app/bundle.sh                                 # the .app/.dmg with the sidecar i
 ```
 
 The bundle needs the Tauri CLI, a development tool only: `cargo install tauri-cli
---version 2.12.3 --locked` (the version this was built with).
+--version 2.12.3 --locked` (the version this was built with). Built on an M4: the .app
+is 50 MB (app 42 MB, sidecar 11 MB; models are not in it), the dmg 15 MB. It is signed ad
+hoc only, so a downloaded copy is stopped by Gatekeeper until it is signed and notarized.
 
 The summary runs in `meetbutler-summarizer`, a separate executable the app starts after
 the final pass and that exits when the summary is done. The app looks for it next to its
@@ -58,6 +60,10 @@ Recording
 - [ ] Captions appear within a few seconds of speech (target: 3 s; measure and record).
 - [ ] Stop: the final pass runs ("최종본을 만드는 중… n%"), then the transcript switches
       from grey provisional captions to the final one.
+
+Bundle
+- [ ] Open the .app from the dmg (`app/bundle.sh`): it starts, and Activity Monitor shows
+      no `meetbutler-summarizer` until a summary runs.
 
 Summary
 - [ ] After the final pass, the summary runs on its own ("요약하는 중… n%"), then shows

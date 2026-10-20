@@ -7,6 +7,11 @@
 # externalBin looks for it, named for the host target. The main tauri.conf.json leaves
 # externalBin out so `cargo build` and `cargo test` work without the sidecar built;
 # tauri.bundle.json adds it for the bundle only. Needs the Tauri CLI (`cargo tauri`).
+#
+# CI=true makes the dmg step skip laying out its window through Finder, which needs
+# automation permission and times out without it. The bundle is signed ad hoc only:
+# a copy downloaded from elsewhere is stopped by Gatekeeper until it is signed and
+# notarized.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -15,4 +20,4 @@ triple=$(rustc -vV | sed -n 's/^host: //p')
 mkdir -p app/src-tauri/binaries
 cp target/release/meetbutler-summarizer "app/src-tauri/binaries/meetbutler-summarizer-$triple"
 cd app/src-tauri
-cargo tauri build --config tauri.bundle.json
+CI=true cargo tauri build --config tauri.bundle.json
