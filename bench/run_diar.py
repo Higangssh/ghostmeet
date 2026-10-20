@@ -6,7 +6,7 @@
     bench/.venv/bin/python -I bench/run_diar.py long            # a 4-hour meeting: time and memory
     bench/.venv/bin/python -I bench/run_diar.py absorb          # small clusters folded away (diar_post)
     bench/.venv/bin/python -I bench/run_diar.py tune30 korean30 ami30 [--joint]   # B: 30-minute dev
-    bench/.venv/bin/python -I bench/run_diar.py extract-dev verify grid extract-test pipe   # diar_pipe
+    bench/.venv/bin/python -I bench/run_diar.py extract-dev verify grid preregister extract-test pipe   # diar_pipe
 
 Pipeline: sherpa-onnx's offline diarization (pyannote segmentation-3.0 + a speaker
 embedding + clustering), the one the app would embed; the embedding is what varies.
@@ -525,6 +525,8 @@ PIPE_EMBEDDINGS = list(RETUNE)
 LINKAGES = ["complete", "average", "centroid"]
 PIPE_THRESHOLDS = [round(0.1 + 0.05 * i, 2) for i in range(29)]  # 0.10 .. 1.50
 # pyannote-style floor: a cluster with fewer embeddings than this joins the nearest big one
+# a best on the threshold grid's lower edge (0.10) widens it for that model only
+WIDEN = {"campplus-zh-en": [0.02, 0.04, 0.06, 0.08], "wespeaker-r34": [0.02, 0.04, 0.06, 0.08]}
 MIN_COUNTS = [1, 2, 3, 5, 8, 12, 20]
 MIN_SHARES = [0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.12, 0.16]  # the absorb run picked 8%, its grid edge
 
@@ -601,12 +603,17 @@ def floors(n_emb: int):
 
 def grid(emb: str) -> dict:
     """DER (collar 0.25) over the dev meetings for every linkage, threshold and floor, with
-    the best key over all dev meetings and over each scene's own dev meetings."""
+    the best key over all dev meetings and over each scene's own dev meetings. Thresholds
+    in WIDEN[emb] are added to a saved grid (a best on the grid's edge)."""
     import diar_pipe
 
     saved = RESULTS / "grid" / f"{emb}.json"
-    if saved.exists():
-        return json.loads(saved.read_text())
+    old = json.loads(saved.read_text()) if saved.exists() else None
+    thresholds = PIPE_THRESHOLDS
+    if old is not None:
+        thresholds = [t for t in WIDEN.get(emb, []) if t not in old.get("thresholds", PIPE_THRESHOLDS)]
+        if not thresholds:
+            return old
     dev = [(m, ref) for m, _, ref, _ in dev30()]
     per, inv = {}, {}  # per[key][meeting] = (error, total, hyp speakers, people erased, speakers vanished)
     for meeting, ref in dev:
@@ -616,8 +623,9 @@ def grid(emb: str) -> dict:
         _, overlap = diar_pipe.ref_overlap(st, ref)
         for method in LINKAGES:
             z = diar_pipe.linkage_matrix(st.embeddings, method)
-            inv.setdefault(method, []).append(diar_pipe.inversions(z))
-            for th in PIPE_THRESHOLDS:
+            if old is None:
+                inv.setdefault(method, []).append(diar_pipe.inversions(z))
+            for th in thresholds:
                 base = diar_pipe.cut(z, method, th)
                 for kind, value, n in floors(len(base)):
                     labels = diar_pipe.reassign_small(st.embeddings, base, n) if n > 1 else base
@@ -640,10 +648,12 @@ def grid(emb: str) -> dict:
                       "erased": sum(v[m][3] for m in ms), "vanished": sum(v[m][4] for m in ms)}
         return out
 
-    out = {"dev_minutes": ABSORB_DEV_MINUTES, "exploratory": True, "inversions": inv, "scenes": scenes,
-           "true_speakers": true, "env": env(emb)}
+    out = {"dev_minutes": ABSORB_DEV_MINUTES, "exploratory": True,
+           "inversions": old["inversions"] if old else inv, "scenes": scenes, "true_speakers": true,
+           "thresholds": sorted(set(thresholds) | set(old.get("thresholds", PIPE_THRESHOLDS) if old else [])),
+           "env": env(emb)}
     for scene, ms in scenes.items():
-        table = summary(ms)
+        table = {**(old[scene]["table"] if old else {}), **summary(ms)}
         der_of = lambda k: table[k]["der"]  # noqa: E731
         best = {m: min((k for k in table if k.startswith(m + "/")), key=der_of) for m in LINKAGES}
         out[scene] = {"table": table, "best": best,
@@ -652,6 +662,37 @@ def grid(emb: str) -> dict:
                       "best_all": min(best.values(), key=der_of)}
     saved.parent.mkdir(parents=True, exist_ok=True)
     saved.write_text(json.dumps(out, indent=1))
+    return out
+
+
+PREREGISTERED = RESULTS / "preregistered.json"
+# fixed from the dev grid before any test or AMI result was seen:
+# centroid linkage has height inversions, so a centroid value stays in the table but is
+# not an app candidate
+APP_CANDIDATES = {"campplus-zh-en": "average/0.25/share/0.03"}
+
+
+def preregister() -> dict:
+    """Write the settings test and AMI will use, once: an existing file is never rewritten,
+    so nothing can be added or changed after a test result is seen."""
+    if PREREGISTERED.exists():
+        return json.loads(PREREGISTERED.read_text())
+    out = {"written": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+           "rule": "headline = each model's common value; ranking by its AMI result. "
+                   "scene values are secondary (AMI takes the room value). baseline = sherpa-like "
+                   "(complete, no floor). Nothing is added or changed after test is seen.",
+           "korean_test_limit": "clips are reused across meetings: Korean test may be optimistic",
+           "models": {}}
+    for emb in PIPE_EMBEDDINGS:
+        g = grid(emb)
+        settings = {"best_all": g["all"]["best_all"], "scene_room": g["room"]["best_all"],
+                    "scene_call": g["call"]["best_all"], "sherpa": g["all"]["best_no_floor"]["complete"]}
+        out["models"][emb] = {**settings, "grid_sha256": sha256(RESULTS / "grid" / f"{emb}.json"),
+                              "app_candidates": [k for k in settings.values()
+                                                 if k == APP_CANDIDATES.get(emb)],
+                              "not_app_candidates": sorted({k for k in settings.values()
+                                                            if k.startswith("centroid/")})}
+    PREREGISTERED.write_text(json.dumps(out, indent=1))
     return out
 
 
@@ -666,12 +707,14 @@ def evaluate_pipe(set_name: str, meetings, which: str = "best_all") -> None:
     meeting's own scene; AMI meetings are in a room) or "sherpa" (complete linkage, no floor)."""
     import diar_pipe
 
+    if not PREREGISTERED.exists():
+        raise SystemExit(f"run the preregister step first: {PREREGISTERED} is missing")
+    pre = json.loads(PREREGISTERED.read_text())
     for meeting, _, ref, segments in meetings:
         scene = meeting.split("-")[1] if set_name == "korean" else "room"
         for emb in PIPE_EMBEDDINGS:
-            g = grid(emb)
-            key = {"best_all": g["all"]["best_all"], "scene": g[scene]["best_all"],
-                   "sherpa": g["all"]["best_no_floor"]["complete"]}[which]
+            p = pre["models"][emb]
+            key = {"best_all": p["best_all"], "scene": p[f"scene_{scene}"], "sherpa": p["sherpa"]}[which]
             method, th, kind, value = parse_key(key)
             system = {"best_all": f"{emb}.pipe", "scene": f"{emb}.pipe-scene", "sherpa": f"{emb}.pipe-sherpa"}[which]
             if done(set_name, meeting, system):
@@ -688,7 +731,8 @@ def evaluate_pipe(set_name: str, meetings, which: str = "best_all") -> None:
                                         st.n_samples, diar_pipe.SEGMENTATION_3)
             sec = time.perf_counter() - t
             _, overlap = diar_pipe.ref_overlap(st, ref)
-            result = {"meeting": meeting, "system": system, "embedding": emb, "linkage": method,
+            result = {"meeting": meeting, "system": system, "embedding": emb, "preregistered": key,
+                      "preregistered_at": pre["written"], "linkage": method,
                       "threshold": th, "floor": [kind, value], "inversions": inv,
                       "erased": diar_pipe.erased(overlap, base, n) if n > 1 else 0,
                       "vanished": diar_pipe.vanished(overlap, labels),
@@ -742,7 +786,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("steps", nargs="+", choices=["tune", "korean", "ami", "online", "long", "absorb",
                                                  "tune30", "korean30", "ami30",
-                                                 "extract-dev", "verify", "grid", "extract-test", "pipe"])
+                                                 "extract-dev", "verify", "grid", "preregister", "extract-test", "pipe"])
     ap.add_argument("--joint", action="store_true", help="B: choose the absorb share with the threshold")
     args = ap.parse_args()
     try:
@@ -783,6 +827,8 @@ def steps(names: list[str], joint: bool = False) -> None:
                 for scene in g["scenes"]:
                     b, t = g[scene]["best_all"], g[scene]["table"]
                     print(emb, scene, b, t[b], "| sherpa-like", t[g[scene]["best_no_floor"]["complete"]], flush=True)
+        elif step == "preregister":
+            print(json.dumps(preregister(), indent=1))
         elif step == "extract-test":
             extract_set("korean", korean_meetings(TEST_SEEDS, TEST_MINUTES))
             extract_set("ami", ami_meetings())

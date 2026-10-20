@@ -1,0 +1,50 @@
+{
+ "written": "2026-10-21T06:48:21+0900",
+ "rule": "headline = each model's common value; ranking by its AMI result. scene values are secondary (AMI takes the room value). baseline = sherpa-like (complete, no floor). Nothing is added or changed after test is seen.",
+ "korean_test_limit": "clips are reused across meetings: Korean test may be optimistic",
+ "models": {
+  "campplus-zh-en": {
+   "best_all": "average/0.25/share/0.03",
+   "scene_room": "centroid/0.1/share/0.01",
+   "scene_call": "average/0.2/share/0.05",
+   "sherpa": "complete/0.9/count/1",
+   "grid_sha256": "0b61db72152749bd1fc304118acf59205ce8a30028f097c564b50bf1048e35a4",
+   "app_candidates": [
+    "average/0.25/share/0.03"
+   ],
+   "not_app_candidates": [
+    "centroid/0.1/share/0.01"
+   ]
+  },
+  "eres2netv2-zh": {
+   "best_all": "complete/0.8/share/0.08",
+   "scene_room": "complete/0.9/share/0.08",
+   "scene_call": "complete/0.6/share/0.08",
+   "sherpa": "complete/0.8/count/1",
+   "grid_sha256": "1be7a6ac406c55c5195af02bca1f5230acc31ec339c95ef3c635a13e48bd4f60",
+   "app_candidates": [],
+   "not_app_candidates": []
+  },
+  "titanet-small": {
+   "best_all": "complete/0.8/share/0.08",
+   "scene_room": "complete/0.85/share/0.08",
+   "scene_call": "complete/0.75/share/0.08",
+   "sherpa": "complete/0.8/count/1",
+   "grid_sha256": "8ecf3d6dcb83fd55b2536ea1e5db1579a935c2477b9e581389737abe325a3607",
+   "app_candidates": [],
+   "not_app_candidates": []
+  },
+  "wespeaker-r34": {
+   "best_all": "centroid/0.04/share/0.02",
+   "scene_room": "centroid/0.02/share/0.02",
+   "scene_call": "average/0.15/share/0.12",
+   "sherpa": "complete/0.55/count/1",
+   "grid_sha256": "942bfbfb615fd333879162a76575eac3d0f0206acbb6fe247c41ed4adcfaaba7",
+   "app_candidates": [],
+   "not_app_candidates": [
+    "centroid/0.02/share/0.02",
+    "centroid/0.04/share/0.02"
+   ]
+  }
+ }
+}

@@ -214,6 +214,7 @@ bench/.venv/bin/python -I bench/run_diar.py online long              # 60초 조
 bench/.venv/bin/python -I bench/run_diar.py absorb                   # 30분 dev로 고른 threshold×비율 흡수(diar_post), 탐색용
 bench/.venv/bin/python -I bench/run_diar.py extract-dev verify       # 30분 dev embedding 저장, sherpa 재현 확인(DER 0.5%p 이내, 화자 수 동일)
 bench/.venv/bin/python -I bench/run_diar.py grid                     # 군집 방법 × threshold × 바닥, 공통·room·call 따로 고름
-bench/.venv/bin/python -I bench/run_diar.py extract-test pipe        # test embedding 저장, dev에서 고른 값 그대로 적용
+bench/.venv/bin/python -I bench/run_diar.py preregister            # test를 보기 전에 쓸 값을 results/diar/preregistered.json에 한 번만 기록(덮어쓰지 않음)
+bench/.venv/bin/python -I bench/run_diar.py extract-test pipe        # test embedding 저장, 사전 등록한 값만 그대로 적용
 bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench    # 모델·데이터 없이 도는 테스트
 ```
