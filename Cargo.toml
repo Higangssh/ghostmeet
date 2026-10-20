@@ -11,3 +11,5 @@ license = "MIT"
 [profile.release]
 opt-level = 3
 lto = "thin"
+# symbols are for debugging builds; a release build ships without them
+strip = "symbols"

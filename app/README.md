@@ -12,9 +12,15 @@ app/bundle.sh                                 # the .app/.dmg with the sidecar i
 ```
 
 The bundle needs the Tauri CLI, a development tool only: `cargo install tauri-cli
---version 2.12.3 --locked` (the version this was built with). Built on an M4: the .app
-is 50 MB (app 42 MB, sidecar 11 MB; models are not in it), the dmg 15 MB. It is signed ad
-hoc only, so a downloaded copy is stopped by Gatekeeper until it is signed and notarized.
+--version 2.12.3 --locked` (the version this was built with). Built on an M4 with the
+release profile's `strip`: the .app is 38 MB (app 30 MB, sidecar 10 MB; models are not in
+it), the dmg 13 MB. The whole bundle is signed ad hoc (`signingIdentity: "-"`) with the
+hardened runtime and one entitlement, the microphone (`Entitlements.plist`); a copy
+downloaded from elsewhere is still stopped by Gatekeeper until it is signed with a
+Developer ID and notarized.
+
+`MEETBUTLER_DATA_DIR` points the app at another data folder, so a development run, a
+manual check or a screenshot never touches real meetings.
 
 The summary runs in `meetbutler-summarizer`, a separate executable the app starts after
 the final pass and that exits when the summary is done. The app looks for it next to its
@@ -46,7 +52,8 @@ real Mac before calling a build good, and note the macOS version.
 
 Permissions
 - [ ] First recording with both sources: macOS asks for the microphone, then for screen
-      recording (system audio comes through ScreenCaptureKit).
+      recording (system audio comes through ScreenCaptureKit). Check this in the bundle
+      from `app/bundle.sh` too: its hardened runtime needs the microphone entitlement.
 - [ ] Deny screen recording: recording still starts from the mic alone, and the window
       says system audio was left out. The session lists `mic` only.
 - [ ] Deny the microphone, allow screen recording: recording runs on system audio alone.
@@ -79,6 +86,9 @@ Summary
       is left running.
 
 Vocabulary (STT-7) — real speech; the benchmark only had synthetic voices
+- [ ] The 단어장 field before Start: it holds the last meeting's vocabulary; edit it,
+      record, and the next launch shows the edited one. It cannot be changed while
+      recording.
 - [ ] Put the attendees' names and a few terms in the vocabulary, hold a short meeting
       that says each one: the final transcript spells them as written. Note any name heard
       as another attendee's name (the benchmark saw this: "시온" heard as "지호").
