@@ -144,6 +144,9 @@ next to one that did not.
       unaffected and the summary says it failed, naming the missing file. Rename it back.
 
 **6. Library and Markdown**
+- [ ] Before the first meeting (an empty data folder), the library shows the mascot and
+      "아직 회의가 없습니다…", and the panel's 요약 tab the mascot and "회의가 끝나면…";
+      both read in light and dark mode, with no light rim around the figure.
 - [ ] The library lists the meetings; the filter narrows by title.
 - [ ] Rename in the library: the panel shows the new title, and the other way round.
 - [ ] Markdown 복사 pastes into a text editor as the meeting (title, date, summary with

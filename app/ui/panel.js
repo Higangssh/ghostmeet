@@ -64,6 +64,8 @@ async function showSummary() {
   $("summary-run").hidden = true;
   $("summary-state").textContent = s.state || "아직 요약이 없습니다";
   $("summary-again").hidden = !s.status || s.status === "done";
+  // nothing kept and nothing running: the mascot says where the summary will be
+  $("summary-empty").hidden = !!s.status || !$("summary-run").hidden;
   if (s.content) {
     renderSummary($("summary-body"), s.content, (line) => {
       selectTab("captions");
@@ -81,6 +83,9 @@ async function show(session) {
   if (!session) {
     renderTranscript($("captions"), [], false);
     $("kind").textContent = "";
+    $("summary-state").textContent = "아직 요약이 없습니다";
+    $("summary-body").replaceChildren();
+    $("summary-empty").hidden = false;
     return;
   }
   const final = session.transcript === "final";
@@ -139,6 +144,7 @@ $("summary-cancel").addEventListener("click", async () => {
 $("summary-again").addEventListener("click", async () => {
   if (!shown) return;
   $("summary-state").textContent = "요약하는 중…";
+  $("summary-empty").hidden = true;
   $("summary-again").hidden = true;
   $("summary-body").replaceChildren();
   await invoke("summarize", { sessionId: shown });
@@ -198,6 +204,7 @@ listen("final", async ({ payload }) => {
 listen("summary", async ({ payload }) => {
   if (payload.session_id !== shown) return;
   if (!payload.done) {
+    $("summary-empty").hidden = true;
     $("summary-run").hidden = false;
     $("summary-cancel").disabled = false;
     $("summary-progress").value = payload.progress;

@@ -34,9 +34,11 @@ async function refresh() {
   sessions = await invoke("list_sessions");
   if (picked) picked = sessions.find((s) => s.session_id === picked.session_id) || null;
   renderList();
+  // no meetings at all: the mascot, not "pick one on the left"
+  $("no-meetings").hidden = sessions.length > 0;
   if (!picked) {
     $("meeting").hidden = true;
-    $("empty").hidden = false;
+    $("empty").hidden = sessions.length === 0;
   }
 }
 

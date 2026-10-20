@@ -16,6 +16,10 @@
 // - .icns and .ico carry one picture per size, so the small sizes get the zoomed one;
 //   `cargo tauri icon` would shrink a single picture for every size.
 //
+// The mascot for the windows' empty states (the library with no meetings, a summary tab
+// with nothing yet) comes from the cut-out (assets/brand/meetbutler-mascot-cutout.png),
+// drawn at 112 px high and twice that, into app/ui/ where the pages load it.
+//
 // The tray (menu bar) glyph is drawn here too: the call-and-voice glyph on the tray, one
 // colour on transparent, for macOS to tint as a template image; and a second one with a
 // dot for while recording.
@@ -159,6 +163,29 @@ write(icon(512), "icon.png")
 write(ico([16, 24, 32, 48, 64, 256]), "icon.ico")
 write(trayGlyph(44, recording: false), "tray.png")
 write(trayGlyph(44, recording: true), "tray-recording.png")
+
+// the empty-state mascot, at the height the pages show it and at twice that
+let cutoutPath = root.appendingPathComponent("assets/brand/meetbutler-mascot-cutout.png")
+guard let cutoutData = try? Data(contentsOf: cutoutPath),
+      let cutout = NSBitmapImageRep(data: cutoutData)?.cgImage
+else {
+    FileHandle.standardError.write(Data("no cut-out at \(cutoutPath.path)\n".utf8))
+    exit(1)
+}
+let ui = root.appendingPathComponent("app/ui")
+for (scale, name) in [(1, "mascot.png"), (2, "mascot@2x.png")] {
+    let h = 112 * scale
+    let w = Int((CGFloat(h) * CGFloat(cutout.width) / CGFloat(cutout.height)).rounded())
+    let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    ctx.interpolationQuality = .high
+    ctx.draw(cutout, in: CGRect(x: 0, y: 0, width: w, height: h))
+    try! png(ctx.makeImage()!).write(to: ui.appendingPathComponent(name))
+    print("wrote app/ui/\(name)")
+}
 
 // .icns through iconutil, from an iconset with every size drawn for itself
 let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("MeetButler-\(getpid()).iconset")

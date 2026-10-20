@@ -117,3 +117,7 @@ body.library #meeting { display: flex; flex-direction: column; min-height: 0; fl
 .columns { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .columns > div { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .columns .transcript { flex: 1; }
+
+/* empty states: the mascot small, one line under it */
+.empty-state { margin: 24px auto; text-align: center; color: var(--muted); font-size: 12px; }
+.empty-state img { display: block; margin: 0 auto 8px; height: 112px; width: auto; }
