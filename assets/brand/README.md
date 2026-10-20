@@ -14,6 +14,7 @@ Decided 2026-10-20:
 Siblings: HomeButler has no tile and a cyan site accent; PortButler has a steel
 blue-grey tile and a mint site accent. MeetButler's tile is navy.
 
-A cut-out of the mascot on a transparent background is still to come; until then the
-app's own windows do not show the mascot (a dark tile on a dark panel leaves only an
-outline).
+`meetbutler-mascot-cutout.png` (1086×1448, transparent) is the same mascot without the
+background, supplied 2026-10-20; its alpha was snapped to opaque from 240 up, because
+the lossy source left the body faintly see-through. Use it wherever the background is
+ours — the app's windows, the site, the README — not a tile on top of a tile.
