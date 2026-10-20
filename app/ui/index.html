@@ -5,62 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MeetButler</title>
   <link rel="stylesheet" href="style.css">
+  <script src="common.js" defer></script>
   <script src="main.js" defer></script>
 </head>
-<body>
-  <header>
+<body class="bar">
+  <div class="bar-row">
     <div id="indicator" class="indicator" hidden>
       <span class="dot" aria-hidden="true"></span><span>녹음 중</span>
       <span id="elapsed" class="elapsed">0:00</span>
     </div>
-    <h1 id="idle-title">MeetButler</h1>
-  </header>
-
-  <section class="controls" id="controls">
-    <fieldset>
-      <legend>소스</legend>
-      <label><input type="checkbox" name="source" value="mic" checked> 마이크 (나)</label>
-      <label><input type="checkbox" name="source" value="system" checked> 시스템 오디오 (상대)</label>
-    </fieldset>
-    <label class="vocabulary">단어장 <span class="hint">참석자 이름과 용어, 쉼표로 구분 · 앞의 100자까지 씀</span>
-      <input id="vocabulary" type="text" autocomplete="off" spellcheck="false" placeholder="예: 지호, 도윤, 주소록 동기화">
-    </label>
-    <label class="language">언어
-      <select id="language">
-        <option value="ko" selected>한국어</option>
-        <option value="en">English</option>
-        <option value="auto">자동</option>
-      </select>
-    </label>
-  </section>
-
-  <button id="toggle" class="toggle" type="button">녹음 시작</button>
-  <p id="notice" class="notice" role="status" hidden></p>
-
-  <section class="captions" aria-live="polite">
-    <div class="captions-head">
-      <h2>자막</h2>
-      <span id="kind" class="kind"></span>
-    </div>
-    <ol id="captions"></ol>
-  </section>
-
-  <section class="summary" id="summary" hidden>
-    <div class="captions-head">
-      <h2>요약</h2>
-      <span id="summary-state" class="kind"></span>
-    </div>
-    <div id="summary-run" class="summary-run" hidden>
-      <progress id="summary-progress" max="1" value="0"></progress>
-      <button id="summary-cancel" type="button">취소</button>
-    </div>
-    <button id="summary-again" class="link" type="button" hidden>다시 요약</button>
-    <div id="summary-body"></div>
-  </section>
-
-  <section class="library">
-    <h2>지난 회의</h2>
-    <ul id="sessions"></ul>
-  </section>
+    <span id="idle-title" class="bar-title">MeetButler</span>
+    <span id="sources" class="chips"></span>
+    <span class="spacer"></span>
+    <button id="toggle" class="toggle small" type="button">녹음 시작</button>
+    <button id="expand" class="icon" type="button" title="패널 펼치기" aria-label="패널 펼치기">▢</button>
+    <button id="library" class="icon" type="button" title="라이브러리" aria-label="라이브러리">☰</button>
+  </div>
+  <p id="last" class="last-line" aria-live="polite"></p>
 </body>
 </html>

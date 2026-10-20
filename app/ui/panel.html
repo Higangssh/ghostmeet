@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeetButler</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="common.js" defer></script>
+  <script src="panel.js" defer></script>
+</head>
+<body class="panel">
+  <header>
+    <div id="indicator" class="indicator" hidden>
+      <span class="dot" aria-hidden="true"></span><span>녹음 중</span>
+      <span id="elapsed" class="elapsed">0:00</span>
+    </div>
+    <h1 id="heading">MeetButler</h1>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="captions" aria-selected="true">자막</button>
+    <button type="button" role="tab" data-tab="summary" aria-selected="false">요약</button>
+    <button type="button" role="tab" data-tab="record" aria-selected="false">기록</button>
+  </nav>
+
+  <main>
+    <section id="tab-captions" class="tab">
+      <div class="captions-head"><span id="kind" class="kind"></span></div>
+      <ol id="captions" class="transcript"></ol>
+    </section>
+
+    <section id="tab-summary" class="tab" hidden>
+      <div class="captions-head"><span id="summary-state" class="kind">아직 요약이 없습니다</span></div>
+      <div id="summary-run" class="summary-run" hidden>
+        <progress id="summary-progress" max="1" value="0"></progress>
+        <button id="summary-cancel" type="button">취소</button>
+      </div>
+      <button id="summary-again" class="link" type="button" hidden>다시 요약</button>
+      <div id="summary-body" class="summary-body"></div>
+    </section>
+
+    <section id="tab-record" class="tab" hidden>
+      <div id="setup">
+        <h2>다음 회의</h2>
+        <fieldset>
+          <legend>소스</legend>
+          <label><input type="checkbox" name="source" value="mic" checked> 마이크 (나)</label>
+          <label><input type="checkbox" name="source" value="system" checked> 시스템 오디오 (상대)</label>
+        </fieldset>
+        <label class="field">언어
+          <select id="language">
+            <option value="ko" selected>한국어</option>
+            <option value="en">English</option>
+            <option value="auto">자동</option>
+          </select>
+        </label>
+        <label class="field">단어장 <span class="hint">참석자 이름과 용어, 쉼표로 구분 · 앞의 100자까지 씀</span>
+          <textarea id="vocabulary" rows="3" spellcheck="false" placeholder="예: 지호, 도윤, 주소록 동기화"></textarea>
+        </label>
+      </div>
+      <div id="meeting" hidden>
+        <h2>이 회의</h2>
+        <label class="field">제목
+          <input id="title" type="text" autocomplete="off">
+        </label>
+        <p id="facts" class="facts"></p>
+        <div class="actions">
+          <button id="copy" type="button">Markdown 복사</button>
+          <button id="export" type="button">Markdown 저장</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span id="status" class="status" role="status"></span>
+    <button id="toggle" class="toggle small" type="button">녹음 시작</button>
+  </footer>
+</body>
+</html>

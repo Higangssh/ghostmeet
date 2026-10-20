@@ -121,15 +121,50 @@ fn the_csp_never_allows_eval_or_inline_script() {
     );
 }
 
+/// Every file the windows load, by extension.
+fn ui_files(ext: &str) -> Vec<String> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui");
+    let mut out: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|n| n.ends_with(ext))
+        .map(|n| format!("../ui/{n}"))
+        .collect();
+    out.sort();
+    assert!(!out.is_empty(), "no {ext} files");
+    out
+}
+
 #[test]
-fn the_page_has_no_inline_script_to_need_it() {
-    let html = read("../ui/index.html");
-    assert!(
-        !html.contains("<script>") && !html.contains("onclick="),
-        "inline script in index.html"
-    );
-    for line in html.lines().filter(|l| l.contains("<script")) {
-        assert!(line.contains("src=\"main.js\""), "{line}");
+fn no_page_has_inline_script_to_need_it() {
+    let scripts: Vec<String> = ui_files(".js")
+        .iter()
+        .map(|f| f.trim_start_matches("../ui/").to_string())
+        .collect();
+    for page in ui_files(".html") {
+        let html = read(&page);
+        assert!(!html.contains("<script>"), "inline script in {page}");
+        for attr in [
+            "onclick=",
+            "onload=",
+            "onerror=",
+            "onchange=",
+            "oninput=",
+            "onsubmit=",
+            "javascript:",
+        ] {
+            assert!(!html.contains(attr), "{page} has {attr}");
+        }
+        for line in html.lines().filter(|l| l.contains("<script")) {
+            let src = line
+                .split("src=\"")
+                .nth(1)
+                .and_then(|r| r.split('"').next());
+            assert!(
+                src.is_some_and(|s| scripts.iter().any(|f| f == s)),
+                "{page}: a script that is not one of the app's own files: {line}"
+            );
+        }
     }
 }
 
@@ -233,15 +268,45 @@ fn the_rust_side_never_binds_a_socket() {
 
 #[test]
 fn transcript_text_reaches_the_page_only_as_text() {
-    // model output derived from meeting audio is never parsed as HTML
-    let js = read("../ui/main.js");
-    for needle in [
-        "innerHTML",
-        "outerHTML",
-        "insertAdjacentHTML",
-        "document.write",
-        "eval(",
-    ] {
-        assert!(!js.contains(needle), "main.js uses {needle}");
+    // model output derived from meeting audio is never parsed as HTML, in any window
+    for file in ui_files(".js") {
+        let js = read(&file);
+        for needle in [
+            "innerHTML",
+            "outerHTML",
+            "insertAdjacentHTML",
+            "document.write",
+            "eval(",
+            "new Function",
+        ] {
+            assert!(!js.contains(needle), "{file} uses {needle}");
+        }
+    }
+}
+
+#[test]
+fn every_window_is_one_of_the_apps_own_pages_under_the_same_permissions() {
+    let caps: serde_json::Value = serde_json::from_str(&read("capabilities/default.json")).unwrap();
+    let labels: Vec<&str> = caps["windows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w.as_str().unwrap())
+        .collect();
+    let pages = ui_files(".html");
+    for w in config()["app"]["windows"].as_array().unwrap() {
+        let label = w["label"].as_str().unwrap();
+        assert!(
+            labels.contains(&label),
+            "window {label} is outside the capability"
+        );
+        let url = w
+            .get("url")
+            .and_then(|u| u.as_str())
+            .unwrap_or("index.html");
+        assert!(
+            pages.contains(&format!("../ui/{url}")),
+            "window {label} loads {url}"
+        );
     }
 }

@@ -196,6 +196,7 @@ struct FinalEvent {
 /// rest come back as warnings. Off the main thread: loading the model takes a moment.
 #[tauri::command(async)]
 fn start_recording(
+    app: AppHandle,
     state: State<'_, AppState>,
     sources: Vec<String>,
     language: Option<String>,
@@ -293,6 +294,7 @@ fn start_recording(
         capture,
         writers,
     });
+    let _ = app.emit("recording", Some(session_id.clone()));
     Ok(Started {
         session_id,
         sources: channels.iter().map(|c| c.name().to_string()).collect(),
@@ -305,6 +307,7 @@ fn start_recording(
 #[tauri::command(async)]
 fn stop_recording(app: AppHandle, state: State<'_, AppState>) -> Result<Option<Session>, String> {
     let session = state.stop_current()?;
+    let _ = app.emit("recording", None::<String>);
     if let Some(s) = &session {
         // the live model is not needed until the next meeting; make room for the large one
         state.models.evict(&LIVE_MODEL.to_string());
@@ -503,6 +506,127 @@ fn get_transcript(
         .map_err(|e| e.to_string())
 }
 
+/// Bring one of the app's own windows forward ("panel", "library").
+#[tauri::command]
+fn show_window(app: AppHandle, label: String) -> Result<(), String> {
+    if !matches!(label.as_str(), "panel" | "library") {
+        return Err(format!("no window {label}"));
+    }
+    let w = app
+        .get_webview_window(&label)
+        .ok_or_else(|| format!("no window {label}"))?;
+    w.show()
+        .and_then(|_| w.unminimize())
+        .and_then(|_| w.set_focus())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn rename_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    title: String,
+) -> Result<(), String> {
+    state
+        .recorder
+        .rename(&session_id, &title)
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("sessions", ());
+    Ok(())
+}
+
+/// Delete a meeting for good, its recording included. Not while it is recording or in
+/// the after-meeting pass.
+#[tauri::command]
+fn delete_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<(), String> {
+    state
+        .recorder
+        .delete(&session_id)
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("sessions", ());
+    Ok(())
+}
+
+fn meeting_markdown(
+    state: &AppState,
+    session_id: &str,
+    date: &str,
+) -> Result<(Session, String), String> {
+    let session = state
+        .recorder
+        .session(session_id)
+        .map_err(|e| e.to_string())?
+        .ok_or("no such meeting")?;
+    let transcript = state
+        .recorder
+        .transcript(session_id)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    let summary: Option<Summary> = state
+        .recorder
+        .store()
+        .load_summary(session_id)
+        .map_err(|e| e.to_string())?
+        .filter(|s| s.status == "done")
+        .and_then(|s| serde_json::from_str(&s.content).ok());
+    let md = markdown::markdown(&session, date, &transcript, summary.as_ref());
+    Ok((session, md))
+}
+
+/// The meeting as Markdown (OUT-1), for the clipboard. `date` is its start as the window
+/// shows it.
+#[tauri::command]
+fn get_markdown(
+    state: State<'_, AppState>,
+    session_id: String,
+    date: String,
+) -> Result<String, String> {
+    meeting_markdown(&state, &session_id, &date).map(|m| m.1)
+}
+
+/// Write the meeting as Markdown into Downloads and show it in Finder. Returns the path.
+#[tauri::command]
+fn export_markdown(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    date: String,
+) -> Result<String, String> {
+    let (session, md) = meeting_markdown(&state, &session_id, &date)?;
+    let dir = app.path().download_dir().map_err(|e| e.to_string())?;
+    let name: String = match session.title.trim() {
+        "" => format!("MeetButler {}", session.session_id),
+        t => t.to_string(),
+    }
+    .chars()
+    .map(|c| {
+        if "/\\:*?\"<>|".contains(c) || c.is_control() {
+            '_'
+        } else {
+            c
+        }
+    })
+    .collect();
+    let mut path = dir.join(format!("{name}.md"));
+    let mut n = 1;
+    while path.exists() {
+        n += 1;
+        path = dir.join(format!("{name} ({n}).md"));
+    }
+    std::fs::write(&path, md).map_err(|e| e.to_string())?;
+    // Finder, not a URL: the file is on this Mac
+    let _ = std::process::Command::new("open")
+        .arg("-R")
+        .arg(&path)
+        .status();
+    Ok(path.display().to_string())
+}
+
 /// The vocabulary of the latest meeting that had one, to start the next one with.
 #[tauri::command]
 fn last_vocabulary(state: State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -550,8 +674,25 @@ pub fn run() {
             summarize,
             cancel_summary,
             get_summary,
-            last_vocabulary
+            last_vocabulary,
+            show_window,
+            rename_session,
+            delete_session,
+            get_markdown,
+            export_markdown
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    // the mini bar is the app: closing it quits, through RunEvent::Exit
+                    window.app_handle().exit(0);
+                } else {
+                    // the panel and the library come back from the mini bar
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .build(tauri::generate_context!())
         .expect("building the app");
 

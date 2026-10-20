@@ -12,9 +12,31 @@
       {
         "label": "main",
         "title": "MeetButler",
-        "width": 380,
+        "width": 400,
+        "height": 92,
+        "resizable": false,
+        "maximizable": false,
+        "alwaysOnTop": true
+      },
+      {
+        "label": "panel",
+        "title": "MeetButler",
+        "url": "panel.html",
+        "width": 360,
+        "height": 560,
+        "minWidth": 320,
+        "minHeight": 420,
+        "visible": false
+      },
+      {
+        "label": "library",
+        "title": "MeetButler 라이브러리",
+        "url": "library.html",
+        "width": 860,
         "height": 600,
-        "resizable": true
+        "minWidth": 640,
+        "minHeight": 420,
+        "visible": false
       }
     ],
     "security": {
@@ -24,8 +46,16 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ],
     "macOS": {
       "minimumSystemVersion": "13.0",
       "infoPlist": "Info.plist"

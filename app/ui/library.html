@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeetButler 라이브러리</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="common.js" defer></script>
+  <script src="library.js" defer></script>
+</head>
+<body class="library">
+  <aside class="list">
+    <input id="filter" type="search" placeholder="제목으로 찾기" autocomplete="off" aria-label="제목으로 찾기">
+    <ul id="sessions"></ul>
+  </aside>
+
+  <section class="detail">
+    <p id="empty" class="empty">왼쪽에서 회의를 고르세요.</p>
+    <div id="meeting" hidden>
+      <div class="detail-head">
+        <input id="title" class="title-input" type="text" autocomplete="off" aria-label="제목">
+        <p id="facts" class="facts"></p>
+        <div class="actions">
+          <button id="copy" type="button">Markdown 복사</button>
+          <button id="export" type="button">Markdown 저장</button>
+          <button id="delete" class="danger" type="button">삭제</button>
+        </div>
+        <p id="status" class="status" role="status"></p>
+      </div>
+      <div class="columns">
+        <div>
+          <h2>요약 <span id="summary-state" class="kind"></span></h2>
+          <button id="summary-again" class="link" type="button" hidden>다시 요약</button>
+          <div id="summary-body" class="summary-body"></div>
+        </div>
+        <div>
+          <h2>전사 <span id="kind" class="kind"></span></h2>
+          <ol id="transcript" class="transcript"></ol>
+        </div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

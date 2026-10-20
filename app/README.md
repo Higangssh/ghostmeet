@@ -1,7 +1,17 @@
 # MeetButler app (0.2 skeleton)
 
 Tauri 2 shell over `crates/meetbutler-engine` and `crates/meetbutler-audio`. Opens no
-port; the window talks to Rust over Tauri IPC only.
+port; the windows talk to Rust over Tauri IPC only.
+
+Three windows (requirements §6), all the app's own pages under one capability:
+
+| Window | Page | What |
+|---|---|---|
+| mini bar (`main`, always on top) | `index.html`, `main.js` | recording state, elapsed time, sources, the newest caption, Start/Stop, the way to the others; closing it quits |
+| panel (`panel`, 360×560) | `panel.html`, `panel.js` | 자막 / 요약 / 기록 tabs for the meeting on screen; 기록 holds the next meeting's sources, language and vocabulary, and this one's title and Markdown |
+| library (`library`) | `library.html`, `library.js` | past meetings with a title filter, summary beside transcript, rename, Markdown copy/save, delete |
+
+`common.js` is shared. Closing the panel or the library hides it.
 
 ```bash
 # models are read from MEETBUTLER_MODELS, else <app data>/models; the app never downloads them
@@ -97,10 +107,27 @@ Vocabulary (STT-7) — real speech; the benchmark only had synthetic voices
 - [ ] A term in the vocabulary that nobody says does not appear in the transcript.
 - [ ] An empty vocabulary: the final transcript is as before.
 
+Windows
+- [ ] Launch: only the mini bar shows, on top of other apps, and it can be dragged by
+      its title bar. ▢ opens the panel, ☰ the library; closing either hides it and the
+      button brings it back.
+- [ ] Start from the mini bar with the panel closed: it records with the panel's 기록
+      setup (sources, language, vocabulary); opening the panel then shows the live
+      captions and the elapsed time matches the bar's.
+- [ ] Start from the panel, stop from the mini bar (and the other way round): both
+      windows and the library follow.
+- [ ] 요약 tab: a summary item's ↗ switches to 자막 and highlights the line it came from.
+- [ ] Library: the filter narrows by title; renaming in the library shows in the panel
+      and the other way round; Markdown 복사 pastes into a text editor as the meeting;
+      Markdown 저장 writes into Downloads and shows it in Finder.
+- [ ] Library delete: the first click asks again, the second deletes; the meeting's
+      folder under `sessions/` is gone; a meeting recording or being finalised refuses.
+- [ ] Dark mode: every window is readable.
+
 Quitting — every path must end without a crash report and keep the recording
 - [ ] Cmd+Q while recording: the app quits; on relaunch the session is there, stopped,
       with its audio and captions so far.
-- [ ] Close the last window while recording: same as Cmd+Q.
+- [ ] Close the mini bar while recording: same as Cmd+Q.
 - [ ] Cmd+Q during the final pass: the app quits promptly; the session keeps its live
       transcript (the final pass did not half-apply).
 - [ ] Log out (and shut down) while recording: no "quit unexpectedly" dialog on the next
