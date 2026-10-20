@@ -1,9 +1,11 @@
-//! The default microphone, through cpal.
+//! The default microphone, through cpal. Conformed to 16 kHz mono, then kept on the clock
+//! by the capture times cpal gives each packet (`gap`).
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample};
 
 use crate::conform::Conformer;
+use crate::gap::GapFiller;
 use crate::{on_own_thread, AudioSink, Capture, CaptureError};
 
 /// Open the default input device. Capture stops when the returned handle is stopped or
@@ -51,15 +53,23 @@ where
     f32: FromSample<T>,
 {
     let mut conformer = Conformer::new(rate, channels);
-    let (mut floats, mut out) = (Vec::new(), Vec::new());
+    let mut gaps = GapFiller::new();
+    let (mut floats, mut conformed, mut out) = (Vec::new(), Vec::new(), Vec::new());
     device
         .build_input_stream::<T, _, _>(
             config,
-            move |data: &[T], _| {
+            move |data: &[T], info: &cpal::InputCallbackInfo| {
                 floats.clear();
                 floats.extend(data.iter().map(|&s| s.to_sample::<f32>()));
+                conformed.clear();
+                conformer.process(&floats, &mut conformed);
                 out.clear();
-                conformer.process(&floats, &mut out);
+                gaps.push(
+                    // the backend's clock in seconds; the filler only takes differences
+                    info.timestamp().capture.as_nanos() as f64 * 1e-9,
+                    &conformed,
+                    &mut out,
+                );
                 if !out.is_empty() {
                     sink(&out);
                 }

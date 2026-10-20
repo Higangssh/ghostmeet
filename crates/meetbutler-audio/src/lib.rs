@@ -9,6 +9,7 @@
 //! [`system`] but is not wired up yet, and reports [`CaptureError::Unsupported`].
 
 pub mod conform;
+pub mod gap;
 pub mod mic;
 pub mod system;
 

@@ -34,13 +34,23 @@ mod macos {
     use screencapturekit::prelude::*;
 
     use crate::conform::Conformer;
+    use crate::gap::GapFiller;
     use crate::{AudioSink, CaptureError};
 
     /// ScreenCaptureKit's own rate; we conform it like any device.
     const RATE: i32 = 48_000;
 
+    struct State {
+        sink: AudioSink,
+        conformer: Conformer,
+        gaps: GapFiller,
+        mono: Vec<f32>,
+        conformed: Vec<f32>,
+        out: Vec<f32>,
+    }
+
     struct Output {
-        state: Mutex<(AudioSink, Conformer, Vec<f32>, Vec<f32>)>,
+        state: Mutex<State>,
     }
 
     impl SCStreamOutputTrait for Output {
@@ -51,8 +61,18 @@ mod macos {
             let Ok(list) = sample.audio_buffer_list() else {
                 return;
             };
+            // whether ScreenCaptureKit sends silence or nothing while nothing plays is not
+            // known yet (app/README manual checks); the gap filler covers the latter
+            let at = sample.presentation_timestamp().as_seconds();
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            let (sink, conformer, mono, out) = &mut *state;
+            let State {
+                sink,
+                conformer,
+                gaps,
+                mono,
+                conformed,
+                out,
+            } = &mut *state;
             // Float32, one buffer per channel (non-interleaved); average them
             mono.clear();
             let n = list.num_buffers();
@@ -68,8 +88,13 @@ mod macos {
                     mono.iter_mut().zip(samples).for_each(|(m, s)| *m += s);
                 }
             }
+            conformed.clear();
+            conformer.process(mono, conformed);
             out.clear();
-            conformer.process(mono, out);
+            match at {
+                Some(at) => gaps.push(at, conformed, out),
+                None => out.extend_from_slice(conformed), // no time: pass it on as it is
+            }
             if !out.is_empty() {
                 sink(out);
             }
@@ -112,7 +137,14 @@ mod macos {
         let mut stream =
             SCStream::new(&filter, &config).map_err(|e| CaptureError::Backend(e.to_string()))?;
         let output = Output {
-            state: Mutex::new((sink, Conformer::new(RATE as u32, 1), Vec::new(), Vec::new())),
+            state: Mutex::new(State {
+                sink,
+                conformer: Conformer::new(RATE as u32, 1),
+                gaps: GapFiller::new(),
+                mono: Vec::new(),
+                conformed: Vec::new(),
+                out: Vec::new(),
+            }),
         };
         stream
             .add_output_handler(output, SCStreamOutputType::Audio)

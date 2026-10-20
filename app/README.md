@@ -104,6 +104,12 @@ next to one that did not.
 - [ ] The vocabulary field cannot be changed while recording.
 - [ ] Stop from the mini bar (another time: start from the panel, stop from the menu bar):
       every window follows.
+- [ ] Silence on the other side: with nothing playing on the Mac, record one minute
+      (speak now and then), stop, and compare the two recordings in
+      `~/MeetButler-test/sessions/<id>/`: `ls -l` the `mic.pcm` and `system.pcm` sizes
+      (32,000 bytes a second each). They should match to within a fraction of a second.
+      Note the two sizes either way: it tells whether ScreenCaptureKit sends silence or
+      nothing while nothing plays.
 - [ ] Accent: buttons, the selected tab and the ↗ links are periwinkle, never red or the
       grey of provisional captions; text on them reads in light and dark.
 
