@@ -29,7 +29,7 @@ function setRecording(id, sources, since) {
   }
 }
 
-$("toggle").addEventListener("click", async () => {
+async function toggle() {
   $("toggle").disabled = true;
   try {
     if (!recording) {
@@ -46,6 +46,12 @@ $("toggle").addEventListener("click", async () => {
   } finally {
     $("toggle").disabled = false;
   }
+}
+
+$("toggle").addEventListener("click", toggle);
+// the menu bar's 녹음 시작/정지 lands here, so it starts with the same setup
+listen("tray-toggle", () => {
+  if (!$("toggle").disabled) toggle();
 });
 
 $("expand").addEventListener("click", () => invoke("show_window", { label: "panel" }));

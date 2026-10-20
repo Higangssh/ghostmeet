@@ -310,3 +310,39 @@ fn every_window_is_one_of_the_apps_own_pages_under_the_same_permissions() {
         );
     }
 }
+
+#[test]
+fn tauri_is_built_with_the_tray_and_nothing_else() {
+    // the menu bar icon needs tray-icon, and image-png to read its glyph; anything more
+    // (shell, http, updater, devtools...) is a decision of its own, made here
+    let manifest: toml_lite::Manifest = toml_lite::read(&read("Cargo.toml"));
+    let mut features = manifest.tauri_features;
+    features.sort();
+    assert_eq!(features, ["image-png", "tray-icon"]);
+}
+
+/// Just enough of Cargo.toml to read tauri's features without a TOML crate.
+mod toml_lite {
+    pub struct Manifest {
+        pub tauri_features: Vec<String>,
+    }
+
+    pub fn read(text: &str) -> Manifest {
+        let line = text
+            .lines()
+            .find(|l| l.trim_start().starts_with("tauri = "))
+            .expect("a tauri dependency");
+        let list = line
+            .split("features = [")
+            .nth(1)
+            .and_then(|r| r.split(']').next())
+            .unwrap_or("");
+        Manifest {
+            tauri_features: list
+                .split(',')
+                .map(|f| f.trim().trim_matches('"').to_string())
+                .filter(|f| !f.is_empty())
+                .collect(),
+        }
+    }
+}

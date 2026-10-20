@@ -29,7 +29,10 @@ use meetbutler_summarizer::client::{ClientError, Sidecar};
 use meetbutler_summarizer::protocol::ErrorKind;
 use meetbutler_summarizer::summary::{self, Summary};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+use tauri::image::Image;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, Wry};
 
 /// Provisional captions during the meeting; the final transcript after it.
 pub const LIVE_MODEL: &str = "small";
@@ -295,6 +298,7 @@ fn start_recording(
         writers,
     });
     let _ = app.emit("recording", Some(session_id.clone()));
+    set_tray(&app, true);
     Ok(Started {
         session_id,
         sources: channels.iter().map(|c| c.name().to_string()).collect(),
@@ -308,6 +312,7 @@ fn start_recording(
 fn stop_recording(app: AppHandle, state: State<'_, AppState>) -> Result<Option<Session>, String> {
     let session = state.stop_current()?;
     let _ = app.emit("recording", None::<String>);
+    set_tray(&app, false);
     if let Some(s) = &session {
         // the live model is not needed until the next meeting; make room for the large one
         state.models.evict(&LIVE_MODEL.to_string());
@@ -506,6 +511,75 @@ fn get_transcript(
         .map_err(|e| e.to_string())
 }
 
+/// The menu bar icon (requirements §6): Start/Stop, the panel, the library, quit. The glyph
+/// is a template image macOS tints for the menu bar; while recording it carries a dot.
+const TRAY_GLYPH: &[u8] = include_bytes!("../icons/tray.png");
+const TRAY_GLYPH_RECORDING: &[u8] = include_bytes!("../icons/tray-recording.png");
+
+/// The tray's Start/Stop item, kept to retitle it.
+struct TrayToggle(MenuItem<Wry>);
+
+fn build_tray(app: &AppHandle) -> tauri::Result<()> {
+    let toggle = MenuItem::with_id(app, "toggle", "녹음 시작", true, None::<&str>)?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &toggle,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "panel", "패널 열기", true, None::<&str>)?,
+            &MenuItem::with_id(app, "library", "라이브러리", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "quit", "MeetButler 종료", true, None::<&str>)?,
+        ],
+    )?;
+    TrayIconBuilder::with_id("main")
+        .icon(Image::from_bytes(TRAY_GLYPH)?)
+        .icon_as_template(true)
+        .tooltip("MeetButler")
+        .menu(&menu)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            // the mini bar starts with the setup the windows keep; it does the work
+            "toggle" => {
+                let _ = app.emit_to("main", "tray-toggle", ());
+            }
+            "panel" | "library" => {
+                let _ = show_window(app.clone(), event.id().as_ref().to_string());
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .build(app)?;
+    app.manage(TrayToggle(toggle));
+    Ok(())
+}
+
+/// Show in the menu bar whether a meeting is recording.
+fn set_tray(app: &AppHandle, recording: bool) {
+    if let Some(tray) = app.tray_by_id("main") {
+        let glyph = if recording {
+            TRAY_GLYPH_RECORDING
+        } else {
+            TRAY_GLYPH
+        };
+        if let Ok(icon) = Image::from_bytes(glyph) {
+            let _ = tray.set_icon(Some(icon));
+            let _ = tray.set_icon_as_template(true);
+        }
+        let _ = tray.set_tooltip(Some(if recording {
+            "MeetButler · 녹음 중"
+        } else {
+            "MeetButler"
+        }));
+    }
+    if let Some(toggle) = app.try_state::<TrayToggle>() {
+        let _ = toggle.0.set_text(if recording {
+            "녹음 정지"
+        } else {
+            "녹음 시작"
+        });
+    }
+}
+
 /// Bring one of the app's own windows forward ("panel", "library").
 #[tauri::command]
 fn show_window(app: AppHandle, label: String) -> Result<(), String> {
@@ -663,6 +737,7 @@ pub fn run() {
                 );
             })?;
             app.manage(state);
+            build_tray(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
