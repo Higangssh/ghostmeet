@@ -38,12 +38,31 @@ fn request(prompt: &str) -> GenerateRequest {
 }
 
 fn alive(pid: u32) -> bool {
-    Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .stderr(Stdio::null())
-        .status()
-        .unwrap()
-        .success()
+    if cfg!(windows) {
+        let out = Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).contains(&pid.to_string())
+    } else {
+        Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    }
+}
+
+/// Kill the process outright, as a crash would.
+fn kill_hard(pid: u32) {
+    let _ = if cfg!(windows) {
+        Command::new("taskkill")
+            .args(["/F", "/PID", &pid.to_string()])
+            .status()
+    } else {
+        Command::new("kill").args(["-9", &pid.to_string()]).status()
+    };
 }
 
 fn gone_within(pid: u32, ms: u64) -> bool {
@@ -120,7 +139,7 @@ fn a_sidecar_that_dies_mid_request_is_an_error_not_a_hang() {
     let pid = s.pid();
     let result = s.generate(request("x"), |e| {
         if matches!(e, Event::Progress { .. }) {
-            let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+            kill_hard(pid);
         }
     });
     assert!(matches!(result, Err(ClientError::Exited(_))), "{result:?}");
@@ -129,9 +148,7 @@ fn a_sidecar_that_dies_mid_request_is_an_error_not_a_hang() {
 #[test]
 fn a_dead_sidecar_refuses_further_requests_promptly() {
     let mut s = spawn(0);
-    let _ = Command::new("kill")
-        .args(["-9", &s.pid().to_string()])
-        .status();
+    kill_hard(s.pid());
     std::thread::sleep(Duration::from_millis(200)); // dead, though unreaped until the client waits
     let started = Instant::now();
     assert!(s.generate(request("x"), |_| {}).is_err());
