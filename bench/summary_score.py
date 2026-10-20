@@ -17,6 +17,10 @@ Scored without a judge model:
   the worst error for a reader, since it looks right
 - invented: people named in the summary who were not in the meeting, and numbers in it
   the meeting never said
+- evidence (SUM-3), when the summary carries it: of the decisions and action items
+  found, how many point at a transcript line that, with the lines either side of it,
+  says the item's value (its keywords with digits: the settling line, "그럼 250만 원으로
+  확정하죠", often leaves the topic unsaid), or all its keywords when it has no value
 Korean naturalness is left to people, blind (bench/README.md).
 """
 from __future__ import annotations
@@ -29,7 +33,8 @@ from meeting_gen import PEOPLE
 FIELDS = ("summary", "decisions", "action_items", "open_questions")
 
 # an entry that names a withdrawn proposal with one of these says it was taken back
-TAKEN_BACK = re.compile(r"취소|철회|대신|거절|무산|없던|않|아닌|변경|바꾸|바꿔|바뀌|→")
+# ("500만 원에서 400만 원으로 확정" names the first value on the way to the final one)
+TAKEN_BACK = re.compile(r"취소|철회|대신|거절|무산|없던|않|아닌|변경|바꾸|바꿔|바뀌|→|에서\s*\d")
 
 
 def squash(text: str) -> str:
@@ -108,6 +113,18 @@ def wrong_values(items: list[dict], hits: list[int | None], entries: list[str]) 
     return wrong
 
 
+def evidence_ok(items: list[dict], hits: list[int | None], at: list, lines: list[str]) -> int:
+    """Found items whose evidence line, with its neighbours, says all their keywords."""
+    ok = 0
+    for item, hit in zip(items, hits):
+        if hit is None or hit >= len(at) or at[hit] is None:
+            continue
+        near = lines[max(0, at[hit] - 1): at[hit] + 2]
+        values = [k for k in item["keywords"] if re.search(r"\d", k)]
+        ok += has_all(" ".join(near), values or item["keywords"])
+    return ok
+
+
 def score(output: str, meeting: dict) -> dict:
     key = {**meeting["key"], **{f: unique(meeting["key"][f]) for f in ("decisions", "open_questions", "withdrawn")}}
     summary = parse(output)
@@ -155,7 +172,17 @@ def score(output: str, meeting: dict) -> dict:
     said = set(re.findall(r"\d+", "\n".join(meeting["lines"])))
     invented_numbers = sorted(set(re.findall(r"\d+", everything)) - said)
 
+    evidence = {}
+    if isinstance(summary.get("evidence"), dict):
+        at = summary["evidence"]
+        lines = meeting.get("transcript", meeting["lines"])
+        evidence = {
+            "decisions_evidence_ok": evidence_ok(key["decisions"], found_d, at.get("decisions", []), lines),
+            "actions_evidence_ok": evidence_ok(key["actions"], found_a, at.get("action_items", []), lines),
+        }
+
     return {
+        **evidence,
         "format_ok": True,
         "decisions_found": sum(h is not None for h in found_d),
         "decisions_total": totals["decisions"],

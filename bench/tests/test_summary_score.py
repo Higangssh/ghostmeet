@@ -77,7 +77,8 @@ class ScoreTests(unittest.TestCase):
         # "600만 원 취소 후 800만 원으로 확정" names the withdrawn amount and gets it right
         p = perfect(self.m)
         w = self.m["key"]["withdrawn"][0]
-        for marked in [f"{w['text']} 취소 후 다시 확정", f"{w['text']} 제안이 거절됨", f"{w['text']} 대신 다른 안"]:
+        for marked in [f"{w['text']} 취소 후 다시 확정", f"{w['text']} 제안이 거절됨", f"{w['text']} 대신 다른 안",
+                       f"{w['text']}에서 900만 원으로 확정"]:
             q = {**p, "decisions": p["decisions"] + [marked]}
             self.assertEqual(ss.score(json.dumps(q, ensure_ascii=False), self.m)["withdrawn_listed"], 0, marked)
 
@@ -235,3 +236,35 @@ class BrokenFormatTotalsTests(unittest.TestCase):
         for k in good:
             if k.endswith("_total"):
                 self.assertEqual(bad.get(k), good[k], k)
+
+
+class EvidenceTests(unittest.TestCase):
+    """SUM-3: each found item's evidence line, as the app's merge step points at it."""
+
+    def setUp(self):
+        self.m = meeting()
+        self.p = perfect(self.m)
+        lines = self.m["lines"]
+        # the last line that says each item's value (or keywords), as a right merge would
+        def at(kws):
+            want = [k for k in kws if re.search(r"\d", k)] or kws
+            return max(i for i, line in enumerate(lines) if ss.has_all(line, want))
+        self.right = {
+            "decisions": [at(d["keywords"]) for d in self.m["key"]["decisions"]],
+            "action_items": [at(a["keywords"]) for a in self.m["key"]["actions"]],
+            "open_questions": [None for _ in self.m["key"]["open_questions"]],
+        }
+
+    def test_evidence_at_the_line_that_says_the_item_is_right(self):
+        s = ss.score(json.dumps({**self.p, "evidence": self.right}, ensure_ascii=False), self.m)
+        self.assertEqual(s["decisions_evidence_ok"], s["decisions_found"])
+        self.assertEqual(s["actions_evidence_ok"], s["actions_found"])
+
+    def test_evidence_elsewhere_is_wrong(self):
+        far = {f: [0 for _ in v] for f, v in self.right.items()}
+        s = ss.score(json.dumps({**self.p, "evidence": far}, ensure_ascii=False), self.m)
+        self.assertLess(s["decisions_evidence_ok"], s["decisions_found"])
+
+    def test_without_evidence_there_is_no_count(self):
+        s = ss.score(json.dumps(self.p, ensure_ascii=False), self.m)
+        self.assertNotIn("decisions_evidence_ok", s)
