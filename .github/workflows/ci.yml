@@ -1,6 +1,7 @@
 # The default test tier on macOS and Windows: no model, no network beyond fetching
-# crates, no secrets. Models, the slow tier and the GUI checks stay on a real Mac
-# (CLAUDE.md, app/README.md). Actions are pinned to commits; only actions/* and
+# crates and the bench tests' hash-pinned wheels (bench/requirements-ci.txt), no
+# secrets. Models, the slow tier and the GUI checks stay on a real Mac (CLAUDE.md,
+# app/README.md). Actions are pinned to commits; only actions/* and
 # dtolnay/rust-toolchain are used.
 name: ci
 
@@ -43,8 +44,15 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --features meetbutler-engine/whisper,meetbutler-engine/silero -- -D warnings
       - run: cargo test --workspace --no-fail-fast
-      - name: bench tests (Python, standard library only)
-        run: python3 -I -m unittest discover -s bench/tests -t bench
+      # the bench tests need numpy and scipy: exact wheels from PyPI, checked by sha256
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: bench tests (Python 3.12, numpy and scipy pinned by hash)
+        run: |
+          python -m venv "$RUNNER_TEMP/bench"
+          "$RUNNER_TEMP/bench/bin/pip" install --require-hashes --no-deps --only-binary :all: -r bench/requirements-ci.txt
+          "$RUNNER_TEMP/bench/bin/python" -I -m unittest discover -s bench/tests -t bench
 
   windows:
     runs-on: windows-latest

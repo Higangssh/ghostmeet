@@ -1,0 +1,10 @@
+# The bench tests in CI (.github/workflows/ci.yml): exact versions and the sha256 of each
+# CPython 3.12 macOS arm64 wheel, installed with
+#   pip install --require-hashes --no-deps --only-binary :all: -r bench/requirements-ci.txt
+# scipy's only runtime dependency is numpy. Both BSD-3-Clause.
+numpy==2.5.4 \
+    --hash=sha256:b11e8fda06a7d69f15ebf542660b74466c2e51094800c1fb794f47ad4faeef17 \
+    --hash=sha256:9cb18a327b49c5c337f972b03682f6a49855525faaf3c0d3e9c96cd0fd8880a8
+scipy==1.16.2 \
+    --hash=sha256:ca748936cd579d3f01928b30a17dc474550b01272d8046e3e1ee593f23620371 \
+    --hash=sha256:fac4f8ce2ddb40e2e3d0f7ec36d2a1e7f92559a2471e59aec37bd8d9de01fec0
