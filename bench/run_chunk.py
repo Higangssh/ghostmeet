@@ -157,12 +157,13 @@ class OnDisk:
 
 
 def tracks(split: str, name: str) -> dict[str, str]:
-    """track -> what it is diarized for: room -> audio; call -> system (and mix, one track)."""
+    """track -> what it is diarized for: room -> audio; call -> system and the microphone's
+    voice; on test also the one-track mix and the leaking microphone, for comparison only."""
     if name.startswith("ck-room"):
         return {"audio": "embed"}
-    out = {"system": "embed", "mix": "embed", "mic": "voice"}
+    out = {"system": "embed", "mic": "voice"}
     if split == "test":
-        out["mic-bleed"] = "voice"
+        out.update({"mix": "embed", "mic-bleed": "voice"})
     return out
 
 
