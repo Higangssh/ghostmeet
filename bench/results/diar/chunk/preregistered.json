@@ -1,0 +1,184 @@
+{
+ "written": "2026-10-22T04:00:47+0900",
+ "models": {
+  "campplus-zh-en": {
+   "chunked": "1200s/60/average/0.15/0/0.25/free/share/0.02",
+   "dev_score": {
+    "score": 0.1163,
+    "30m": {
+     "der": 0.1228,
+     "speakers_over": -0.4,
+     "vanished": 6,
+     "special_vanished": 5
+    },
+    "240m": {
+     "der": 0.1098,
+     "speakers_over": -0.5,
+     "vanished": 2,
+     "special_vanished": 2
+    },
+    "all": {
+     "der": 0.1206,
+     "speakers_over": -0.42,
+     "vanished": 8,
+     "special_vanished": 7
+    }
+   },
+   "dev_top1pct": {
+    "n": 62,
+    "score": [
+     0.1163,
+     0.1585
+    ],
+    "axes": {
+     "piece_sec": {
+      "1200.0": 12,
+      "1800.0": 22,
+      "300.0": 1,
+      "600.0": 8,
+      "900.0": 19
+     },
+     "overlap_sec": {
+      "0.0": 34,
+      "60.0": 28
+     },
+     "method": {
+      "average": 62
+     },
+     "threshold": {
+      "0.1": 4,
+      "0.15": 43,
+      "0.2": 15
+     },
+     "piece_share": {
+      "0.0": 62
+     },
+     "link_threshold": {
+      "0.15": 3,
+      "0.2": 6,
+      "0.25": 20,
+      "0.3": 33
+     },
+     "cannot_link": {
+      "False": 62
+     },
+     "floor": {
+      "sec/15": 3,
+      "sec/45": 11,
+      "share/0.01": 19,
+      "share/0.02": 29
+     }
+    }
+   },
+   "best_on_grid_edge": [],
+   "dev_cross_seed": {
+    "choose_s300": {
+     "key": "900s/60/average/0.2/0/0.3/free/share/0.01",
+     "der_on_own": 0.0885,
+     "der_on_other": 0.2059,
+     "other_best": 0.1005
+    },
+    "choose_s301": {
+     "key": "600s/0/average/0.15/0/0.25/free/share/0.02",
+     "der_on_own": 0.1005,
+     "der_on_other": 0.0983,
+     "other_best": 0.0885
+    }
+   },
+   "baseline_whole_meeting": "average/0.25/share/0.03",
+   "grid_sha256": "6753fd21984f2fd251ee84e982c9d3854947a6b82657e8e8a07bd90c355deb74",
+   "widen_sha256": "2b7f4124ba66866b386ae5cc1d893db3d950b8a65d10502fa43da5500b44bef3"
+  },
+  "eres2netv2-zh": {
+   "chunked": "1200s/60/average/0.15/0/0.3/free/share/0.01",
+   "dev_score": {
+    "score": 0.0863,
+    "30m": {
+     "der": 0.0799,
+     "speakers_over": 0.5,
+     "vanished": 1,
+     "special_vanished": 1
+    },
+    "240m": {
+     "der": 0.0928,
+     "speakers_over": 0.0,
+     "vanished": 0,
+     "special_vanished": 0
+    },
+    "all": {
+     "der": 0.082,
+     "speakers_over": 0.42,
+     "vanished": 1,
+     "special_vanished": 1
+    }
+   },
+   "dev_top1pct": {
+    "n": 62,
+    "score": [
+     0.0863,
+     0.1139
+    ],
+    "axes": {
+     "piece_sec": {
+      "1200.0": 16,
+      "1800.0": 14,
+      "300.0": 3,
+      "600.0": 10,
+      "900.0": 19
+     },
+     "overlap_sec": {
+      "0.0": 31,
+      "60.0": 31
+     },
+     "method": {
+      "average": 62
+     },
+     "threshold": {
+      "0.15": 37,
+      "0.2": 25
+     },
+     "piece_share": {
+      "0.0": 62
+     },
+     "link_threshold": {
+      "0.25": 12,
+      "0.3": 50
+     },
+     "cannot_link": {
+      "False": 62
+     },
+     "floor": {
+      "sec/15": 10,
+      "sec/45": 13,
+      "share/0.01": 20,
+      "share/0.02": 19
+     }
+    }
+   },
+   "best_on_grid_edge": [],
+   "dev_cross_seed": {
+    "choose_s300": {
+     "key": "1200s/60/average/0.15/0/0.25/free/sec/45",
+     "der_on_own": 0.0571,
+     "der_on_other": 0.1255,
+     "other_best": 0.0857
+    },
+    "choose_s301": {
+     "key": "1800s/60/average/0.2/0/0.3/free/share/0.01",
+     "der_on_own": 0.0857,
+     "der_on_other": 0.1006,
+     "other_best": 0.0571
+    }
+   },
+   "baseline_whole_meeting": "complete/0.8/share/0.08",
+   "grid_sha256": "1048aa37d810240dd71fa67b56c4c7b636ac7665b69a56fa9bee957d95b7ed29",
+   "widen_sha256": "2314601d6bd895bded78d6a9be9d2e97212b869fcb783b604ea1b53e858b490b"
+  }
+ },
+ "choice": "the lowest dev score (mean of the 30-minute and the 4-hour dev DER) over the first grid and its one widening; a best on the widened grid's edge is kept, not chased",
+ "ranking": "primary: mean of AMI Array1-01 DER and the new Korean test room DER (collar 0.25, mean over meetings, the chunked setting); secondary: the new Korean test call DER (two channels, no bleed). If the primary differs by less than 1 point, the model with the shorter 4-hour diarization time is chosen.",
+ "gate": "on the same Korean test, the chunked setting must leave fewer special speakers (late joiner, quiet speaker, early leaver) vanished than the whole-meeting baseline, and no more speakers vanished in all. Failing it is a failure of the design.",
+ "caps": "4-hour meeting, one process from audio on disk to turns (the long step, the preregistered setting only): peak RSS <= 1.0 GB with the models; CAM++ diarization <= 15 min (ERes2NetV2 recorded only). Not applied to grid workers, which hold many settings and meetings. Diarization is assumed to run after the final pass, so its memory does not add to whisper's.",
+ "bleed": "test only (-25 dB system audio in the microphone), recorded, never used for choosing",
+ "limits": "Korean meetings reuse clips (12 dev, 10 test speakers); the 4-hour dev reuses the most. The microphone of a call is taken whole as 'me': wrong in a hybrid meeting."
+}
