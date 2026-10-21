@@ -1,0 +1,45 @@
+{
+ "meeting": "ck-call-2p-30m-s400-plain",
+ "system": "campplus-zh-en.chunk-onetrack",
+ "embedding": "campplus-zh-en",
+ "track": "mix",
+ "preregistered": "1200s/60/average/0.15/0/0.25/free/share/0.02",
+ "preregistered_at": "2026-10-22T04:01:44+0900",
+ "roles": {},
+ "vanished": 0,
+ "vanished_who": [],
+ "special_vanished": [],
+ "cluster_sec": 0.1,
+ "collar0": {
+  "der": 0.1259,
+  "missed": 0.0935,
+  "false_alarm": 0.0196,
+  "confusion": 0.0129
+ },
+ "collar25": {
+  "der": 0.0846,
+  "missed": 0.0611,
+  "false_alarm": 0.0117,
+  "confusion": 0.0119
+ },
+ "collar25_no_overlap": {
+  "der": 0.0558,
+  "missed": 0.0295,
+  "false_alarm": 0.013,
+  "confusion": 0.0133
+ },
+ "ref_speakers": 2,
+ "hyp_speakers": 2,
+ "segments_right": 259,
+ "segments": 275,
+ "short_right": 37,
+ "short": 50,
+ "env": {
+  "sherpa_onnx": "1.13.8",
+  "onnxruntime": "1.31.0",
+  "scipy": "1.16.2",
+  "numpy": "2.5.4",
+  "segmentation_sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+  "embedding_sha256": "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2"
+ }
+}

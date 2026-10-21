@@ -1,0 +1,51 @@
+{
+ "meeting": "ck-call-4p-30m-s400-l",
+ "system": "eres2netv2-zh.chunk-onetrack",
+ "embedding": "eres2netv2-zh",
+ "track": "mix",
+ "preregistered": "1200s/60/average/0.15/0/0.3/free/share/0.01",
+ "preregistered_at": "2026-10-22T04:01:44+0900",
+ "roles": {
+  "132": "late"
+ },
+ "vanished": 1,
+ "vanished_who": [
+  "132"
+ ],
+ "special_vanished": [
+  "132"
+ ],
+ "cluster_sec": 0.1,
+ "collar0": {
+  "der": 0.2642,
+  "missed": 0.1517,
+  "false_alarm": 0.0083,
+  "confusion": 0.1041
+ },
+ "collar25": {
+  "der": 0.2199,
+  "missed": 0.1075,
+  "false_alarm": 0.0058,
+  "confusion": 0.1066
+ },
+ "collar25_no_overlap": {
+  "der": 0.1872,
+  "missed": 0.068,
+  "false_alarm": 0.0065,
+  "confusion": 0.1127
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 4,
+ "segments_right": 210,
+ "segments": 262,
+ "short_right": 20,
+ "short": 45,
+ "env": {
+  "sherpa_onnx": "1.13.8",
+  "onnxruntime": "1.31.0",
+  "scipy": "1.16.2",
+  "numpy": "2.5.4",
+  "segmentation_sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+  "embedding_sha256": "bf1a75b9930474cf3389ef415e6e5d38ca96fea4a3a00f7e301d080a58ee2239"
+ }
+}

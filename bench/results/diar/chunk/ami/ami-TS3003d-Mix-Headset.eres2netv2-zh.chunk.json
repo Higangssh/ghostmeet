@@ -1,0 +1,41 @@
+{
+ "meeting": "ami-TS3003d-Mix-Headset",
+ "system": "eres2netv2-zh.chunk",
+ "embedding": "eres2netv2-zh",
+ "preregistered": "1200s/60/average/0.15/0/0.3/free/share/0.01",
+ "preregistered_at": "2026-10-22T04:01:44+0900",
+ "vanished": 0,
+ "cluster_sec": 0.1,
+ "collar0": {
+  "der": 0.2114,
+  "missed": 0.1086,
+  "false_alarm": 0.0585,
+  "confusion": 0.0443
+ },
+ "collar25": {
+  "der": 0.1251,
+  "missed": 0.0753,
+  "false_alarm": 0.0271,
+  "confusion": 0.0228
+ },
+ "collar25_no_overlap": {
+  "der": 0.1077,
+  "missed": 0.0616,
+  "false_alarm": 0.0301,
+  "confusion": 0.016
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 4,
+ "segments_right": 492,
+ "segments": 698,
+ "short_right": 215,
+ "short": 375,
+ "env": {
+  "sherpa_onnx": "1.13.8",
+  "onnxruntime": "1.31.0",
+  "scipy": "1.16.2",
+  "numpy": "2.5.4",
+  "segmentation_sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+  "embedding_sha256": "bf1a75b9930474cf3389ef415e6e5d38ca96fea4a3a00f7e301d080a58ee2239"
+ }
+}

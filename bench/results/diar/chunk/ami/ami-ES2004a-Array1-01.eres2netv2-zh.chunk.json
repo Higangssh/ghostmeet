@@ -1,0 +1,41 @@
+{
+ "meeting": "ami-ES2004a-Array1-01",
+ "system": "eres2netv2-zh.chunk",
+ "embedding": "eres2netv2-zh",
+ "preregistered": "1200s/60/average/0.15/0/0.3/free/share/0.01",
+ "preregistered_at": "2026-10-22T04:01:44+0900",
+ "vanished": 0,
+ "cluster_sec": 0.0,
+ "collar0": {
+  "der": 0.4164,
+  "missed": 0.1541,
+  "false_alarm": 0.053,
+  "confusion": 0.2093
+ },
+ "collar25": {
+  "der": 0.3443,
+  "missed": 0.1098,
+  "false_alarm": 0.036,
+  "confusion": 0.1985
+ },
+ "collar25_no_overlap": {
+  "der": 0.2987,
+  "missed": 0.071,
+  "false_alarm": 0.0414,
+  "confusion": 0.1863
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 9,
+ "segments_right": 125,
+ "segments": 260,
+ "short_right": 66,
+ "short": 151,
+ "env": {
+  "sherpa_onnx": "1.13.8",
+  "onnxruntime": "1.31.0",
+  "scipy": "1.16.2",
+  "numpy": "2.5.4",
+  "segmentation_sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+  "embedding_sha256": "bf1a75b9930474cf3389ef415e6e5d38ca96fea4a3a00f7e301d080a58ee2239"
+ }
+}
