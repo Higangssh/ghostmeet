@@ -60,6 +60,11 @@ PIECE_SHARE = [0.0, 0.03, 0.08]
 LINK = [0.3, 0.45, 0.6, 0.75]
 CANNOT_LINK = [True, False]
 FLOORS = [("share", 0.0), ("share", 0.01), ("share", 0.02), ("sec", 15.0), ("sec", 45.0)]
+# one widening past the first grid's edge (its best had the lowest link, local threshold and
+# piece share): the axes that were flat or unanimous in its top 1% are fixed or kept
+WIDEN = {"piece_sec": [600, 900, 1200, 1800], "overlap_sec": OVERLAP_SEC, "method": "average",
+         "threshold": [0.1, 0.15, 0.2], "piece_share": 0.0, "link_threshold": [0.15, 0.2, 0.25, 0.3],
+         "cannot_link": False, "floors": FLOORS}
 
 PREREGISTERED = RESULTS / "preregistered.json"
 
@@ -275,6 +280,15 @@ class Meeting:
                 "vanished": len(gone), "special_vanished": len(gone & self.special)}
 
 
+def widened():
+    w = WIDEN
+    for p, o, th, link, (fk, fv) in itertools.product(w["piece_sec"], w["overlap_sec"], w["threshold"],
+                                                      w["link_threshold"], w["floors"]):
+        yield dc.Config(piece_sec=p, overlap_sec=o, method=w["method"], threshold=th,
+                        piece_share=w["piece_share"], link_threshold=link, cannot_link=w["cannot_link"],
+                        floor_kind=fk, floor=fv)
+
+
 def configs():
     for p, o, (m, ths), share, link, cl, (fk, fv) in itertools.product(
             PIECE_SEC, OVERLAP_SEC, LOCAL.items(), PIECE_SHARE, LINK, CANNOT_LINK, FLOORS):
@@ -296,11 +310,11 @@ def config_of(k: str) -> dc.Config:
 
 
 def _grid_one(args) -> tuple[str, dict]:
-    name, emb = args
+    name, emb, which = args
     m = Meeting("dev", name, emb)
     # configs that share a piece clustering run one after another, so the cache stays small
     out = {}
-    for c in sorted(configs(), key=lambda c: (c.piece_sec, c.overlap_sec, c.method, c.threshold, c.piece_share)):
+    for c in sorted(widened() if which == "widen" else configs(), key=lambda c: (c.piece_sec, c.overlap_sec, c.method, c.threshold, c.piece_share)):
         if len(m.cache) > 1:
             m.cache.pop(next(iter(m.cache)))
         out[key(c)] = m.score(dc.diarize_labels(m.store, G, c, m.cache))
@@ -363,13 +377,8 @@ def grid() -> None:
         rd.unit_boundary()
         t = time.perf_counter()
         with ProcessPoolExecutor(WORKERS) as pool:
-            per_meeting = dict(pool.map(_grid_one, [(n, emb) for n in names]))
-        table = {}
-        for k in per_meeting[names[0]]:
-            per = {n: per_meeting[n][k] for n in names}
-            s30, s240 = summary(per, short), summary(per, long_)
-            table[k] = {"score": round((s30["der"] + s240["der"]) / 2, 4), "30m": s30, "240m": s240,
-                        "all": summary(per, names)}
+            per_meeting = dict(pool.map(_grid_one, [(n, emb, "first") for n in names]))
+        table = _table(per_meeting, names, short, long_)
         best = min(table, key=lambda k: table[k]["score"])
         best30 = min(table, key=lambda k: table[k]["30m"]["der"])
         best240 = min(table, key=lambda k: table[k]["240m"]["der"])
@@ -386,16 +395,82 @@ def grid() -> None:
               f"(on 30m {table[best240]['30m']['der']})", flush=True)
 
 
+def _table(per_meeting: dict, names: list[str], short: list[str], long_: list[str]) -> dict:
+    table = {}
+    for k in per_meeting[names[0]]:
+        per = {n: per_meeting[n][k] for n in names}
+        s30, s240 = summary(per, short), summary(per, long_)
+        table[k] = {"score": round((s30["der"] + s240["der"]) / 2, 4), "30m": s30, "240m": s240,
+                    "all": summary(per, names)}
+    return table
+
+
+def widen_path(emb: str) -> Path:
+    return RESULTS / "grid" / f"{emb}.widen.json"
+
+
+def widen() -> None:
+    """The one widening (WIDEN), written beside the first grid, which stays as it was. The
+    configs both grids hold must score the same in both; best and top 1% are over the union,
+    cross-seed over the widened configs (the first grid keeps no per-meeting scores)."""
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    names = [s.name for s in specs("dev")]
+    short = [n for n in names if not is_long(n)]
+    long_ = [n for n in names if is_long(n)]
+    for emb in MODELS:
+        path = widen_path(emb)
+        if path.exists():
+            continue
+        rd.unit_boundary()
+        first = json.loads((RESULTS / "grid" / f"{emb}.json").read_text())
+        t = time.perf_counter()
+        with ProcessPoolExecutor(WORKERS) as pool:
+            per_meeting = dict(pool.map(_grid_one, [(n, emb, "widen") for n in names]))
+        table = _table(per_meeting, names, short, long_)
+        both = sorted(set(table) & set(first["table"]))
+        differ = [k for k in both if table[k] != first["table"][k]]
+        if differ:
+            raise RuntimeError(f"{emb}: {len(differ)} configs score differently from the first grid: {differ[:3]}")
+        union = {**first["table"], **table}
+        best = min(union, key=lambda k: union[k]["score"])
+        edge = {"link_threshold": min(WIDEN["link_threshold"]), "threshold": min(WIDEN["threshold"]),
+                "piece_sec": max(WIDEN["piece_sec"])}
+        c = config_of(best)
+        out = {"widen": {k: v for k, v in WIDEN.items() if k != "floors"}, "first_grid_sha256": rd.sha256(
+                   RESULTS / "grid" / f"{emb}.json"),
+               "checked_same": len(both), "new": len(table) - len(both), "union": len(union),
+               "best": best, "best_first": first["best"],
+               "best_on_new_edge": [a for a, v in edge.items() if getattr(c, a) == v],
+               "best_30m": min(union, key=lambda k: union[k]["30m"]["der"]),
+               "best_240m": min(union, key=lambda k: union[k]["240m"]["der"]),
+               "top1pct": top_share(union), "cross_seed": cross_seed(per_meeting, short),
+               "per_meeting_best": {n: per_meeting[n][best] for n in names} if best in table else None,
+               "table": table, "grid_sec": round(time.perf_counter() - t), "env": rd.env(emb)}
+        path.write_text(json.dumps(out, indent=1))
+        print(f"widen {emb}: {len(both)} configs as before, {out['new']} new; best {best} {union[best]} "
+              f"(first {first['best']} {first['table'][first['best']]['score']}); on the new edge "
+              f"{out['best_on_new_edge']}; top 1% {out['top1pct']['score']}; cross-seed {out['cross_seed']}",
+              flush=True)
+
+
 # --- preregistration and test ----------------------------------------------------------
 
 def preregister() -> dict:
     if PREREGISTERED.exists():
         return json.loads(PREREGISTERED.read_text())
     old = json.loads(rd.PREREGISTERED.read_text())["models"]
-    out = {"written": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-           "models": {emb: {"chunked": json.loads((RESULTS / "grid" / f"{emb}.json").read_text())["best"],
-                            "baseline_whole_meeting": old[emb]["best_all"],
-                            "grid_sha256": rd.sha256(RESULTS / "grid" / f"{emb}.json")} for emb in MODELS},
+    models = {}
+    for emb in MODELS:
+        first, w = RESULTS / "grid" / f"{emb}.json", widen_path(emb)
+        ext = json.loads(w.read_text())
+        union = {**json.loads(first.read_text())["table"], **ext["table"]}
+        models[emb] = {"chunked": ext["best"], "dev_score": union[ext["best"]],
+                       "dev_top1pct": ext["top1pct"], "best_on_grid_edge": ext["best_on_new_edge"],
+                       "dev_cross_seed": ext["cross_seed"], "baseline_whole_meeting": old[emb]["best_all"],
+                       "grid_sha256": rd.sha256(first), "widen_sha256": rd.sha256(w)}
+    out = {"written": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "models": models,
+           "choice": "the lowest dev score (mean of the 30-minute and the 4-hour dev DER) over the first grid "
+                     "and its one widening; a best on the widened grid's edge is kept, not chased",
            "ranking": "primary: mean of AMI Array1-01 DER and the new Korean test room DER (collar 0.25, "
                       "mean over meetings, the chunked setting); secondary: the new Korean test call DER "
                       "(two channels, no bleed). If the primary differs by less than 1 point, the model "
@@ -541,7 +616,7 @@ def main() -> None:
         _long_child(sys.argv[2], sys.argv[3])
         return
     ap = argparse.ArgumentParser()
-    ap.add_argument("steps", nargs="+", choices=["build-dev", "extract-dev", "grid", "preregister",
+    ap.add_argument("steps", nargs="+", choices=["build-dev", "extract-dev", "grid", "widen", "preregister",
                                                  "build-test", "extract-test", "pipe", "ami", "long"])
     args = ap.parse_args()
     try:
@@ -552,6 +627,8 @@ def main() -> None:
                 extract("dev")
             elif step == "grid":
                 grid()
+            elif step == "widen":
+                widen()
             elif step == "preregister":
                 print(json.dumps(preregister(), indent=1))
             elif step == "build-test":
