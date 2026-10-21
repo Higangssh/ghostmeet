@@ -478,15 +478,20 @@ def preregister() -> dict:
                       "(two channels, no bleed). If the primary differs by less than 1 point, the model "
                       "with the shorter 4-hour diarization time is chosen.",
            "gate": "on the same Korean test, the chunked setting must leave fewer special speakers "
-                   "(late joiner, quiet speaker, early leaver) vanished than the whole-meeting baseline, "
-                   "and no more speakers vanished in all. Failing it is a failure of the design.",
+                   "(late joiner, quiet speaker, early leaver) vanished than the whole-meeting baseline, or "
+                   "as few when the baseline leaves none, and no more speakers vanished in all. Only meetings "
+                   "the baseline ran on count: if it cannot run on a 4-hour test meeting (memory), that "
+                   "meeting's special speakers vanished are reported apart, as numbers. Failing it is a "
+                   "failure of the design.",
            "caps": "4-hour meeting, one process from audio on disk to turns (the long step, the preregistered "
                    "setting only): peak RSS <= 1.0 GB with the models; CAM++ diarization <= 15 min (ERes2NetV2 "
                    "recorded only). Not applied to grid workers, which hold many settings and meetings. "
                    "Diarization is assumed to run after the final pass, so its memory does not add to whisper's.",
            "bleed": "test only (-25 dB system audio in the microphone), recorded, never used for choosing",
            "limits": "Korean meetings reuse clips (12 dev, 10 test speakers); the 4-hour dev reuses the most. "
-                     "The microphone of a call is taken whole as 'me': wrong in a hybrid meeting."}
+                     "The microphone of a call is taken whole as 'me': wrong in a hybrid meeting. "
+                     "The room and call meetings of one spec are the same mix (same seed, turns and quiet "
+                     "share; the dev 4p-q is at 1.12% in both): not independent samples of a quiet speaker."}
     PREREGISTERED.write_text(json.dumps(out, indent=1))
     return out
 
