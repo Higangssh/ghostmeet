@@ -117,39 +117,56 @@ def merge_and_filter(segs: list[tuple[float, float]], min_on: float, min_off: fl
 
 
 def reconstruct(labels: list[np.ndarray], pairs, clusters: np.ndarray, n_samples: int, g: Geometry,
-                min_on: float = 0.3, min_off: float = 0.5) -> list[Turn]:
+                min_on: float = 0.3, min_off: float = 0.5, block: int = 4096) -> list[Turn]:
+    """sherpa's reconstruction: each frame keeps its `speakers_per_frame` clusters with the
+    most chunk votes, ties to the lower cluster. Done in blocks of frames over the clusters
+    voted for there, plus the lowest-numbered ones a frame may take with no vote, so a
+    clustering with thousands of clusters never builds a frames x clusters count."""
     k = int(clusters.max()) + 1
     to_cluster = {p: int(c) for p, c in zip(pairs, clusters)}
     n = _n_frames(len(labels), g)
-    count = np.zeros((n, k), np.int32)
-    for c, (s, lab) in enumerate(zip(_starts(len(labels), g), labels)):
-        # a chunk votes once for a cluster in a frame, however many of its local speakers
-        # the cluster took (sherpa's ReLabel sets, it does not add)
-        mine = np.zeros((len(lab), k), np.int32)
-        for spk in range(lab.shape[1]):
-            if (c, spk) in to_cluster:
-                mine[:, to_cluster[(c, spk)]] |= lab[:, spk]
-        count[s:s + len(lab)] += mine
     if (n_samples - g.window) % g.shift > 0:
-        last = min(n_samples // g.frame_shift, n - 1)
-        count = count[:last + 1]
-    spf = speakers_per_frame(labels, g)[:len(count)]
-    order = np.argsort(-count, axis=1, kind="stable")
-    rank = np.empty_like(order)
-    np.put_along_axis(rank, order, np.arange(k)[None, :].repeat(len(count), 0), axis=1)
-    final = (rank < spf[:, None]).astype(np.int8)
+        n = min(n_samples // g.frame_shift, n - 1) + 1
+    starts = _starts(len(labels), g)
+    ends = starts + np.array([len(lab) for lab in labels], np.int64)
+    spf = speakers_per_frame(labels, g)[:n]
+    local = [[to_cluster.get((c, spk)) for spk in range(lab.shape[1])] for c, lab in enumerate(labels)]
+    frames: dict[int, list[np.ndarray]] = {}
+    for f0 in range(0, n, block):
+        f1 = min(f0 + block, n)
+        chunks = range(int(np.searchsorted(ends, f0, side="right")), int(np.searchsorted(starts, f1)))
+        voted = sorted({c for ch in chunks for c in local[ch] if c is not None})
+        # a frame takes at most spf clusters; with v voted ones the lowest spf unvoted lie below v + spf
+        cols = sorted(set(voted) | set(range(min(k, len(voted) + int(spf[f0:f1].max(initial=0))))))
+        at = {c: i for i, c in enumerate(cols)}
+        count = np.zeros((f1 - f0, len(cols)), np.int32)
+        for ch in chunks:
+            lab, s0 = labels[ch], int(starts[ch])
+            # a chunk votes once for a cluster in a frame, however many of its local speakers
+            # the cluster took (sherpa's ReLabel sets, it does not add)
+            mine = np.zeros((len(lab), len(cols)), np.int32)
+            for spk, c in enumerate(local[ch]):
+                if c is not None:
+                    mine[:, at[c]] |= lab[:, spk]
+            a, b = max(f0, s0), min(f1, s0 + len(lab))
+            count[a - f0:b - f0] += mine[a - s0:b - s0]
+        order = np.argsort(-count, axis=1, kind="stable")
+        rank = np.empty_like(order)
+        np.put_along_axis(rank, order, np.arange(len(cols))[None, :].repeat(len(count), 0), axis=1)
+        rows, picked = np.nonzero(rank < spf[f0:f1, None])
+        for i in np.unique(picked):
+            frames.setdefault(cols[i], []).append(rows[picked == i] + f0)
     scale = np.float32(g.frame_shift) / np.float32(g.rate)
     off = np.float32(0.5) * np.float32(g.frame_size) / np.float32(g.rate)
     turns = []
-    for spk in range(final.shape[1]):
-        col = final[:, spk].astype(np.int8)
-        if not col.any():
-            continue
-        edges = np.diff(np.concatenate([[0], col, [0]]))
-        starts, ends = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
-        ends = np.minimum(ends, len(col) - 1)  # a run to the last frame ends on it
+    for spk in sorted(frames):
+        f = np.concatenate(frames[spk])
+        f.sort()
+        cut = np.flatnonzero(np.diff(f) > 1)
+        run_starts = f[np.concatenate([[0], cut + 1])]
+        run_ends = np.minimum(f[np.concatenate([cut, [len(f) - 1]])] + 1, n - 1)  # a run to the last frame ends on it
         f32 = np.float32
-        segs = [(float(f32(a) * scale + off), float(f32(b) * scale + off)) for a, b in zip(starts, ends)]
+        segs = [(float(f32(a) * scale + off), float(f32(b) * scale + off)) for a, b in zip(run_starts, run_ends)]
         for a, b in merge_and_filter(segs, min_on, min_off):
             turns.append(Turn(str(spk), round(a, 3), round(b, 3)))
     return sorted(turns, key=lambda t: (t.start, t.speaker))

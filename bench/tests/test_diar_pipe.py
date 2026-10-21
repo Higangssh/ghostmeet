@@ -104,6 +104,75 @@ class Reconstruct(unittest.TestCase):
         self.assertEqual(dp.merge_and_filter(segs, min_on=0.3, min_off=0.5), [(0.0, 2.0)])
 
 
+def dense_reconstruct(labels, pairs, clusters, n_samples, g, min_on=0.3, min_off=0.5):
+    """The frames x clusters reconstruction as first written: the reference for the blocked one."""
+    k = int(clusters.max()) + 1
+    to_cluster = {p: int(c) for p, c in zip(pairs, clusters)}
+    n = dp._n_frames(len(labels), g)
+    count = np.zeros((n, k), np.int32)
+    for c, (s, lab) in enumerate(zip(dp._starts(len(labels), g), labels)):
+        mine = np.zeros((len(lab), k), np.int32)
+        for spk in range(lab.shape[1]):
+            if (c, spk) in to_cluster:
+                mine[:, to_cluster[(c, spk)]] |= lab[:, spk]
+        count[s:s + len(lab)] += mine
+    if (n_samples - g.window) % g.shift > 0:
+        count = count[:min(n_samples // g.frame_shift, n - 1) + 1]
+    spf = dp.speakers_per_frame(labels, g)[:len(count)]
+    order = np.argsort(-count, axis=1, kind="stable")
+    rank = np.empty_like(order)
+    np.put_along_axis(rank, order, np.arange(k)[None, :].repeat(len(count), 0), axis=1)
+    final = (rank < spf[:, None]).astype(np.int8)
+    scale = np.float32(g.frame_shift) / np.float32(g.rate)
+    off = np.float32(0.5) * np.float32(g.frame_size) / np.float32(g.rate)
+    turns = []
+    for spk in range(final.shape[1]):
+        col = final[:, spk]
+        if not col.any():
+            continue
+        edges = np.diff(np.concatenate([[0], col, [0]]))
+        starts, ends = np.flatnonzero(edges == 1), np.minimum(np.flatnonzero(edges == -1), len(col) - 1)
+        segs = [(float(np.float32(a) * scale + off), float(np.float32(b) * scale + off)) for a, b in zip(starts, ends)]
+        for a, b in dp.merge_and_filter(segs, min_on, min_off):
+            turns.append(dp.Turn(str(spk), round(a, 3), round(b, 3)))
+    return sorted(turns, key=lambda t: (t.start, t.speaker))
+
+
+class ReconstructAtScale(unittest.TestCase):
+    def test_the_same_turns_as_the_dense_reconstruction(self):
+        rng = np.random.default_rng(3)
+        for case in range(60):
+            g = dp.Geometry(window=100, shift=int(rng.choice([20, 30, 50])), frame_shift=10, frame_size=10,
+                            rate=100, speakers=3)
+            n_chunks = int(rng.integers(1, 40))
+            labels = [(rng.random((10, 3)) < rng.uniform(0.1, 0.9)).astype(np.int8) for _ in range(n_chunks)]
+            # some local speakers get no embedding (no pair), so frames can need zero-vote clusters
+            pairs = [(c, s) for c in range(n_chunks) for s in range(3) if rng.random() < 0.7] or [(0, 0)]
+            k = int(rng.choice([1, 2, 3, 8, 60]))
+            clusters = rng.integers(0, k, len(pairs))
+            n_samples = g.window + (n_chunks - 1) * g.shift + int(rng.integers(0, g.shift))
+            for on, off in ((0.0, 0.0), (0.3, 0.5)):
+                want = dense_reconstruct(labels, pairs, clusters, n_samples, g, on, off)
+                for block in (1, 7, 4096):   # runs and chunks cut by block edges
+                    self.assertEqual(dp.reconstruct(labels, pairs, clusters, n_samples, g, on, off, block=block),
+                                     want, (case, block))
+
+    def test_thousands_of_clusters_over_a_long_meeting_stay_cheap(self):
+        # every embedding its own cluster: the dense count would be 60,000 frames x 36,000
+        # clusters (8.6 GB) and its argsort twice that
+        import time
+
+        rng = np.random.default_rng(0)
+        n_chunks = 12000
+        labels = [(rng.random((10, 3)) < 0.4).astype(np.int8) for _ in range(n_chunks)]
+        pairs = [(c, s) for c in range(n_chunks) for s in range(3)]
+        t = time.perf_counter()
+        turns = dp.reconstruct(labels, pairs, np.arange(len(pairs)), G.window + (n_chunks - 1) * G.shift, G,
+                               min_on=0.0, min_off=0.0)
+        self.assertLess(time.perf_counter() - t, 30.0)
+        self.assertGreater(len({t.speaker for t in turns}), 1000)
+
+
 class Clustering(unittest.TestCase):
     def setUp(self):
         rng = np.random.default_rng(0)
