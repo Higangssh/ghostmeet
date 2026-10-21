@@ -576,7 +576,7 @@ def ami() -> None:
 
 # --- four hours in one process ------------------------------------------------------------
 
-def _long_child(name: str, emb: str) -> None:
+def _long_child(name: str, emb: str, set_name: str = "long") -> None:
     """From the WAVs on disk to turns, as the app would run it after the final pass."""
     pre = json.loads(PREREGISTERED.read_text())
     k = pre["models"][emb]["chunked"]
@@ -606,7 +606,9 @@ def _long_child(name: str, emb: str) -> None:
               "rtf": round(sec / audio_sec, 4), "peak_mb": round(peak), "embeddings": int(len(st.embeddings)),
               "clusters": int(len(np.unique(labels))), "stages": stages,
               **rd.scored(ref, hyp, [(x.start, x.end) for x in ref]), "env": rd.env(emb)}
-    _save("long", name, f"{emb}.chunk-process", result, hyp)
+    if set_name in POSTHOC:
+        result["posthoc"] = POSTHOC[set_name]
+    _save(set_name, name, f"{emb}.chunk-process", result, hyp)
     print(f"long {name} {emb}: {sec / 60:.1f} min, peak {result['peak_mb']} MB, DER {result['collar25']['der']:.3f}",
           flush=True)
 
@@ -629,15 +631,20 @@ def _stage(stages: dict, name: str, run):
     return out
 
 
-def long_runs() -> None:
+# re-runs of the long step after a fix that leaves every label as it was; never preregistered
+POSTHOC = {"long-fixmem": "사후, 사전 등록 아님: the global link's condensed distances (86b3c1d), labels "
+                          "bit-identical on all 88 test stores; the preregistered measurement is in long/"}
+
+
+def long_runs(set_name: str = "long") -> None:
     for s in specs("test"):
         if not is_long(s.name):
             continue
         for emb in MODELS:
-            if (RESULTS / "long" / f"{s.name}.{emb}.chunk-process.json").exists():
+            if (RESULTS / set_name / f"{s.name}.{emb}.chunk-process.json").exists():
                 continue
             rd.unit_boundary()
-            r = subprocess.run([sys.executable, "-I", __file__, "_long_child", s.name, emb],
+            r = subprocess.run([sys.executable, "-I", __file__, "_long_child", s.name, emb, set_name],
                                capture_output=True, text=True)
             print(r.stdout.strip() or r.stderr[-2000:], flush=True)
 
@@ -645,11 +652,11 @@ def long_runs() -> None:
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "_long_child":
         os.environ.setdefault("OMP_NUM_THREADS", str(rd.THREADS))
-        _long_child(sys.argv[2], sys.argv[3])
+        _long_child(*sys.argv[2:5])
         return
     ap = argparse.ArgumentParser()
     ap.add_argument("steps", nargs="+", choices=["build-dev", "extract-dev", "grid", "widen", "preregister",
-                                                 "build-test", "extract-test", "pipe", "ami", "long"])
+                                                 "build-test", "extract-test", "pipe", "ami", "long", "long-fixmem"])
     args = ap.parse_args()
     try:
         for step in args.steps:
@@ -673,6 +680,8 @@ def main() -> None:
                 ami()
             elif step == "long":
                 long_runs()
+            elif step == "long-fixmem":
+                long_runs("long-fixmem")
     except rd.Stopped:
         print(f"stopped: {rd.STOP} is there; remove it and run the same step again to carry on")
 
