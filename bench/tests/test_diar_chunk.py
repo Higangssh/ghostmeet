@@ -140,6 +140,16 @@ class Chunked(unittest.TestCase):
         self.assertEqual(a.tolist(), b.tolist())
         self.assertEqual(a[:6].tolist(), [0, 0, 1, 1, 2, 2])
 
+    def test_a_cache_of_the_pieces_gives_the_same_labels(self):
+        st = store([2, 2, 0, 0, 1, 1] * 30)
+        cache = {}
+        first = dc.diarize_labels(st, G, cfg(), cache)
+        self.assertEqual(len(cache), 1)
+        again = dc.diarize_labels(st, G, cfg(link_threshold=0.4), cache)
+        self.assertEqual(len(cache), 1)
+        self.assertEqual(again.tolist(), dc.diarize_labels(st, G, cfg(link_threshold=0.4)).tolist())
+        self.assertEqual(first.tolist(), dc.diarize_labels(st, G, cfg()).tolist())
+
     def test_turns_come_out_through_the_same_reconstruction(self):
         st = store([0] * 20 + [1] * 20)
         turns = dc.diarize(st, G, cfg(piece_sec=5.0), min_on=0.0, min_off=0.0)

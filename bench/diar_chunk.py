@@ -120,12 +120,19 @@ class _Union:
             self.up[max(a, b)] = min(a, b)
 
 
-def diarize_labels(store: dp.Store, g: dp.Geometry, cfg: Config) -> np.ndarray:
-    """A speaker label for every embedding."""
+def diarize_labels(store: dp.Store, g: dp.Geometry, cfg: Config, cache: dict | None = None) -> np.ndarray:
+    """A speaker label for every embedding. `cache` keeps the pieces' own clustering between
+    calls on the same store that differ only in the link and the global floor."""
     x = store.embeddings
-    members = pieces(store, g, cfg.piece_sec, cfg.overlap_sec)
+    key = (cfg.piece_sec, cfg.overlap_sec, cfg.method, cfg.threshold, cfg.piece_share, cfg.piece_min)
+    if cache is not None and key in cache:
+        members, local = cache[key]
+    else:
+        members = pieces(store, g, cfg.piece_sec, cfg.overlap_sec)
+        local = [_local(x[m], cfg) if len(m) else np.zeros(0, np.int64) for m in members]
+        if cache is not None:
+            cache[key] = (members, local)
     own = owners(store, g, cfg.piece_sec)
-    local = [_local(x[m], cfg) if len(m) else np.zeros(0, np.int64) for m in members]
 
     # candidates: (piece, local label), numbered in piece order
     cand, piece_of = {}, []
