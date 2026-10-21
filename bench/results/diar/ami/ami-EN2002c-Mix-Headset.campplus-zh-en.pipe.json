@@ -1,0 +1,53 @@
+{
+ "meeting": "ami-EN2002c-Mix-Headset",
+ "system": "campplus-zh-en.pipe",
+ "embedding": "campplus-zh-en",
+ "preregistered": "average/0.25/share/0.03",
+ "preregistered_at": "2026-10-21T06:48:21+0900",
+ "linkage": "average",
+ "threshold": 0.25,
+ "floor": [
+  "share",
+  0.03
+ ],
+ "inversions": 0,
+ "erased": 442,
+ "vanished": 0,
+ "embeddings": 4878,
+ "audio_sec": 2972.3,
+ "extract_sec": 103.1,
+ "cluster_sec": 0.3,
+ "process_sec": 103.4,
+ "collar0": {
+  "der": 0.1796,
+  "missed": 0.1271,
+  "false_alarm": 0.0161,
+  "confusion": 0.0364
+ },
+ "collar25": {
+  "der": 0.1445,
+  "missed": 0.1093,
+  "false_alarm": 0.0081,
+  "confusion": 0.0271
+ },
+ "collar25_no_overlap": {
+  "der": 0.0612,
+  "missed": 0.0321,
+  "false_alarm": 0.011,
+  "confusion": 0.0182
+ },
+ "ref_speakers": 3,
+ "hyp_speakers": 3,
+ "segments_right": 409,
+ "segments": 635,
+ "short_right": 129,
+ "short": 280,
+ "env": {
+  "sherpa_onnx": "1.13.8",
+  "onnxruntime": "1.31.0",
+  "scipy": "1.16.2",
+  "numpy": "2.5.4",
+  "segmentation_sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+  "embedding_sha256": "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2"
+ }
+}

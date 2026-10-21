@@ -1,0 +1,32 @@
+{
+ "meeting": "ko-call-6p-30m-s2",
+ "system": "eres2net-en.th",
+ "embedding": "eres2net-en",
+ "threshold": 0.9,
+ "audio_sec": 1807.8,
+ "process_sec": 132.4,
+ "collar0": {
+  "der": 0.2955,
+  "missed": 0.1367,
+  "false_alarm": 0.0179,
+  "confusion": 0.1409
+ },
+ "collar25": {
+  "der": 0.2537,
+  "missed": 0.0966,
+  "false_alarm": 0.0145,
+  "confusion": 0.1426
+ },
+ "collar25_no_overlap": {
+  "der": 0.2279,
+  "missed": 0.062,
+  "false_alarm": 0.0155,
+  "confusion": 0.1503
+ },
+ "ref_speakers": 6,
+ "hyp_speakers": 19,
+ "segments_right": 209,
+ "segments": 283,
+ "short_right": 18,
+ "short": 46
+}

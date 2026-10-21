@@ -1,0 +1,32 @@
+{
+ "meeting": "ko-call-6p-30m-s2",
+ "system": "campplus-zh-en.oracle",
+ "embedding": "campplus-zh-en",
+ "threshold": null,
+ "audio_sec": 1807.8,
+ "process_sec": 61.9,
+ "collar0": {
+  "der": 0.4748,
+  "missed": 0.1363,
+  "false_alarm": 0.0167,
+  "confusion": 0.3218
+ },
+ "collar25": {
+  "der": 0.4473,
+  "missed": 0.096,
+  "false_alarm": 0.0135,
+  "confusion": 0.3378
+ },
+ "collar25_no_overlap": {
+  "der": 0.4309,
+  "missed": 0.0609,
+  "false_alarm": 0.015,
+  "confusion": 0.355
+ },
+ "ref_speakers": 6,
+ "hyp_speakers": 6,
+ "segments_right": 160,
+ "segments": 283,
+ "short_right": 18,
+ "short": 46
+}

@@ -1,0 +1,32 @@
+{
+ "meeting": "long-4h",
+ "system": "titanet-small.th",
+ "audio_sec": 14402.5,
+ "process_sec": 587.6,
+ "rtf": 0.0408,
+ "peak_mb": 6673,
+ "collar0": {
+  "der": 0.4154,
+  "missed": 0.0856,
+  "false_alarm": 0.017,
+  "confusion": 0.3127
+ },
+ "collar25": {
+  "der": 0.3693,
+  "missed": 0.0482,
+  "false_alarm": 0.0047,
+  "confusion": 0.3163
+ },
+ "collar25_no_overlap": {
+  "der": 0.3478,
+  "missed": 0.0225,
+  "false_alarm": 0.0049,
+  "confusion": 0.3204
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 61,
+ "segments_right": 1393,
+ "segments": 2387,
+ "short_right": 97,
+ "short": 352
+}

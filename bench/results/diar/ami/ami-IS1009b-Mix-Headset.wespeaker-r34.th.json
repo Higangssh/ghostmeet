@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-IS1009b-Mix-Headset",
+ "system": "wespeaker-r34.th",
+ "embedding": "wespeaker-r34",
+ "threshold": 0.5,
+ "audio_sec": 2052.3,
+ "process_sec": 173.3,
+ "collar0": {
+  "der": 0.2622,
+  "missed": 0.0597,
+  "false_alarm": 0.0326,
+  "confusion": 0.1699
+ },
+ "collar25": {
+  "der": 0.1722,
+  "missed": 0.0289,
+  "false_alarm": 0.0094,
+  "confusion": 0.1339
+ },
+ "collar25_no_overlap": {
+  "der": 0.1368,
+  "missed": 0.0105,
+  "false_alarm": 0.0102,
+  "confusion": 0.1161
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 21,
+ "segments_right": 152,
+ "segments": 389,
+ "short_right": 68,
+ "short": 246
+}

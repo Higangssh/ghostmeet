@@ -1,0 +1,34 @@
+{
+ "meeting": "ami-IS1009a-Array1-01",
+ "system": "campplus-zh-en.absorb",
+ "exploratory": true,
+ "embedding": "campplus-zh-en",
+ "threshold": 0.9,
+ "share": 0.08,
+ "audio_sec": 839.0,
+ "process_sec": 25.8,
+ "collar0": {
+  "der": 0.3195,
+  "missed": 0.1087,
+  "false_alarm": 0.0645,
+  "confusion": 0.1463
+ },
+ "collar25": {
+  "der": 0.25,
+  "missed": 0.0643,
+  "false_alarm": 0.041,
+  "confusion": 0.1447
+ },
+ "collar25_no_overlap": {
+  "der": 0.2147,
+  "missed": 0.0182,
+  "false_alarm": 0.0476,
+  "confusion": 0.1489
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 2,
+ "segments_right": 129,
+ "segments": 195,
+ "short_right": 60,
+ "short": 101
+}

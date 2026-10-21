@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-IS1009c-Mix-Headset",
+ "system": "campplus-zh-en.oracle",
+ "embedding": "campplus-zh-en",
+ "threshold": null,
+ "audio_sec": 1820.8,
+ "process_sec": 96.2,
+ "collar0": {
+  "der": 0.4121,
+  "missed": 0.0344,
+  "false_alarm": 0.0397,
+  "confusion": 0.3381
+ },
+ "collar25": {
+  "der": 0.3704,
+  "missed": 0.0188,
+  "false_alarm": 0.0127,
+  "confusion": 0.3389
+ },
+ "collar25_no_overlap": {
+  "der": 0.3649,
+  "missed": 0.0119,
+  "false_alarm": 0.0131,
+  "confusion": 0.3398
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 4,
+ "segments_right": 142,
+ "segments": 291,
+ "short_right": 54,
+ "short": 154
+}

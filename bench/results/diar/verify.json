@@ -1,0 +1,82 @@
+[
+ {
+  "meeting": "ko-room-2p-30m-s100",
+  "embedding": "campplus-zh-en",
+  "threshold": 0.7,
+  "der_sherpa": 0.108,
+  "der_ours": 0.1081,
+  "speakers_sherpa": 13,
+  "speakers_ours": 13,
+  "disagreement": 0.0001
+ },
+ {
+  "meeting": "ko-room-2p-30m-s100",
+  "embedding": "eres2netv2-zh",
+  "threshold": 0.7,
+  "der_sherpa": 0.1795,
+  "der_ours": 0.1792,
+  "speakers_sherpa": 14,
+  "speakers_ours": 14,
+  "disagreement": 0.0002
+ },
+ {
+  "meeting": "ko-room-2p-30m-s100",
+  "embedding": "titanet-small",
+  "threshold": 0.7,
+  "der_sherpa": 0.2513,
+  "der_ours": 0.2511,
+  "speakers_sherpa": 15,
+  "speakers_ours": 14,
+  "disagreement": 0.0003
+ },
+ {
+  "meeting": "ko-room-2p-30m-s100",
+  "embedding": "wespeaker-r34",
+  "threshold": 0.7,
+  "der_sherpa": 0.5047,
+  "der_ours": 0.5047,
+  "speakers_sherpa": 1,
+  "speakers_ours": 1,
+  "disagreement": 0.0
+ },
+ {
+  "meeting": "ko-room-4p-30m-s100",
+  "embedding": "campplus-zh-en",
+  "threshold": 0.7,
+  "der_sherpa": 0.3768,
+  "der_ours": 0.3764,
+  "speakers_sherpa": 28,
+  "speakers_ours": 28,
+  "disagreement": 0.0017
+ },
+ {
+  "meeting": "ko-room-4p-30m-s100",
+  "embedding": "eres2netv2-zh",
+  "threshold": 0.7,
+  "der_sherpa": 0.3632,
+  "der_ours": 0.3621,
+  "speakers_sherpa": 31,
+  "speakers_ours": 31,
+  "disagreement": 0.0046
+ },
+ {
+  "meeting": "ko-room-4p-30m-s100",
+  "embedding": "titanet-small",
+  "threshold": 0.7,
+  "der_sherpa": 0.5077,
+  "der_ours": 0.5085,
+  "speakers_sherpa": 29,
+  "speakers_ours": 28,
+  "disagreement": 0.007
+ },
+ {
+  "meeting": "ko-room-4p-30m-s100",
+  "embedding": "wespeaker-r34",
+  "threshold": 0.7,
+  "der_sherpa": 0.7273,
+  "der_ours": 0.7273,
+  "speakers_sherpa": 1,
+  "speakers_ours": 1,
+  "disagreement": 0.0
+ }
+]

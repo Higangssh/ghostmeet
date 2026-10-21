@@ -1,0 +1,32 @@
+{
+ "meeting": "ko-room-6p-30m-s1",
+ "system": "titanet-small.th",
+ "embedding": "titanet-small",
+ "threshold": 0.8,
+ "audio_sec": 1805.4,
+ "process_sec": 68.3,
+ "collar0": {
+  "der": 0.2926,
+  "missed": 0.1152,
+  "false_alarm": 0.0291,
+  "confusion": 0.1483
+ },
+ "collar25": {
+  "der": 0.2475,
+  "missed": 0.0771,
+  "false_alarm": 0.0218,
+  "confusion": 0.1486
+ },
+ "collar25_no_overlap": {
+  "der": 0.2248,
+  "missed": 0.0474,
+  "false_alarm": 0.0237,
+  "confusion": 0.1537
+ },
+ "ref_speakers": 6,
+ "hyp_speakers": 25,
+ "segments_right": 204,
+ "segments": 276,
+ "short_right": 10,
+ "short": 41
+}

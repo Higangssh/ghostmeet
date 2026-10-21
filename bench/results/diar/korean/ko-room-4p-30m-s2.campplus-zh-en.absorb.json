@@ -1,0 +1,34 @@
+{
+ "meeting": "ko-room-4p-30m-s2",
+ "system": "campplus-zh-en.absorb",
+ "exploratory": true,
+ "embedding": "campplus-zh-en",
+ "threshold": 0.9,
+ "share": 0.08,
+ "audio_sec": 1809.1,
+ "process_sec": 61.8,
+ "collar0": {
+  "der": 0.2031,
+  "missed": 0.1044,
+  "false_alarm": 0.0681,
+  "confusion": 0.0306
+ },
+ "collar25": {
+  "der": 0.1554,
+  "missed": 0.0712,
+  "false_alarm": 0.0607,
+  "confusion": 0.0235
+ },
+ "collar25_no_overlap": {
+  "der": 0.1354,
+  "missed": 0.0458,
+  "false_alarm": 0.0674,
+  "confusion": 0.0222
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 4,
+ "segments_right": 251,
+ "segments": 290,
+ "short_right": 19,
+ "short": 45
+}

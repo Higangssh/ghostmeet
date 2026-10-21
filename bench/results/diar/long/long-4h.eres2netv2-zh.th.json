@@ -1,0 +1,32 @@
+{
+ "meeting": "long-4h",
+ "system": "eres2netv2-zh.th",
+ "audio_sec": 14402.5,
+ "process_sec": 2148.1,
+ "rtf": 0.1491,
+ "peak_mb": 5668,
+ "collar0": {
+  "der": 0.535,
+  "missed": 0.0862,
+  "false_alarm": 0.0181,
+  "confusion": 0.4306
+ },
+ "collar25": {
+  "der": 0.4979,
+  "missed": 0.0487,
+  "false_alarm": 0.0059,
+  "confusion": 0.4434
+ },
+ "collar25_no_overlap": {
+  "der": 0.4815,
+  "missed": 0.0227,
+  "false_alarm": 0.0058,
+  "confusion": 0.4529
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 75,
+ "segments_right": 1131,
+ "segments": 2387,
+ "short_right": 64,
+ "short": 352
+}

@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-EN2002d-Mix-Headset",
+ "system": "wespeaker-r34.th",
+ "embedding": "wespeaker-r34",
+ "threshold": 0.5,
+ "audio_sec": 2209.9,
+ "process_sec": 107.8,
+ "collar0": {
+  "der": 0.8211,
+  "missed": 0.1383,
+  "false_alarm": 0.0425,
+  "confusion": 0.6402
+ },
+ "collar25": {
+  "der": 0.7704,
+  "missed": 0.1163,
+  "false_alarm": 0.0246,
+  "confusion": 0.6295
+ },
+ "collar25_no_overlap": {
+  "der": 0.6518,
+  "missed": 0.0168,
+  "false_alarm": 0.0361,
+  "confusion": 0.599
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 215,
+ "segments_right": 72,
+ "segments": 685,
+ "short_right": 17,
+ "short": 303
+}

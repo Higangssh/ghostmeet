@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-EN2002a-Mix-Headset",
+ "system": "eres2net-en.th",
+ "embedding": "eres2net-en",
+ "threshold": 0.9,
+ "audio_sec": 2142.7,
+ "process_sec": 134.7,
+ "collar0": {
+  "der": 0.5314,
+  "missed": 0.1279,
+  "false_alarm": 0.0411,
+  "confusion": 0.3624
+ },
+ "collar25": {
+  "der": 0.4497,
+  "missed": 0.0938,
+  "false_alarm": 0.0223,
+  "confusion": 0.3336
+ },
+ "collar25_no_overlap": {
+  "der": 0.3138,
+  "missed": 0.0182,
+  "false_alarm": 0.0296,
+  "confusion": 0.2661
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 76,
+ "segments_right": 257,
+ "segments": 746,
+ "short_right": 84,
+ "short": 366
+}

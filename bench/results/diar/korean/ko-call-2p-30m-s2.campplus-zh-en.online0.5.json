@@ -1,0 +1,29 @@
+{
+ "meeting": "ko-call-2p-30m-s2",
+ "system": "campplus-zh-en.online0.5",
+ "collar0": {
+  "der": 0.4959,
+  "missed": 0.4939,
+  "false_alarm": 0.0007,
+  "confusion": 0.0013
+ },
+ "collar25": {
+  "der": 0.456,
+  "missed": 0.4553,
+  "false_alarm": 0.0001,
+  "confusion": 0.0006
+ },
+ "collar25_no_overlap": {
+  "der": 0.4212,
+  "missed": 0.4205,
+  "false_alarm": 0.0001,
+  "confusion": 0.0005
+ },
+ "ref_speakers": 2,
+ "hyp_speakers": 3,
+ "segments_right": 209,
+ "segments": 276,
+ "short_right": 27,
+ "short": 41,
+ "relabelled": 0.0854
+}

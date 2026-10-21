@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-TS3003c-Mix-Headset",
+ "system": "campplus-zh-en.oracle",
+ "embedding": "campplus-zh-en",
+ "threshold": null,
+ "audio_sec": 2570.0,
+ "process_sec": 75.1,
+ "collar0": {
+  "der": 0.1397,
+  "missed": 0.0725,
+  "false_alarm": 0.0483,
+  "confusion": 0.0189
+ },
+ "collar25": {
+  "der": 0.084,
+  "missed": 0.0506,
+  "false_alarm": 0.0257,
+  "confusion": 0.0077
+ },
+ "collar25_no_overlap": {
+  "der": 0.073,
+  "missed": 0.0415,
+  "false_alarm": 0.0262,
+  "confusion": 0.0053
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 4,
+ "segments_right": 294,
+ "segments": 385,
+ "short_right": 100,
+ "short": 178
+}

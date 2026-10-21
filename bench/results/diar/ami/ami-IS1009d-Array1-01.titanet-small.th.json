@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-IS1009d-Array1-01",
+ "system": "titanet-small.th",
+ "embedding": "titanet-small",
+ "threshold": 0.8,
+ "audio_sec": 1944.7,
+ "process_sec": 66.6,
+ "collar0": {
+  "der": 0.4218,
+  "missed": 0.0679,
+  "false_alarm": 0.0612,
+  "confusion": 0.2927
+ },
+ "collar25": {
+  "der": 0.3006,
+  "missed": 0.0384,
+  "false_alarm": 0.0299,
+  "confusion": 0.2322
+ },
+ "collar25_no_overlap": {
+  "der": 0.251,
+  "missed": 0.018,
+  "false_alarm": 0.0321,
+  "confusion": 0.2009
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 70,
+ "segments_right": 160,
+ "segments": 507,
+ "short_right": 55,
+ "short": 290
+}

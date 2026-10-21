@@ -1,0 +1,32 @@
+{
+ "meeting": "long-4h",
+ "system": "wespeaker-r34.th",
+ "audio_sec": 14402.5,
+ "process_sec": 884.4,
+ "rtf": 0.0614,
+ "peak_mb": 5969,
+ "collar0": {
+  "der": 0.4701,
+  "missed": 0.0856,
+  "false_alarm": 0.0172,
+  "confusion": 0.3673
+ },
+ "collar25": {
+  "der": 0.4372,
+  "missed": 0.0483,
+  "false_alarm": 0.0048,
+  "confusion": 0.3841
+ },
+ "collar25_no_overlap": {
+  "der": 0.4278,
+  "missed": 0.0226,
+  "false_alarm": 0.0049,
+  "confusion": 0.4004
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 10,
+ "segments_right": 1303,
+ "segments": 2387,
+ "short_right": 138,
+ "short": 352
+}

@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-TS3003a-Array1-01",
+ "system": "eres2net-en.th",
+ "embedding": "eres2net-en",
+ "threshold": 0.9,
+ "audio_sec": 1505.6,
+ "process_sec": 82.6,
+ "collar0": {
+  "der": 0.5171,
+  "missed": 0.1493,
+  "false_alarm": 0.0347,
+  "confusion": 0.333
+ },
+ "collar25": {
+  "der": 0.4485,
+  "missed": 0.1172,
+  "false_alarm": 0.0149,
+  "confusion": 0.3163
+ },
+ "collar25_no_overlap": {
+  "der": 0.4379,
+  "missed": 0.1071,
+  "false_alarm": 0.0154,
+  "confusion": 0.3155
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 40,
+ "segments_right": 80,
+ "segments": 242,
+ "short_right": 39,
+ "short": 145
+}

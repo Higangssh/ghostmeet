@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-TS3003b-Array1-01",
+ "system": "wespeaker-r34.th",
+ "embedding": "wespeaker-r34",
+ "threshold": 0.5,
+ "audio_sec": 2210.3,
+ "process_sec": 116.7,
+ "collar0": {
+  "der": 0.6632,
+  "missed": 0.0558,
+  "false_alarm": 0.058,
+  "confusion": 0.5494
+ },
+ "collar25": {
+  "der": 0.601,
+  "missed": 0.0293,
+  "false_alarm": 0.0302,
+  "confusion": 0.5415
+ },
+ "collar25_no_overlap": {
+  "der": 0.5954,
+  "missed": 0.0249,
+  "false_alarm": 0.0304,
+  "confusion": 0.5401
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 29,
+ "segments_right": 96,
+ "segments": 404,
+ "short_right": 31,
+ "short": 193
+}

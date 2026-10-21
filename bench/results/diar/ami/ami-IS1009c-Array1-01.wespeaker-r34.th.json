@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-IS1009c-Array1-01",
+ "system": "wespeaker-r34.th",
+ "embedding": "wespeaker-r34",
+ "threshold": 0.5,
+ "audio_sec": 1820.8,
+ "process_sec": 154.2,
+ "collar0": {
+  "der": 0.3471,
+  "missed": 0.0372,
+  "false_alarm": 0.0427,
+  "confusion": 0.2673
+ },
+ "collar25": {
+  "der": 0.2849,
+  "missed": 0.0197,
+  "false_alarm": 0.0166,
+  "confusion": 0.2486
+ },
+ "collar25_no_overlap": {
+  "der": 0.2746,
+  "missed": 0.0136,
+  "false_alarm": 0.0172,
+  "confusion": 0.2439
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 9,
+ "segments_right": 121,
+ "segments": 291,
+ "short_right": 35,
+ "short": 154
+}

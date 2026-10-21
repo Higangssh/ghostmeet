@@ -1,0 +1,29 @@
+{
+ "meeting": "ami-EN2002c-Mix-Headset",
+ "system": "campplus-zh-en.online0.5",
+ "collar0": {
+  "der": 0.2152,
+  "missed": 0.1494,
+  "false_alarm": 0.0162,
+  "confusion": 0.0495
+ },
+ "collar25": {
+  "der": 0.1761,
+  "missed": 0.1305,
+  "false_alarm": 0.0092,
+  "confusion": 0.0365
+ },
+ "collar25_no_overlap": {
+  "der": 0.078,
+  "missed": 0.0336,
+  "false_alarm": 0.0127,
+  "confusion": 0.0317
+ },
+ "ref_speakers": 3,
+ "hyp_speakers": 32,
+ "segments_right": 411,
+ "segments": 635,
+ "short_right": 138,
+ "short": 280,
+ "relabelled": 0.5806
+}

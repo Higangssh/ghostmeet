@@ -1,0 +1,53 @@
+{
+ "meeting": "ami-ES2004d-Array1-01",
+ "system": "wespeaker-r34.pipe",
+ "embedding": "wespeaker-r34",
+ "preregistered": "centroid/0.04/share/0.02",
+ "preregistered_at": "2026-10-21T06:48:21+0900",
+ "linkage": "centroid",
+ "threshold": 0.04,
+ "floor": [
+  "share",
+  0.02
+ ],
+ "inversions": 500,
+ "erased": 692,
+ "vanished": 2,
+ "embeddings": 3259,
+ "audio_sec": 2222.3,
+ "extract_sec": 112.0,
+ "cluster_sec": 0.3,
+ "process_sec": 112.3,
+ "collar0": {
+  "der": 0.6771,
+  "missed": 0.0992,
+  "false_alarm": 0.0555,
+  "confusion": 0.5224
+ },
+ "collar25": {
+  "der": 0.6469,
+  "missed": 0.0632,
+  "false_alarm": 0.0274,
+  "confusion": 0.5563
+ },
+ "collar25_no_overlap": {
+  "der": 0.6759,
+  "missed": 0.038,
+  "false_alarm": 0.0326,
+  "confusion": 0.6053
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 2,
+ "segments_right": 169,
+ "segments": 602,
+ "short_right": 81,
+ "short": 339,
+ "env": {
+  "sherpa_onnx": "1.13.8",
+  "onnxruntime": "1.31.0",
+  "scipy": "1.16.2",
+  "numpy": "2.5.4",
+  "segmentation_sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+  "embedding_sha256": "e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012"
+ }
+}

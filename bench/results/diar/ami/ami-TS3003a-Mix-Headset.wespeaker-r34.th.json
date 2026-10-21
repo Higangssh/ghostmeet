@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-TS3003a-Mix-Headset",
+ "system": "wespeaker-r34.th",
+ "embedding": "wespeaker-r34",
+ "threshold": 0.5,
+ "audio_sec": 1505.6,
+ "process_sec": 66.1,
+ "collar0": {
+  "der": 0.6344,
+  "missed": 0.1067,
+  "false_alarm": 0.0391,
+  "confusion": 0.4887
+ },
+ "collar25": {
+  "der": 0.5602,
+  "missed": 0.0796,
+  "false_alarm": 0.0202,
+  "confusion": 0.4605
+ },
+ "collar25_no_overlap": {
+  "der": 0.551,
+  "missed": 0.0715,
+  "false_alarm": 0.0208,
+  "confusion": 0.4588
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 78,
+ "segments_right": 43,
+ "segments": 242,
+ "short_right": 13,
+ "short": 145
+}

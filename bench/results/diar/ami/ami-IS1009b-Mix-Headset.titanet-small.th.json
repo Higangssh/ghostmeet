@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-IS1009b-Mix-Headset",
+ "system": "titanet-small.th",
+ "embedding": "titanet-small",
+ "threshold": 0.8,
+ "audio_sec": 2052.3,
+ "process_sec": 110.7,
+ "collar0": {
+  "der": 0.298,
+  "missed": 0.0602,
+  "false_alarm": 0.0328,
+  "confusion": 0.205
+ },
+ "collar25": {
+  "der": 0.1972,
+  "missed": 0.0295,
+  "false_alarm": 0.0097,
+  "confusion": 0.158
+ },
+ "collar25_no_overlap": {
+  "der": 0.153,
+  "missed": 0.011,
+  "false_alarm": 0.0104,
+  "confusion": 0.1316
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 50,
+ "segments_right": 132,
+ "segments": 389,
+ "short_right": 56,
+ "short": 246
+}

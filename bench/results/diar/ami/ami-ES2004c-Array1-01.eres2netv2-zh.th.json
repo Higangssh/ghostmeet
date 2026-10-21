@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-ES2004c-Array1-01",
+ "system": "eres2netv2-zh.th",
+ "embedding": "eres2netv2-zh",
+ "threshold": 0.8,
+ "audio_sec": 2334.4,
+ "process_sec": 320.3,
+ "collar0": {
+  "der": 0.3956,
+  "missed": 0.0617,
+  "false_alarm": 0.0518,
+  "confusion": 0.2821
+ },
+ "collar25": {
+  "der": 0.3307,
+  "missed": 0.0292,
+  "false_alarm": 0.0273,
+  "confusion": 0.2742
+ },
+ "collar25_no_overlap": {
+  "der": 0.3052,
+  "missed": 0.0106,
+  "false_alarm": 0.0297,
+  "confusion": 0.2649
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 36,
+ "segments_right": 207,
+ "segments": 497,
+ "short_right": 76,
+ "short": 270
+}

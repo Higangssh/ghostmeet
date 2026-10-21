@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-IS1009a-Array1-01",
+ "system": "campplus-zh-en.oracle",
+ "embedding": "campplus-zh-en",
+ "threshold": null,
+ "audio_sec": 839.0,
+ "process_sec": 40.7,
+ "collar0": {
+  "der": 0.2946,
+  "missed": 0.068,
+  "false_alarm": 0.0802,
+  "confusion": 0.1464
+ },
+ "collar25": {
+  "der": 0.2127,
+  "missed": 0.0439,
+  "false_alarm": 0.0441,
+  "confusion": 0.1247
+ },
+ "collar25_no_overlap": {
+  "der": 0.1794,
+  "missed": 0.018,
+  "false_alarm": 0.0508,
+  "confusion": 0.1106
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 4,
+ "segments_right": 128,
+ "segments": 195,
+ "short_right": 63,
+ "short": 101
+}

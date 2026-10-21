@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-TS3003b-Mix-Headset",
+ "system": "eres2netv2-zh.th",
+ "embedding": "eres2netv2-zh",
+ "threshold": 0.8,
+ "audio_sec": 2210.3,
+ "process_sec": 295.8,
+ "collar0": {
+  "der": 0.1719,
+  "missed": 0.0432,
+  "false_alarm": 0.0617,
+  "confusion": 0.0671
+ },
+ "collar25": {
+  "der": 0.0978,
+  "missed": 0.0174,
+  "false_alarm": 0.0367,
+  "confusion": 0.0436
+ },
+ "collar25_no_overlap": {
+  "der": 0.0889,
+  "missed": 0.013,
+  "false_alarm": 0.0374,
+  "confusion": 0.0385
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 29,
+ "segments_right": 266,
+ "segments": 404,
+ "short_right": 78,
+ "short": 193
+}

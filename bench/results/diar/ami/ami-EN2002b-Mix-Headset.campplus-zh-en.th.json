@@ -1,0 +1,32 @@
+{
+ "meeting": "ami-EN2002b-Mix-Headset",
+ "system": "campplus-zh-en.th",
+ "embedding": "campplus-zh-en",
+ "threshold": 0.7,
+ "audio_sec": 1786.8,
+ "process_sec": 54.3,
+ "collar0": {
+  "der": 0.6206,
+  "missed": 0.1101,
+  "false_alarm": 0.0393,
+  "confusion": 0.4712
+ },
+ "collar25": {
+  "der": 0.5521,
+  "missed": 0.0859,
+  "false_alarm": 0.0211,
+  "confusion": 0.445
+ },
+ "collar25_no_overlap": {
+  "der": 0.4207,
+  "missed": 0.015,
+  "false_alarm": 0.0296,
+  "confusion": 0.3761
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 84,
+ "segments_right": 115,
+ "segments": 490,
+ "short_right": 32,
+ "short": 239
+}
