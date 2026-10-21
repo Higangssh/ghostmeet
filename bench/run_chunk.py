@@ -51,6 +51,7 @@ MODELS = ["campplus-zh-en", "eres2netv2-zh"]  # speed, and far-field accuracy (R
 OVERLAP, SHORT = rd.OVERLAP, rd.SHORT
 BLEED_DB = -25.0
 WORKERS = 6
+WIDEN_WORKERS = 4
 
 # the grid, chosen on dev only
 PIECE_SEC = [300, 600, 900]
@@ -424,7 +425,8 @@ def widen() -> None:
         rd.unit_boundary()
         first = json.loads((RESULTS / "grid" / f"{emb}.json").read_text())
         t = time.perf_counter()
-        with ProcessPoolExecutor(WORKERS) as pool:
+        # the widened configs peak at 4.5 GB on a 4-hour meeting, and both may run at once
+        with ProcessPoolExecutor(WIDEN_WORKERS) as pool:
             per_meeting = dict(pool.map(_grid_one, [(n, emb, "widen") for n in names]))
         table = _table(per_meeting, names, short, long_)
         both = sorted(set(table) & set(first["table"]))
