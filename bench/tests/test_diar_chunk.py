@@ -156,6 +156,49 @@ class Chunked(unittest.TestCase):
         self.assertEqual(sorted({t.speaker for t in turns}), ["0", "1"])
 
 
+def dense_link_distances(cent, node_pieces=None):
+    """The global link's distances as diarize_labels built them before they were condensed
+    (a full matrix, then its upper triangle): the reference the condensed ones must match."""
+    d = 1.0 - (cent @ cent.T).astype(np.float64)
+    np.maximum(d, 0.0, out=d)
+    if node_pieces is not None:
+        for a in range(len(cent)):
+            for b in range(a + 1, len(cent)):
+                if node_pieces[a] & node_pieces[b]:
+                    d[a, b] = d[b, a] = dc.APART
+    return d[np.triu_indices(len(cent), 1)]
+
+
+class LinkDistances(unittest.TestCase):
+    def test_condensed_distances_are_the_dense_ones_bit_for_bit(self):
+        rng = np.random.default_rng(3)
+        for case in range(40):
+            n, dim = int(rng.integers(2, 300)), int(rng.choice([8, 192]))
+            cent = dp._unit(rng.standard_normal((n, dim)).astype(np.float32))
+            pieces = [set(rng.integers(0, 6, size=int(rng.integers(1, 3))).tolist()) for _ in range(n)]
+            for block in (1, 7, 256):
+                for np_ in (None, pieces):
+                    got = dc.link_distances(cent, np_, block=block)
+                    self.assertTrue(np.array_equal(got, dense_link_distances(cent, np_)), (case, block))
+
+    def test_the_global_link_holds_no_square_matrix_of_its_candidates(self):
+        import tracemalloc
+
+        # 3000 chunks of their own near-orthogonal voice, 20 a piece: 3000 candidates, none
+        # joined; a square float64 matrix of them alone is 72 MB, the condensed one 36 MB
+        rng = np.random.default_rng(0)
+        n = 3000
+        st = store([0] * n, dim=64)
+        st = dp.Store(st.labels, st.pairs, rng.standard_normal((n, 64)).astype(np.float32), st.n_samples)
+        c = cfg(threshold=0.01, link_threshold=0.01, cannot_link=False)
+        tracemalloc.start()
+        labels = dc.diarize_labels(st, G, c)
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        self.assertEqual(len(set(labels.tolist())), n)
+        self.assertLess(peak, 3 * n * (n - 1) // 2 * 8)
+
+
 class OneVoice(unittest.TestCase):
     def test_wherever_any_local_speaker_talks_on_the_microphone_it_is_me(self):
         # four chunks (0 .. 2.5 s); chunk 1 has speakers 0 and 1, chunk 3 nobody

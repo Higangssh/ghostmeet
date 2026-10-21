@@ -120,6 +120,36 @@ class _Union:
             self.up[max(a, b)] = min(a, b)
 
 
+def link_distances(cent: np.ndarray, node_pieces: list[set] | None = None, block: int = 256) -> np.ndarray:
+    """Condensed cosine distances between candidates (unit centroids). A 4-hour room meeting
+    has 6-7 thousand candidates, and a square float64 matrix of them, with its triangle's
+    indices, took a gigabyte. The float32 product stays whole: computed in blocks of rows,
+    BLAS rounds some entries differently and the labels must not move; it is turned into
+    float64 distances `block` rows at a time. With `node_pieces`, two candidates that share
+    a piece are APART."""
+    n = len(cent)
+    sim = cent @ cent.T
+    out = np.empty(n * (n - 1) // 2, np.float64)
+    start = lambda a: a * n - a * (a + 1) // 2  # noqa: E731  where row a's pairs (a, a+1..) begin
+    for a0 in range(0, n, block):
+        a1 = min(a0 + block, n)
+        d = 1.0 - sim[a0:a1].astype(np.float64)
+        np.maximum(d, 0.0, out=d)
+        for a in range(a0, a1):
+            out[start(a):start(a + 1)] = d[a - a0, a + 1:]
+    del sim
+    if node_pieces is not None:
+        by_piece = {}
+        for a, ps in enumerate(node_pieces):
+            for p in ps:
+                by_piece.setdefault(p, []).append(a)
+        for members in by_piece.values():
+            m = np.array(members)
+            a, b = np.triu_indices(len(m), 1)
+            out[start(m[a]) + m[b] - m[a] - 1] = APART
+    return out
+
+
 def diarize_labels(store: dp.Store, g: dp.Geometry, cfg: Config, cache: dict | None = None) -> np.ndarray:
     """A speaker label for every embedding. `cache` keeps the pieces' own clustering between
     calls on the same store that differ only in the link and the global floor."""
@@ -170,18 +200,12 @@ def diarize_labels(store: dp.Store, g: dp.Geometry, cfg: Config, cache: dict | N
     if len(nodes) > 1:
         from scipy.cluster.hierarchy import linkage
 
-        d = 1.0 - (cent @ cent.T).astype(np.float64)
-        np.maximum(d, 0.0, out=d)
+        node_pieces = None
         if cfg.cannot_link:
             node_pieces = [set() for _ in nodes]
             for c in range(n):
                 node_pieces[node_of[root[c]]].add(piece_of[c])
-            for a in range(len(nodes)):
-                for b in range(a + 1, len(nodes)):
-                    if node_pieces[a] & node_pieces[b]:
-                        d[a, b] = d[b, a] = APART
-        iu = np.triu_indices(len(nodes), 1)
-        z = linkage(d[iu], method="average")
+        z = linkage(link_distances(cent, node_pieces), method="average")
         linked = dp.cut(z, "average", cfg.link_threshold)
     else:
         linked = np.zeros(len(nodes), np.int64)
