@@ -480,9 +480,10 @@ def preregister() -> dict:
            "gate": "on the same Korean test, the chunked setting must leave fewer special speakers "
                    "(late joiner, quiet speaker, early leaver) vanished than the whole-meeting baseline, "
                    "and no more speakers vanished in all. Failing it is a failure of the design.",
-           "caps": "4-hour meeting, one process from audio on disk to turns: peak RSS <= 1.0 GB with the "
-                   "models; CAM++ diarization <= 15 min (ERes2NetV2 recorded only). Diarization is assumed "
-                   "to run after the final pass, so its memory does not add to whisper's.",
+           "caps": "4-hour meeting, one process from audio on disk to turns (the long step, the preregistered "
+                   "setting only): peak RSS <= 1.0 GB with the models; CAM++ diarization <= 15 min (ERes2NetV2 "
+                   "recorded only). Not applied to grid workers, which hold many settings and meetings. "
+                   "Diarization is assumed to run after the final pass, so its memory does not add to whisper's.",
            "bleed": "test only (-25 dB system audio in the microphone), recorded, never used for choosing",
            "limits": "Korean meetings reuse clips (12 dev, 10 test speakers); the 4-hour dev reuses the most. "
                      "The microphone of a call is taken whole as 'me': wrong in a hybrid meeting."}
@@ -580,23 +581,47 @@ def _long_child(name: str, emb: str) -> None:
     seg = rd.segmenter()
     st = dp.extract(OnDisk(d / ("system.wav" if call else "audio.wav")), seg, rd.extractor(emb))
     t_extract = time.perf_counter() - t
-    labels = dc.diarize_labels(st, G, config_of(k))
-    turns = dp.reconstruct(list(st.labels), [tuple(p) for p in st.pairs.tolist()], labels, st.n_samples, G)
+    # the process's peak after each stage (it only grows), and what each stage itself holds
+    # at most (tracemalloc sees numpy's buffers)
+    stages = {"extract": {"sec": round(t_extract, 1), "peak_mb_after": _peak_mb()}}
+    labels = _stage(stages, "cluster", lambda: dc.diarize_labels(st, G, config_of(k)))
+    turns = _stage(stages, "reconstruct", lambda: dp.reconstruct(
+        list(st.labels), [tuple(p) for p in st.pairs.tolist()], labels, st.n_samples, G))
     hyp = [der.Turn(f"s{x.speaker}", x.start, x.end) for x in turns]
     if call:
         mic = OnDisk(d / "mic.wav")
-        hyp += dc.one_voice(np.stack(dp.segment(mic, seg)).astype(np.int8), len(mic), G, "me")
-    sec = time.perf_counter() - t
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20  # bytes on macOS
+        hyp += _stage(stages, "mic", lambda: dc.one_voice(np.stack(dp.segment(mic, seg)).astype(np.int8),
+                                                          len(mic), G, "me"))
+    sec = time.perf_counter() - t  # with tracemalloc's overhead in it: against the cap, on the safe side
+    peak = _peak_mb()
     ref, _ = load_meeting("test", name)
     audio_sec = len(OnDisk(d / ("system.wav" if call else "audio.wav"))) / RATE
     result = {"meeting": name, "system": f"{emb}.chunk-process", "embedding": emb, "preregistered": k,
               "audio_sec": round(audio_sec, 1), "extract_sec": round(t_extract, 1), "process_sec": round(sec, 1),
               "rtf": round(sec / audio_sec, 4), "peak_mb": round(peak), "embeddings": int(len(st.embeddings)),
+              "clusters": int(len(np.unique(labels))), "stages": stages,
               **rd.scored(ref, hyp, [(x.start, x.end) for x in ref]), "env": rd.env(emb)}
     _save("long", name, f"{emb}.chunk-process", result, hyp)
     print(f"long {name} {emb}: {sec / 60:.1f} min, peak {result['peak_mb']} MB, DER {result['collar25']['der']:.3f}",
           flush=True)
+
+
+def _peak_mb() -> int:
+    return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20)  # bytes on macOS
+
+
+def _stage(stages: dict, name: str, run):
+    """Run one stage with tracemalloc on: its own peak, apart from what came before it."""
+    import tracemalloc
+
+    t = time.perf_counter()
+    tracemalloc.start()
+    out = run()
+    _, top = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    sec = time.perf_counter() - t
+    stages[name] = {"sec": round(sec, 1), "traced_peak_mb": round(top / 2**20), "peak_mb_after": _peak_mb()}
+    return out
 
 
 def long_runs() -> None:
