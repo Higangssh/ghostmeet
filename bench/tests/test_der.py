@@ -4,6 +4,7 @@ from __future__ import annotations
 import itertools
 import random
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -35,6 +36,34 @@ class MappingTests(unittest.TestCase):
             self.assertEqual(sum(w[i][j] for i, j in pairs), best, w)
             self.assertEqual(len({i for i, _ in pairs}), len(pairs))
             self.assertEqual(len({j for _, j in pairs}), len(pairs))
+
+
+    def test_a_wide_matrix_is_assigned_exactly_and_quickly(self):
+        # a grid config can leave thousands of hypothesis speakers against a few reference ones
+        from scipy.optimize import linear_sum_assignment
+
+        rng = random.Random(7)
+        w = [[rng.random() for _ in range(3000)] for _ in range(4)]
+        t = time.perf_counter()
+        pairs = der.assign(w)
+        self.assertLess(time.perf_counter() - t, 5.0)
+        r, c = linear_sum_assignment([[-v for v in row] for row in w])
+        self.assertAlmostEqual(sum(w[i][j] for i, j in pairs), sum(w[i][j] for i, j in zip(r, c)), places=9)
+        tall = [list(col) for col in zip(*w)]
+        self.assertEqual(sorted((j, i) for i, j in der.assign(tall)), pairs)
+
+
+class ManyHypothesisSpeakers(unittest.TestCase):
+    def test_hundreds_of_hypothesis_speakers_score_exactly_and_quickly(self):
+        # A talks 0-600 s and B 600-1200 s; the hypothesis cuts it into 400 speakers of 3 s each
+        ref = turns((A, 0, 600), (B, 600, 1200))
+        hyp = [der.Turn(f"h{k}", 3.0 * k, 3.0 * (k + 1)) for k in range(400)]
+        t = time.perf_counter()
+        s = der.score(ref, hyp)
+        self.assertLess(time.perf_counter() - t, 5.0)
+        self.assertEqual((s.ref_speakers, s.hyp_speakers, len(s.mapping)), (2, 400, 2))
+        self.assertAlmostEqual(s.missed + s.false_alarm, 0.0, places=6)
+        self.assertAlmostEqual(s.confusion, 1200 - 6.0, places=6)    # two 3 s pieces are right
 
 
 class DerTests(unittest.TestCase):

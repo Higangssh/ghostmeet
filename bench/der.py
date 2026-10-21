@@ -56,30 +56,34 @@ class SegmentScore:
 
 def assign(weights: list[list[float]]) -> list[tuple[int, int]]:
     """Rows paired with columns, one to one, for the largest total weight (Hungarian
-    method on the negated, squared-up matrix). Pairs of zero weight are left out."""
-    n = max(len(weights), max((len(r) for r in weights), default=0))
-    if n == 0:
+    method on the negated matrix, the shorter side as rows, so a few reference speakers
+    against thousands of hypothesis ones stay cheap). Pairs of zero weight are left out."""
+    n, m = len(weights), max((len(r) for r in weights), default=0)
+    if n == 0 or m == 0:
         return []
-    big = max((v for r in weights for v in r), default=0)
-    cost = [[big - (weights[i][j] if i < len(weights) and j < len(weights[i]) else 0) for j in range(n)]
-            for i in range(n)]
+    if n > m:
+        w = [[weights[i][j] if j < len(weights[i]) else 0 for i in range(n)] for j in range(m)]
+        return sorted((i, j) for j, i in assign(w))
+    big = max(v for r in weights for v in r)
+    cost = [[big - (r[j] if j < len(r) else 0) for j in range(m)] for r in weights]
     INF = float("inf")
-    u, v = [0.0] * (n + 1), [0.0] * (n + 1)
-    p, way = [0] * (n + 1), [0] * (n + 1)
+    u, v = [0.0] * (n + 1), [0.0] * (m + 1)
+    p, way = [0] * (m + 1), [0] * (m + 1)
     for i in range(1, n + 1):
         p[0], j0 = i, 0
-        minv, used = [INF] * (n + 1), [False] * (n + 1)
+        minv, used = [INF] * (m + 1), [False] * (m + 1)
         while True:
             used[j0] = True
             i0, delta, j1 = p[j0], INF, 0
-            for j in range(1, n + 1):
+            row = cost[i0 - 1]
+            for j in range(1, m + 1):
                 if not used[j]:
-                    cur = cost[i0 - 1][j - 1] - u[i0] - v[j]
+                    cur = row[j - 1] - u[i0] - v[j]
                     if cur < minv[j]:
                         minv[j], way[j] = cur, j0
                     if minv[j] < delta:
                         delta, j1 = minv[j], j
-            for j in range(n + 1):
+            for j in range(m + 1):
                 if used[j]:
                     u[p[j]] += delta
                     v[j] -= delta
@@ -95,9 +99,9 @@ def assign(weights: list[list[float]]) -> list[tuple[int, int]]:
             if j0 == 0:
                 break
     pairs = []
-    for j in range(1, n + 1):
+    for j in range(1, m + 1):
         i = p[j] - 1
-        if i < len(weights) and j - 1 < len(weights[i]) and weights[i][j - 1] > 0:
+        if i >= 0 and j - 1 < len(weights[i]) and weights[i][j - 1] > 0:
             pairs.append((i, j - 1))
     return sorted(pairs)
 
@@ -116,16 +120,48 @@ def _frames(*groups: list[Turn]) -> int:
     return int(round(max((t.end for g in groups for t in g), default=0) / FRAME)) + 1
 
 
+def _spans(turns: list[Turn], labels: list[str], frames: int) -> list[list[tuple[int, int]]]:
+    """Each speaker's frames as sorted, merged [a, b) spans: the rows of `_grid` without the grid."""
+    index = {s: i for i, s in enumerate(labels)}
+    raw = [[] for _ in labels]
+    for t in turns:
+        a, b = max(0, int(round(t.start / FRAME))), max(0, min(int(round(t.end / FRAME)), frames))
+        if b > a:
+            raw[index[t.speaker]].append((a, b))
+    out = []
+    for r in raw:
+        merged = []
+        for a, b in sorted(r):
+            if merged and a <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+            else:
+                merged.append((a, b))
+        out.append(merged)
+    return out
+
+
+def _row(spans: list[tuple[int, int]], frames: int) -> np.ndarray:
+    g = np.zeros(frames, dtype=bool)
+    for a, b in spans:
+        g[a:b] = True
+    return g
+
+
 def _mapping(ref: list[Turn], hyp: list[Turn]):
+    """The reference grid, the hypothesis as spans, and the mapping. The hypothesis may hold
+    thousands of speakers: its overlap with the reference comes from running sums, not a grid."""
     rl, hl = sorted({t.speaker for t in ref}), sorted({t.speaker for t in hyp})
     n = _frames(ref, hyp)
-    R, H = _grid(ref, rl, n), _grid(hyp, hl, n)
-    overlap = (H.astype(np.int32) @ R.T.astype(np.int32)).tolist()  # hyp × ref frames together
-    return rl, hl, R, H, {hl[i]: rl[j] for i, j in assign(overlap)}
+    R = _grid(ref, rl, n)
+    run = np.concatenate([np.zeros((len(rl), 1), np.int64), np.cumsum(R, axis=1, dtype=np.int64)], axis=1)
+    hs = _spans(hyp, hl, n)
+    overlap = [[0] * len(rl) if not sp else
+               np.sum([run[:, b] - run[:, a] for a, b in sp], axis=0).tolist() for sp in hs]
+    return rl, hl, R, hs, {hl[i]: rl[j] for i, j in assign(overlap)}
 
 
 def score(ref: list[Turn], hyp: list[Turn], collar: float = 0.0, skip_overlap: bool = False) -> Score:
-    rl, hl, R, H, mapping = _mapping(ref, hyp)
+    rl, hl, R, hs, mapping = _mapping(ref, hyp)
     keep = np.ones(R.shape[1], dtype=bool)
     if collar > 0:
         c = int(round(collar / FRAME))
@@ -133,13 +169,19 @@ def score(ref: list[Turn], hyp: list[Turn], collar: float = 0.0, skip_overlap: b
             for edge in (t.start, t.end):
                 e = int(round(edge / FRAME))
                 keep[max(0, e - c):e + c] = False
-    nref, nhyp = R.sum(axis=0), H.sum(axis=0)
+    nref = R.sum(axis=0)
+    step = np.zeros(R.shape[1] + 1, dtype=np.int64)
+    for sp in hs:
+        for a, b in sp:
+            step[a] += 1
+            step[b] -= 1
+    nhyp = np.cumsum(step[:-1])
     if skip_overlap:
         keep &= nref <= 1
     # mapped hypothesis speakers that are right, per frame
     right = np.zeros(R.shape[1], dtype=np.int32)
     for h, r in mapping.items():
-        right += H[hl.index(h)] & R[rl.index(r)]
+        right += _row(hs[hl.index(h)], R.shape[1]) & R[rl.index(r)]
     nref, nhyp, right = nref[keep], nhyp[keep], right[keep]
     sec = lambda x: float(x.sum()) * FRAME  # noqa: E731
     return Score(
@@ -155,7 +197,8 @@ def score(ref: list[Turn], hyp: list[Turn], collar: float = 0.0, skip_overlap: b
 
 def segment_accuracy(ref: list[Turn], hyp: list[Turn], segments: list[tuple[float, float]],
                      short: float = 1.5) -> SegmentScore:
-    rl, hl, R, H, mapping = _mapping(ref, hyp)
+    rl, hl, R, hs, mapping = _mapping(ref, hyp)
+    H = np.stack([_row(sp, R.shape[1]) for sp in hs]) if hs else np.zeros((0, R.shape[1]), bool)
     out = SegmentScore(0, 0, 0, 0)
     for a, b in segments:
         fa, fb = int(round(a / FRAME)), max(int(round(b / FRAME)), int(round(a / FRAME)) + 1)
