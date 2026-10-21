@@ -189,3 +189,14 @@ def diarize(store: dp.Store, g: dp.Geometry, cfg: Config, min_on: float = 0.3, m
     labels = diarize_labels(store, g, cfg)
     pairs = [tuple(p) for p in store.pairs.tolist()]
     return dp.reconstruct(list(store.labels), pairs, labels, store.n_samples, g, min_on, min_off)
+
+
+def one_voice(labels: np.ndarray, n_samples: int, g: dp.Geometry, name: str,
+              min_on: float = 0.3, min_off: float = 0.5):
+    """Turns of one speaker wherever the segmentation hears anyone: the microphone of a call,
+    which the app takes to be "me" alone (wrong in a hybrid meeting, where others sit with me).
+    The same reconstruction, every local speaker in one cluster."""
+    labels = list(labels)
+    pairs = [(c, s) for c in range(len(labels)) for s in range(g.speakers)]
+    turns = dp.reconstruct(labels, pairs, np.zeros(len(pairs), np.int64), n_samples, g, min_on, min_off)
+    return [dp.Turn(name, t.start, t.end) for t in turns]

@@ -146,5 +146,23 @@ class Chunked(unittest.TestCase):
         self.assertEqual(sorted({t.speaker for t in turns}), ["0", "1"])
 
 
+class OneVoice(unittest.TestCase):
+    def test_wherever_any_local_speaker_talks_on_the_microphone_it_is_me(self):
+        # four chunks (0 .. 2.5 s); chunk 1 has speakers 0 and 1, chunk 3 nobody
+        labels = np.zeros((4, 10, 3), np.int8)
+        labels[0, :, 0] = 1
+        labels[1, :, 0] = labels[1, :, 1] = 1
+        labels[2, :5, 2] = 1
+        turns = dc.one_voice(labels, n_samples=250, g=G, name="me", min_on=0.0, min_off=0.0)
+        self.assertEqual({t.speaker for t in turns}, {"me"})
+        self.assertEqual(len(turns), 1)
+        self.assertAlmostEqual(turns[0].start, 0.05, places=3)
+        self.assertLess(turns[0].end, 2.0)   # chunk 3 is silent: frames from 1.5 s on are mostly not speech
+        self.assertGreater(turns[0].end, 1.0)
+
+    def test_a_silent_microphone_gives_no_turns(self):
+        self.assertEqual(dc.one_voice(np.zeros((3, 10, 3), np.int8), 200, G, "me"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

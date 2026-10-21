@@ -289,17 +289,21 @@ def segment(audio: np.ndarray, session, g: Geometry = SEGMENTATION_3) -> list[np
     if n <= g.window:
         raise ValueError("a meeting shorter than one chunk")
     n_chunks = (n - g.window) // g.shift + 1
-    out = [to_multilabel(run(audio[i * g.shift:i * g.shift + g.window])) for i in range(n_chunks)]
+    out = [to_multilabel(run(np.ascontiguousarray(audio[i * g.shift:i * g.shift + g.window], dtype=np.float32)))
+           for i in range(n_chunks)]
     if (n - g.window) % g.shift > 0:
         buf = np.zeros(g.window, np.float32)
-        rest = audio[n_chunks * g.shift:]
+        rest = audio[n_chunks * g.shift:n]
         buf[:len(rest)] = rest
         out.append(to_multilabel(run(buf)))
     return out
 
 
-def extract(audio: np.ndarray, session, extractor, g: Geometry = SEGMENTATION_3) -> Store:
-    audio = np.ascontiguousarray(audio, dtype=np.float32)
+def extract(audio, session, extractor, g: Geometry = SEGMENTATION_3) -> Store:
+    """`audio`: an array, or anything with len() and slicing that reads it on demand (a file
+    on disk), so a long meeting is never in memory at once."""
+    if isinstance(audio, np.ndarray):
+        audio = np.ascontiguousarray(audio, dtype=np.float32)
     labels = segment(audio, session, g)
     pairs, spans = chunk_speaker_samples(labels, g)
     keep, embs = [], []
@@ -308,7 +312,7 @@ def extract(audio: np.ndarray, session, extractor, g: Geometry = SEGMENTATION_3)
         for a, b in runs:
             b = min(b, len(audio))
             if b > a:
-                stream.accept_waveform(g.rate, audio[a:b])
+                stream.accept_waveform(g.rate, np.ascontiguousarray(audio[a:b], dtype=np.float32))
         stream.input_finished()
         e = np.array(extractor.compute(stream), np.float32)
         if not np.isnan(e).any():

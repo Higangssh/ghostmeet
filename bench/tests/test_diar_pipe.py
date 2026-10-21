@@ -190,5 +190,74 @@ class ErasedPeople(unittest.TestCase):
         self.assertEqual(dp.vanished(overlap[:, :2], np.array([0, 0, 1, 1])), 0)
 
 
+class FakeSession:
+    """segmentation-3.0's interface: (1, 1, samples) in, (1, frames, 7) powerset logits out.
+    Speaker 0 talks wherever the window's mean is above zero."""
+
+    class _In:
+        name = "x"
+
+    def get_inputs(self):
+        return [self._In()]
+
+    def run(self, _, feed):
+        x = feed["x"][0, 0]
+        logits = np.full((1, 10, 7), -5.0, np.float32)
+        logits[0, :, 1 if x.mean() > 0 else 0] = 0
+        return [logits]
+
+
+class FakeExtractor:
+    """An "embedding" that is the mean and the length of what it was given."""
+
+    class _Stream:
+        def __init__(self):
+            self.parts = []
+
+        def accept_waveform(self, rate, x):
+            self.parts.append(np.asarray(x, np.float32))
+
+        def input_finished(self):
+            pass
+
+    def create_stream(self):
+        return self._Stream()
+
+    def compute(self, stream):
+        x = np.concatenate(stream.parts)
+        return [float(x.mean()), float(len(x))]
+
+
+class OnDemand:
+    """Audio read slice by slice, as a file on disk would be: no whole-array access."""
+
+    def __init__(self, x):
+        self._x = x
+        self.reads = 0
+
+    def __len__(self):
+        return len(self._x)
+
+    def __getitem__(self, s):
+        assert isinstance(s, slice) and s.step is None
+        self.reads += 1
+        return self._x[s].copy()
+
+
+class Extract(unittest.TestCase):
+    def test_audio_read_on_demand_gives_the_same_store_as_an_array(self):
+        rng = np.random.default_rng(1)
+        x = (rng.standard_normal(1030) * 0.1 + np.repeat([0.5, -0.5, 0.5], [400, 300, 330])).astype(np.float32)
+        g = dp.Geometry(window=100, shift=50, frame_shift=10, frame_size=10, rate=100, speakers=3)
+        a = dp.extract(x, FakeSession(), FakeExtractor(), g)
+        lazy = OnDemand(x)
+        b = dp.extract(lazy, FakeSession(), FakeExtractor(), g)
+        self.assertGreater(lazy.reads, 0)
+        np.testing.assert_array_equal(a.labels, b.labels)
+        np.testing.assert_array_equal(a.pairs, b.pairs)
+        np.testing.assert_allclose(a.embeddings, b.embeddings)
+        self.assertEqual(a.n_samples, b.n_samples)
+
+
 if __name__ == "__main__":
     unittest.main()
