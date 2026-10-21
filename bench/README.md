@@ -219,4 +219,6 @@ bench/.venv/bin/python -I bench/run_diar.py extract-test pipe        # test embe
 bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench    # 모델·데이터 없이 도는 테스트
 ```
 
+call 장면의 대역 제한은 6aa83d1부터 2의 거듭제곱 길이로 0을 채워 FFT한다(4시간 call 하나가 4.9시간 걸리던 것을 48초로). 출력은 양 끝 1초 안에서 최대 0.026, 가운데에서는 16비트 한 단계(3e-5) 안팎으로 달라지므로(잡음 30분으로 잰 값), RESULTS.md §9의 한국어 결과(call 회의와 그 회의가 들어간 평균)는 지금 코드로는 바이트 단위로 재현되지 않는다. 그대로 다시 만들려면 그 결과를 커밋한 167a9b8을 체크아웃해서 `bench/data/diar/`의 한국어 회의를 지우고 위 순서를 돌린다. room 회의와 AMI는 영향이 없다.
+
 테스트는 bench/.venv(위 pip 고정 명령으로 scipy까지 설치한 venv)에서 돌린다. 루트 `.venv`에는 scipy가 없어 diar_pipe 테스트가 실패한다.
