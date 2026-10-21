@@ -76,15 +76,18 @@ class Spec:
 
 def specs(split: str) -> list[Spec]:
     a, b = (300, 301) if split == "dev" else (400, 401)
+    # quiet speakers at about 2% and 1% of the speech: the mixer lands near 0.75 of the
+    # share asked (their short replies and the no-repeat rule), so ask for 3% and 1.5%;
+    # build() records the share each one got
     out = []
     for scene in ("room", "call"):
-        for n, seed, roles in ((2, a, {}), (4, a, {"late": 1}), (4, b, {"quiet": 1, "quiet_share": 0.02}),
-                               (6, a, {"late": 1, "quiet": 1, "quiet_share": 0.02}),
-                               (6, b, {"late": 1, "quiet": 1, "quiet_share": 0.01})):
+        for n, seed, roles in ((2, a, {}), (4, a, {"late": 1}), (4, b, {"quiet": 1, "quiet_share": 0.03}),
+                               (6, a, {"late": 1, "quiet": 1, "quiet_share": 0.03}),
+                               (6, b, {"late": 1, "quiet": 1, "quiet_share": 0.015})):
             tag = "".join(k[0] for k in ("late", "quiet") if k in roles) or "plain"
             out.append(Spec(f"ck-{scene}-{n}p-30m-s{seed}-{tag}", scene, n, 30, seed, roles))
         out.append(Spec(f"ck-{scene}-6p-240m-s{a}-lqe", scene, 6, 240, a,
-                        {"late": 1, "quiet": 1, "quiet_share": 0.01, "early": 1}))
+                        {"late": 1, "quiet": 1, "quiet_share": 0.015, "early": 1}))
     return out
 
 
@@ -109,8 +112,18 @@ def build(split: str) -> None:
         rd.unit_boundary()
         t = time.perf_counter()
         call = s.scene == "call"
-        m = diar_mix.mix(pool, speakers=s.speakers, minutes=s.minutes, seed=s.seed, overlap=OVERLAP, short=SHORT,
-                         scene=s.scene, channels=call, **s.roles)
+        roles, tries = dict(s.roles), []
+        for _ in range(5):
+            m = diar_mix.mix(pool, speakers=s.speakers, minutes=s.minutes, seed=s.seed, overlap=OVERLAP,
+                             short=SHORT, scene=s.scene, channels=call, **roles)
+            got = _quiet_share(m)
+            tries.append({"asked": roles.get("quiet_share"), "got": got})
+            if got is None or QUIET[0] <= got <= QUIET[1]:
+                break
+            # a few turns in 30 minutes: the share moves in steps, so aim for the middle again
+            roles["quiet_share"] = roles["quiet_share"] * (sum(QUIET) / 2) / max(got, 1e-3)
+        else:
+            raise RuntimeError(f"{s.name}: quiet share {tries}")
         d.mkdir(parents=True, exist_ok=True)
         write = lambda name, x: sf.write(d / name, np.clip(x, -1, 1), RATE, subtype="PCM_16")  # noqa: E731
         if call:
@@ -119,7 +132,7 @@ def build(split: str) -> None:
             write("mix.wav", m.audio)
             if split == "test":
                 b = diar_mix.mix(pool, speakers=s.speakers, minutes=s.minutes, seed=s.seed, overlap=OVERLAP,
-                                 short=SHORT, scene=s.scene, channels=True, bleed_db=BLEED_DB, **s.roles)
+                                 short=SHORT, scene=s.scene, channels=True, bleed_db=BLEED_DB, **roles)
                 assert b.turns == m.turns
                 write("mic-bleed.wav", b.mic)
         else:
@@ -129,7 +142,7 @@ def build(split: str) -> None:
         for x in m.turns:
             speech[x.speaker] = speech.get(x.speaker, 0.0) + x.end - x.start
         total = sum(speech.values())
-        meta = {"spec": asdict(s), "roles": m.roles, "me": m.me,
+        meta = {"spec": asdict(s), "roles": m.roles, "me": m.me, "quiet_tries": tries,
                 "share": {k: round(v / total, 4) for k, v in sorted(speech.items())},
                 "first": {k: min(x.start for x in m.turns if x.speaker == k) for k in sorted(speech)},
                 "last": {k: max(x.end for x in m.turns if x.speaker == k) for k in sorted(speech)},
@@ -137,6 +150,17 @@ def build(split: str) -> None:
         (d / "meta.json").write_text(json.dumps(meta, indent=1))
         print(f"build {split} {s.name}: {meta['audio_sec'] / 60:.0f} min, roles {m.roles}, "
               f"shares {[meta['share'].get(k, 0.0) for k in m.roles]} {time.perf_counter() - t:.0f}s", flush=True)
+
+
+QUIET = (0.01, 0.03)  # a quiet speaker's share of the speech, as the plan asked
+
+
+def _quiet_share(m) -> float | None:
+    who = [k for k, r in m.roles.items() if r == "quiet"]
+    if not who:
+        return None
+    total = sum(t.end - t.start for t in m.turns)
+    return round(sum(t.end - t.start for t in m.turns if t.speaker == who[0]) / total, 4)
 
 
 class OnDisk:
@@ -215,7 +239,8 @@ def vanished_who(names: list[str], overlap: np.ndarray, labels: np.ndarray) -> s
 class Meeting:
     """What a config is scored on: the store it clusters, and what joins its result."""
 
-    def __init__(self, split: str, name: str, emb: str, track: str | None = None, mic: str = "mic"):
+    def __init__(self, split: str, name: str, emb: str, track: str | None = None, mic: str = "mic",
+                 echo: bool = False):
         self.split, self.name, self.emb = split, name, emb
         self.ref, self.meta = load_meeting(split, name)
         self.call = name.startswith("ck-call")
@@ -229,6 +254,9 @@ class Meeting:
         if self.call and self.track == "system":
             v = np.load(store_path(split, name, mic, None))
             self.voice = dc.one_voice(v["labels"], int(v["n_samples"]), G, "me")
+            if echo:
+                d = meeting_dir(split, name)
+                self.voice = dc.drop_echo(self.voice, OnDisk(d / f"{mic}.wav"), OnDisk(d / "system.wav"), RATE)
         self.special = set(self.meta["roles"])
         self.cache: dict = {}
 
@@ -287,6 +315,42 @@ def summary(per: dict[str, dict], names: list[str]) -> dict:
             "vanished": sum(x["vanished"] for x in v), "special_vanished": sum(x["special_vanished"] for x in v)}
 
 
+AXES = ["piece_sec", "overlap_sec", "method", "threshold", "piece_share", "link_threshold", "cannot_link",
+        "floor"]
+
+
+def top_share(table: dict, share: float = 0.01) -> dict:
+    """The best `share` of the grid by score: its score range and how each axis spreads in
+    it. An axis spread wide across the top matters little."""
+    ranked = sorted(table, key=lambda k: table[k]["score"])
+    top = ranked[:max(1, math.ceil(share * len(ranked)))]
+    spread = {}
+    for ax in AXES:
+        vals = []
+        for k in top:
+            c = config_of(k)
+            vals.append(f"{c.floor_kind}/{c.floor:g}" if ax == "floor" else str(getattr(c, ax)))
+        spread[ax] = {v: vals.count(v) for v in sorted(set(vals))}
+    return {"n": len(top), "score": [table[top[0]]["score"], table[top[-1]]["score"]], "axes": spread}
+
+
+def cross_seed(per_meeting: dict, short: list[str]) -> dict:
+    """Choose on one seed's 30-minute dev meetings and score on the other's, both ways: how
+    optimistic a dev best is, without touching test. The 4-hour dev has one seed only."""
+    seeds = sorted({n.split("-s")[-1].split("-")[0] for n in short})
+    out = {}
+    for pick in seeds:
+        a = [n for n in short if f"-s{pick}-" in n]
+        b = [n for n in short if n not in a]
+        keys = per_meeting[a[0]].keys()
+        mean = lambda ms, k: float(np.mean([per_meeting[n][k]["der"] for n in ms]))  # noqa: E731
+        k = min(keys, key=lambda k: mean(a, k))
+        kb = min(keys, key=lambda k: mean(b, k))
+        out[f"choose_s{pick}"] = {"key": k, "der_on_own": round(mean(a, k), 4), "der_on_other": round(mean(b, k), 4),
+                                  "other_best": round(mean(b, kb), 4)}
+    return out
+
+
 def grid() -> None:
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     names = [s.name for s in specs("dev")]
@@ -311,10 +375,12 @@ def grid() -> None:
         best240 = min(table, key=lambda k: table[k]["240m"]["der"])
         out = {"dev": names, "rule": "score = (mean DER of the 30-minute dev + mean DER of the 4-hour dev) / 2",
                "best": best, "best_30m": best30, "best_240m": best240,
+               "top1pct": top_share(table), "cross_seed": cross_seed(per_meeting, short),
                "per_meeting_best": {n: per_meeting[n][best] for n in names},
                "table": table, "grid_sec": round(time.perf_counter() - t), "env": rd.env(emb)}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(out, indent=1))
+        print(f"grid {emb}: top 1% {out['top1pct']['score']}, cross-seed {out['cross_seed']}", flush=True)
         print(f"grid {emb}: best {best} {table[best]}\n  30m-best {best30} {table[best30]['30m']} "
               f"(on 4h {table[best30]['240m']['der']})\n  4h-best {best240} {table[best240]['240m']} "
               f"(on 30m {table[best240]['30m']['der']})", flush=True)
@@ -380,13 +446,14 @@ def pipe() -> None:
             p = pre["models"][emb]
             runs = [("chunk", None, "mic"), ("whole", None, "mic")]
             if s.scene == "call":
-                runs += [("chunk-bleed", None, "mic-bleed"), ("chunk-onetrack", "mix", "mic")]
+                runs += [("chunk-bleed", None, "mic-bleed"), ("chunk-bleed-echo", None, "mic-bleed"),
+                         ("chunk-onetrack", "mix", "mic")]
             for system, track, mic in runs:
                 name = f"{emb}.{system}"
                 if (RESULTS / "test" / f"{s.name}.{name}.json").exists():
                     continue
                 rd.unit_boundary()
-                m = Meeting("test", s.name, emb, track=track, mic=mic)
+                m = Meeting("test", s.name, emb, track=track, mic=mic, echo=system.endswith("-echo"))
                 k = p["baseline_whole_meeting"] if system == "whole" else p["chunked"]
                 t = time.perf_counter()
                 try:
