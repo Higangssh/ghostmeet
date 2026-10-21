@@ -139,6 +139,26 @@ class PeopleTests(unittest.TestCase):
         self.assertEqual(sorted(m.roles.values()), ["late", "quiet"])
 
 
+class BandLimitTests(unittest.TestCase):
+    def test_an_awkward_length_is_filtered_at_a_power_of_two(self):
+        # a length with a large prime factor makes one whole-length FFT of a four-hour call
+        # take over ten minutes; the filter pads to a power of two instead
+        sizes = []
+        real = np.fft.rfft
+        dm.np.fft.rfft = lambda x, n=None, *a, **k: (sizes.append(n or len(x)), real(x, n, *a, **k))[1]
+        try:
+            n = 3 * 5 * 7 * 1009
+            t = np.arange(n) / dm.RATE
+            out = dm._band_limit((np.sin(2 * np.pi * 1000 * t) + np.sin(2 * np.pi * 100 * t)).astype(np.float32))
+        finally:
+            dm.np.fft.rfft = real
+        self.assertEqual(len(out), n)
+        self.assertTrue(all(s >= n and s & (s - 1) == 0 for s in sizes), sizes)
+        mid = slice(n // 4, 3 * n // 4)
+        kept = np.sin(2 * np.pi * 1000 * t[mid])
+        self.assertLess(float(np.abs(out[mid] - kept).max()), 0.05)   # 1 kHz kept, 100 Hz gone
+
+
 class ChannelTests(unittest.TestCase):
     """A call as the app records it: "me" alone on the microphone, the rest on system audio.
     The tones sit inside the call's 300-3400 Hz band."""

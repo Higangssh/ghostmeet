@@ -80,10 +80,13 @@ def _room_response(rng: np.random.Generator) -> np.ndarray:
 
 
 def _band_limit(x: np.ndarray, lo: float = 300.0, hi: float = 3400.0) -> np.ndarray:
-    spec = np.fft.rfft(x)
-    f = np.fft.rfftfreq(len(x), 1 / RATE)
+    # zero-padded to a power of two: at a length with a large prime factor one FFT of a
+    # four-hour call takes over ten minutes
+    size = 1 << (len(x) - 1).bit_length()
+    spec = np.fft.rfft(x, size)
+    f = np.fft.rfftfreq(size, 1 / RATE)
     spec[(f < lo) | (f > hi)] = 0
-    return np.fft.irfft(spec, len(x)).astype(np.float32)
+    return np.fft.irfft(spec, size)[:len(x)].astype(np.float32)
 
 
 def _mu_law(x: np.ndarray, mu: float = 255.0) -> np.ndarray:
