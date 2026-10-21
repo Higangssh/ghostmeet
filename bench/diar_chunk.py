@@ -207,3 +207,28 @@ def one_voice(labels: np.ndarray, n_samples: int, g: dp.Geometry, name: str,
     pairs = [(c, s) for c in range(len(labels)) for s in range(g.speakers)]
     turns = dp.reconstruct(labels, pairs, np.zeros(len(pairs), np.int64), n_samples, g, min_on, min_off)
     return [dp.Turn(name, t.start, t.end) for t in turns]
+
+
+def drop_echo(turns, mic, system, rate: int, frame_sec: float = 0.1, corr: float = 0.5, min_on: float = 0.3):
+    """`turns` (the microphone's voice) without the frames where the microphone is mostly
+    system audio leaking in: zero-lag correlation with the system track above `corr`.
+    A crude stand-in for echo cancellation, exact only for a leak with no delay and no room."""
+    n = int(frame_sec * rate)
+    out = []
+    for t in turns:
+        a, b = int(t.start * rate), int(t.end * rate)
+        keep = []
+        for f in range(a, b, n):
+            x, y = np.asarray(mic[f:min(f + n, b)], np.float64), np.asarray(system[f:min(f + n, b)], np.float64)
+            den = math.sqrt(float((x * x).sum()) * float((y * y).sum()))
+            keep.append(not (den > 0 and float((x * y).sum()) / den > corr))
+        start = None
+        for i, k in enumerate(keep + [False]):
+            if k and start is None:
+                start = i
+            elif not k and start is not None:
+                s0, s1 = (a + start * n) / rate, min(a + i * n, b) / rate
+                if s1 - s0 > min_on:
+                    out.append(dp.Turn(t.speaker, round(s0, 3), round(s1, 3)))
+                start = None
+    return out

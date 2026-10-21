@@ -174,5 +174,29 @@ class OneVoice(unittest.TestCase):
         self.assertEqual(dc.one_voice(np.zeros((3, 10, 3), np.int8), 200, G, "me"), [])
 
 
+class Echo(unittest.TestCase):
+    def test_microphone_time_that_is_only_system_audio_leaking_in_is_not_me(self):
+        rate = 1000
+        rng = np.random.default_rng(0)
+        system = np.zeros(4 * rate, np.float32)
+        system[: 2 * rate] = rng.standard_normal(2 * rate)        # the far side talks 0-2 s
+        me = np.zeros(4 * rate, np.float32)
+        me[2 * rate: 3 * rate] = rng.standard_normal(rate)       # I talk 2-3 s
+        mic = me + 0.06 * system                                 # about -25 dB of leak
+        turns = [dp.Turn("me", 0.0, 3.0)]                        # the microphone heard 0-3 s
+        out = dc.drop_echo(turns, mic, system, rate, min_on=0.0)
+        self.assertEqual(len(out), 1)
+        self.assertAlmostEqual(out[0].start, 2.0, delta=0.11)
+        self.assertAlmostEqual(out[0].end, 3.0, delta=0.11)
+
+    def test_talking_over_the_far_side_is_still_me(self):
+        rate = 1000
+        rng = np.random.default_rng(1)
+        system = rng.standard_normal(2 * rate).astype(np.float32)
+        mic = rng.standard_normal(2 * rate).astype(np.float32) + 0.06 * system
+        out = dc.drop_echo([dp.Turn("me", 0.0, 2.0)], mic, system, rate, min_on=0.0)
+        self.assertEqual([(t.start, t.end) for t in out], [(0.0, 2.0)])
+
+
 if __name__ == "__main__":
     unittest.main()
