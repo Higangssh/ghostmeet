@@ -22,9 +22,9 @@ def tone(freq: float, sec: float, pad: float = 0.0) -> np.ndarray:
     return np.concatenate([z, body, z])
 
 
-def pool(n=6, each=8):
+def pool(n=6, each=8, low=200):
     rng = np.random.default_rng(0)
-    return {f"s{i}": [tone(200 + 60 * i, float(rng.uniform(2, 6)), pad=0.4) for _ in range(each)] for i in range(n)}
+    return {f"s{i}": [tone(low + 60 * i, float(rng.uniform(2, 6)), pad=0.4) for _ in range(each)] for i in range(n)}
 
 
 def overlap_ratio(turns: list[Turn]) -> float:
@@ -97,6 +97,85 @@ class MixTests(unittest.TestCase):
 
     def test_segments_are_the_turns_spans(self):
         self.assertEqual(self.m.segments, [(t.start, t.end) for t in self.m.turns])
+
+
+def share(turns: list[Turn], speaker: str) -> float:
+    total = sum(t.end - t.start for t in turns)
+    return sum(t.end - t.start for t in turns if t.speaker == speaker) / total
+
+
+class PeopleTests(unittest.TestCase):
+    """Who is in the meeting when, and how much they say."""
+
+    def mix(self, **kw):
+        return dm.mix(pool(), speakers=5, minutes=20, seed=3, overlap=0.1, short=0.15, scene="clean", **kw)
+
+    def test_the_new_options_left_alone_make_the_same_meeting_as_before(self):
+        plain = dm.mix(pool(), speakers=4, minutes=3, seed=1, overlap=0.15, short=0.2, scene="clean")
+        again = dm.mix(pool(), speakers=4, minutes=3, seed=1, overlap=0.15, short=0.2, scene="clean",
+                       quiet=0, late=0, early=0)
+        self.assertEqual(again.turns, plain.turns)
+        self.assertTrue(np.array_equal(again.audio, plain.audio))
+        self.assertEqual(plain.roles, {})
+
+    def test_a_quiet_speaker_says_about_the_share_asked(self):
+        m = self.mix(quiet=1, quiet_share=0.02)
+        (who,) = [s for s, r in m.roles.items() if r == "quiet"]
+        self.assertGreater(share(m.turns, who), 0.005)
+        self.assertLess(share(m.turns, who), 0.04)
+        self.assertEqual(len({t.speaker for t in m.turns}), 5)
+
+    def test_a_late_joiner_says_nothing_before_joining_and_an_early_leaver_nothing_after_leaving(self):
+        m = self.mix(late=1, early=1, late_from=0.65, early_until=0.35)
+        (late,) = [s for s, r in m.roles.items() if r == "late"]
+        (early,) = [s for s, r in m.roles.items() if r == "early"]
+        self.assertTrue(all(t.start >= 0.65 * 20 * 60 for t in m.turns if t.speaker == late))
+        self.assertTrue(all(t.start < 0.35 * 20 * 60 for t in m.turns if t.speaker == early))
+        self.assertTrue(any(t.speaker == late for t in m.turns))
+        self.assertTrue(any(t.speaker == early for t in m.turns))
+
+    def test_quiet_and_late_are_different_people(self):
+        m = self.mix(quiet=1, late=1)
+        self.assertEqual(sorted(m.roles.values()), ["late", "quiet"])
+
+
+class ChannelTests(unittest.TestCase):
+    """A call as the app records it: "me" alone on the microphone, the rest on system audio.
+    The tones sit inside the call's 300-3400 Hz band."""
+
+    def setUp(self):
+        self.m = dm.mix(pool(low=500), speakers=4, minutes=3, seed=2, overlap=0.1, short=0.15, scene="call",
+                        channels=True)
+
+    def test_the_microphone_holds_only_me_and_system_audio_everyone_else(self):
+        m = self.m
+        self.assertIn(m.me, {t.speaker for t in m.turns})
+        self.assertEqual(len(m.mic), len(m.system))
+        loud = lambda x, t: float(np.abs(x[int(t.start * SR):int(t.end * SR)]).mean())  # noqa: E731
+        alone = [t for t in m.turns if not any(u is not t and u.start < t.end and t.start < u.end for u in m.turns)]
+        for t in alone[:20]:
+            on, off = (m.mic, m.system) if t.speaker == m.me else (m.system, m.mic)
+            self.assertGreater(loud(on, t), 10 * loud(off, t), t)
+
+    def test_me_is_a_full_participant_not_a_quiet_or_late_one(self):
+        m = dm.mix(pool(), speakers=5, minutes=20, seed=3, overlap=0.1, short=0.15, scene="call",
+                   channels=True, quiet=1, late=1)
+        self.assertNotIn(m.me, m.roles)
+
+    def test_bleed_puts_system_audio_into_the_microphone_quietly(self):
+        b = dm.mix(pool(low=500), speakers=4, minutes=3, seed=2, overlap=0.1, short=0.15, scene="call",
+                   channels=True, bleed_db=-25.0)
+        self.assertEqual(b.turns, self.m.turns)
+        them = [t for t in b.turns if t.speaker != b.me
+                and not any(u.speaker == b.me and u.start < t.end and t.start < u.end for u in b.turns)]
+        t = them[0]
+        seg = lambda x: float(np.sqrt((x[int(t.start * SR):int(t.end * SR)] ** 2).mean()))  # noqa: E731
+        self.assertAlmostEqual(20 * np.log10(seg(b.mic) / seg(b.system)), -25.0, delta=3.0)
+
+    def test_the_one_track_mix_is_unchanged_by_asking_for_channels(self):
+        one = dm.mix(pool(low=500), speakers=4, minutes=3, seed=2, overlap=0.1, short=0.15, scene="call")
+        self.assertEqual(one.turns, self.m.turns)
+        self.assertTrue(np.array_equal(one.audio, self.m.audio))
 
 
 if __name__ == "__main__":
