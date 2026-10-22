@@ -142,17 +142,26 @@ bench의 조각 단위 test(`bench/results/RESULTS.md` §9, 합성 통화 6회�
 
 1. **재생할 소리.** `say`로 만든 합성 음성 60초를 `bench/data/aec/mac/far.wav`에 둔다(`bench/make_synth.sh`처럼, 저장소 밖). 여러 목소리가 번갈아 말하고 사이에 무음이 섞이게 한다.
 2. **녹음.**
-   - MeetButler 0.2 빌드에서 마이크와 시스템 오디오를 둘 다 켜고 Start를 누른다.
+   - MeetButler 0.2 빌드를 **테스트 데이터 폴더로** 띄운다. GUI 점검과 같은 실행 방식이다.
+
+     ```bash
+     open -n --env MEETBUTLER_DATA_DIR=$HOME/MeetButler-test \
+             --env MEETBUTLER_MODELS=$HOME/MeetButler-test/models .../MeetButler.app
+     ```
+
+   - 실제 데이터 폴더(`~/Library/Application Support/dev.sshlab.meetbutler/`)는 쓰지 않는다.
+   - 마이크와 시스템 오디오를 둘 다 켜고 Start를 누른다.
    - 다른 회의 앱은 끈다. 이어폰과 헤드셋은 빼고, 내장 스피커와 내장 마이크로 한다.
 3. **재생.** `afplay bench/data/aec/mac/far.wav`를 볼륨 50%와 100%로 한 번씩 재생한다. 사이에 10초를 쉰다. 그동안 방은 조용히 한다. 외장 스피커가 있으면 한 번 더 한다.
 4. **멈춤.** Stop을 누른다. final pass와 요약은 취소해도 된다.
 5. **분석.**
-   - 세션의 `mic.pcm`과 `system.pcm`(16 kHz mono s16le)을 앱 데이터 폴더 안에서 읽기만 하는 스크립트로 잰다. 파일을 저장소나 다른 곳으로 복사하지 않는다.
+   - `$HOME/MeetButler-test/sessions/<id>/`의 `mic.pcm`과 `system.pcm`(16 kHz mono s16le)을 읽기만 하는 스크립트로 잰다. 파일을 저장소나 다른 곳으로 복사하지 않는다.
+   - 스크립트는 테스트 폴더의 세션만 읽는다. 실제 데이터 폴더는 경로 인자로도 받지 않는다. 경로가 테스트 폴더 밖이거나 실제 데이터 폴더 아래이면 열기 전에 멈춘다.
    - 잴 것:
      - 누출 수준(system 대비 dB)
      - 지연(상호상관의 최대점, ms)
      - 꼬리 길이(상관 포락선이 −30 dB가 되는 시간)
      - sonora(lead20) 전후의 누출 에너지 감소(ERLE, dB)
    - 볼륨마다 따로 잰다. 스크립트는 이 측정 때 `bench/`에 만든다(숫자만 출력).
-6. **정리.** 측정 세션은 앱의 라이브러리에서 지운다.
+6. **정리.** 측정 세션은 테스트 폴더로 띄운 앱의 라이브러리에서 지운다. 지우는 것은 `$HOME/MeetButler-test` 안의 세션뿐이다.
 7. **기록.** 위 숫자만 이 문서에 적는다. bench의 합성 조건(−25 dB, 20~200 ms, RT60 0.3초)과 다르면 그 값으로 bench 조건을 하나 더해 call DER을 다시 잰다.
