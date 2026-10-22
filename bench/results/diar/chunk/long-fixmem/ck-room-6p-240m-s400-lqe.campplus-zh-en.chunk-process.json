@@ -1,0 +1,62 @@
+{
+ "meeting": "ck-room-6p-240m-s400-lqe",
+ "system": "campplus-zh-en.chunk-process",
+ "embedding": "campplus-zh-en",
+ "preregistered": "1200s/60/average/0.15/0/0.25/free/share/0.02",
+ "audio_sec": 14415.8,
+ "extract_sec": 574.9,
+ "process_sec": 578.3,
+ "rtf": 0.0401,
+ "peak_mb": 1064,
+ "embeddings": 25872,
+ "clusters": 7,
+ "stages": {
+  "extract": {
+   "sec": 574.9,
+   "peak_mb_after": 415
+  },
+  "cluster": {
+   "sec": 2.2,
+   "traced_peak_mb": 418,
+   "peak_mb_after": 1050
+  },
+  "reconstruct": {
+   "sec": 1.1,
+   "traced_peak_mb": 22,
+   "peak_mb_after": 1064
+  }
+ },
+ "collar0": {
+  "der": 0.2013,
+  "missed": 0.1013,
+  "false_alarm": 0.0212,
+  "confusion": 0.0789
+ },
+ "collar25": {
+  "der": 0.1533,
+  "missed": 0.0664,
+  "false_alarm": 0.012,
+  "confusion": 0.0749
+ },
+ "collar25_no_overlap": {
+  "der": 0.1263,
+  "missed": 0.0357,
+  "false_alarm": 0.0133,
+  "confusion": 0.0773
+ },
+ "ref_speakers": 6,
+ "hyp_speakers": 7,
+ "segments_right": 1841,
+ "segments": 2159,
+ "short_right": 153,
+ "short": 319,
+ "env": {
+  "sherpa_onnx": "1.13.8",
+  "onnxruntime": "1.31.0",
+  "scipy": "1.16.2",
+  "numpy": "2.5.4",
+  "segmentation_sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+  "embedding_sha256": "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2"
+ },
+ "posthoc": "\uc0ac\ud6c4, \uc0ac\uc804 \ub4f1\ub85d \uc544\ub2d8: the global link's condensed distances (86b3c1d), labels bit-identical on all 88 test stores; the preregistered measurement is in long/"
+}
