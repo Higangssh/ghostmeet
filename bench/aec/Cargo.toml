@@ -1,0 +1,13 @@
+[package]
+name = "meetbutler-aec-bench"
+description = "Echo cancellation for the REC-4 bench: the system track out of the microphone track, after the meeting"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+sonora = "=0.2.0" # BSD-3-Clause, pure Rust port of WebRTC's audio processing (AEC3)
+
+# not a member of the app's workspace: the app does not build it
+[workspace]
