@@ -11,7 +11,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::{Capture, CaptureError};
 
@@ -31,7 +31,7 @@ impl Rebuild {
 }
 
 /// How often a running stream is asked whether it is stale.
-const WATCH_EVERY: Duration = Duration::from_secs(1);
+pub const WATCH_EVERY: Duration = Duration::from_secs(1);
 
 /// Run `build`'s result on a thread of its own until stopped, building it again when asked.
 /// The first build's error is the open's error; later ones are logged and retried.
@@ -40,15 +40,16 @@ pub fn supervised<T: 'static>(
     retry: Duration,
     build: impl FnMut(&Rebuild) -> Result<T, CaptureError> + Send + 'static,
 ) -> Result<Box<dyn Capture>, CaptureError> {
-    supervised_watching(name, retry, build, |_: &T| false)
+    supervised_watching(name, retry, WATCH_EVERY, build, |_: &T| false)
 }
 
-/// As [`supervised`], and also built again when `stale` says so, asked about once a
-/// second: for a change no callback reports (on macOS an input stream stays on its
-/// device when the default input changes).
+/// As [`supervised`], and also built again when `stale` says so, asked every
+/// `watch_every` (the app uses [`WATCH_EVERY`]): for a change no callback reports (on
+/// macOS an input stream stays on its device when the default input changes).
 pub fn supervised_watching<T: 'static>(
     name: &str,
     retry: Duration,
+    watch_every: Duration,
     mut build: impl FnMut(&Rebuild) -> Result<T, CaptureError> + Send + 'static,
     mut stale: impl FnMut(&T) -> bool + Send + 'static,
 ) -> Result<Box<dyn Capture>, CaptureError> {
@@ -71,15 +72,16 @@ pub fn supervised_watching<T: 'static>(
             };
             // poll often enough that a device change costs little audio
             let tick = retry.min(Duration::from_millis(100));
-            let (mut since_try, mut since_watch) = (Duration::ZERO, Duration::ZERO);
+            let mut since_try = Duration::ZERO;
+            // by the clock, not by ticks: on a busy machine a tick takes longer than `tick`
+            let mut watched = Instant::now();
             loop {
                 match stop_rx.recv_timeout(tick) {
                     Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
                     Err(RecvTimeoutError::Timeout) => {}
                 }
-                since_watch += tick;
-                if since_watch >= WATCH_EVERY {
-                    since_watch = Duration::ZERO;
+                if watched.elapsed() >= watch_every {
+                    watched = Instant::now();
                     if current.as_ref().is_some_and(&mut stale) {
                         rebuild.request();
                     }

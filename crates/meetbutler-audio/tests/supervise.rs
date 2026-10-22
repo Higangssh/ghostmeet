@@ -145,25 +145,38 @@ fn a_changed_or_vanished_device_ends_the_stream_and_little_else_does() {
 #[test]
 fn a_stream_found_stale_is_built_again_without_its_callback_asking() {
     // the default microphone changed (a headset plugged in): the old stream still runs,
-    // on the old device, and says nothing
+    // on the old device, and says nothing. The test waits on how many times the stream
+    // was asked, not on the clock, so a slow machine only makes it slower.
     use meetbutler_audio::supervise::supervised_watching;
     let t = Tally::default();
     let tb = t.clone();
     let switched = Arc::new(AtomicUsize::new(0)); // which device is the default now
-    let (sw_build, sw_check) = (switched.clone(), switched.clone());
+    let asked = Arc::new(AtomicUsize::new(0)); // how many times `stale` ran
+    let (sw_build, sw_check, asked_in) = (switched.clone(), switched.clone(), asked.clone());
     let mut cap = supervised_watching(
         "t",
+        RETRY,
         RETRY,
         move |_| {
             tb.built.fetch_add(1, Ordering::SeqCst);
             tb.alive.fetch_add(1, Ordering::SeqCst);
             Ok((Stream(tb.clone()), sw_build.load(Ordering::SeqCst)))
         },
-        move |(_, device): &(Stream, usize)| *device != sw_check.load(Ordering::SeqCst),
+        move |(_, device): &(Stream, usize)| {
+            asked_in.fetch_add(1, Ordering::SeqCst);
+            *device != sw_check.load(Ordering::SeqCst)
+        },
     )
     .unwrap();
+    let asked_again = |times: usize| {
+        let from = asked.load(Ordering::SeqCst);
+        assert!(
+            until(|| asked.load(Ordering::SeqCst) >= from + times),
+            "never asked"
+        );
+    };
 
-    std::thread::sleep(Duration::from_millis(1500));
+    asked_again(3);
     assert_eq!(
         t.built.load(Ordering::SeqCst),
         1,
@@ -174,7 +187,7 @@ fn a_stream_found_stale_is_built_again_without_its_callback_asking() {
         until(|| t.built.load(Ordering::SeqCst) == 2),
         "built on the new default"
     );
-    std::thread::sleep(Duration::from_millis(1500));
+    asked_again(3);
     assert_eq!(t.built.load(Ordering::SeqCst), 2, "and only once");
     cap.stop();
     assert_eq!(t.alive.load(Ordering::SeqCst), 0);

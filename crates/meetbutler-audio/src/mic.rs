@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use crate::conform::Conformer;
 use crate::gap::GapFiller;
-use crate::supervise::{supervised_watching, Rebuild};
+use crate::supervise::{supervised_watching, Rebuild, WATCH_EVERY};
 use crate::{AudioSink, Capture, CaptureError};
 
 /// Between tries to open the new default microphone after a change.
@@ -45,6 +45,7 @@ pub fn open(sink: AudioSink) -> Result<Box<dyn Capture>, CaptureError> {
     supervised_watching(
         "mic",
         RETRY,
+        WATCH_EVERY,
         move |rebuild| build(&shared, rebuild),
         // an input stream stays on its device when the default changes, and says nothing
         |running: &Running| running.device.is_some() && default_input_id() != running.device,
