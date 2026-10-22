@@ -129,7 +129,7 @@ bench Python 기준 처리 시간은 4시간 회의에 ERes2NetV2 25~37분(스�
 
 | crate | 용도 | 라이선스 | 메모 |
 |---|---|---|---|
-| `ort` 2.0.0-rc.x | ONNX Runtime 바인딩 | MIT OR Apache-2.0 | 2.0은 아직 RC다. 기본 빌드는 빌드 때 ORT 바이너리를 내려받는다. 앱 실행 중에는 받지 않지만, 공급망을 고정하려면 버전과 해시를 고정한 ORT를 `load-dynamic`이나 직접 링크로 쓴다. `security.rs`가 데스크톱 대상에 HTTP 클라이언트가 빌드되지 않는지 보므로, 빌드 의존성이 끌어오는 것을 확인한다. |
+| `ort` 2.0.0-rc.x | ONNX Runtime 바인딩 | MIT OR Apache-2.0 | 2.0은 아직 RC다. 기본 빌드는 빌드 때 ORT 바이너리를 내려받는다. **결정: download 기능을 끄고 `load-dynamic`으로, 버전과 sha256을 고정한 라이브러리를 번들에 싣는다**(아래 결정). `security.rs`에 그 검사를 더한다. |
 | ONNX Runtime | 실행기 | MIT | dmg 크기에 수십 MB가 더해질 수 있다(50 MB 목표, 재야 함). |
 | `ndarray` | 텐서 | MIT OR Apache-2.0 | `ort`가 쓴다. |
 | `realfft` / `rustfft` | fbank의 FFT | MIT OR Apache-2.0 | fbank는 직접 구현해 sherpa와 비교한다. |
@@ -149,7 +149,18 @@ sherpa-onnx(Apache-2.0)의 C API를 Rust에서 부르는 길이다(예: `sherpa-
 - C++ 빌드(CMake)와 ORT 동봉을 Windows 교차 빌드와 CI에 넣어야 한다. 의존성이 커지고 dmg도 커진다.
 - 바인딩 crate의 유지 상태에 기댄다.
 
-판단: 처음에는 `ort`(또는 `tract`)로 분할과 임베딩을 직접 부른다. 임베딩 일치가 slow tier 기준을 못 넘으면 sherpa 바인딩으로 추출기만 대체한다. 군집과 복원은 어느 쪽이든 앱 코드다.
+판단: `ort`로 분할과 임베딩을 직접 부른다(아래 결정). 임베딩 일치가 slow tier 기준을 못 넘으면 sherpa 바인딩으로 추출기만 대체한다. 군집과 복원은 어느 쪽이든 앱 코드다.
+
+## 결정 (2026-10-22)
+
+- **두 모델 모두 `ort`로 돌린다.** segmentation만 tract로 두면 실행기가 둘이 된다. 기존 Silero(tract)는 그대로 둔다.
+- **공급망:**
+  - `ort`가 빌드 때 ORT 바이너리를 받아 오지 않게 한다(download 기능 끔).
+  - 버전과 sha256을 고정한 ONNX Runtime 동적 라이브러리를 `load-dynamic`으로 번들에 싣는다.
+  - 라이브러리는 `bench/fetch_diar.sh`처럼 사람이 돌리는 스크립트로 받고 해시로 확인한다.
+  - `app/src-tauri/tests/security.rs`에 "`ort`의 download 기능이 꺼져 있다"는 검사를 더한다.
+- **순서:** 0.2를 닫은 뒤 0.3 구현의 첫 커밋이 이 골격(빌드, 번들, 검사)이다. 그 전에는 이 설계만 고친다.
+- fbank는 직접 구현(`rustfft`)하고, kaldi-native-fbank와의 직접 비교는 하지 않는다. 끝에서 끝까지 임베딩 코사인(0.9999998 이상)으로 충분하다.
 
 ## 확인 실험: tract, ort arena, fbank (2026-10-22)
 
@@ -171,7 +182,13 @@ sherpa-onnx(Apache-2.0)의 C API를 Rust에서 부르는 길이다(예: `sherpa-
     - 30분 회의는 분할 92초 + 임베딩 940초로 RTF 0.57(한 스레드)이다. 4시간이면 2시간이 넘는다.
 - **판단: tract만으로는 안 된다.** segmentation은 tract로 충분하다. ERes2NetV2는 tract의 이 최적화 버그가 고쳐지기 전에는 ort가 필요하다. ort를 들인다면 두 모델 모두 ort로 하는 편이 단순하다.
   - 대안 하나: ERes2NetV2 입력을 몇 개의 고정 길이로 잘라 길이별 최적화 계획을 캐시한다. 임베딩이 달라지므로 bench에서 다시 재야 한다.
-  - 대안 둘: tract에 버그를 보고한다. 아직 하지 않았다. 외부에 보내는 일이라 정해 주면 한다.
+  - 대안 둘: tract에 버그를 보고한다. 외부 게시라 사용자 승인이 필요하고 일정에 꼭 필요하지 않아 하지 않는다. 사용자가 원하면 아래 재현 절차로 한다.
+  - **재현 절차:**
+    1. `bench/fetch_diar.sh models`로 `3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx`(sha256 `bf1a75b9…2239`)를 받는다.
+    2. `bench/tract_probe`를 빌드한다(tract-onnx 0.23.9).
+    3. `meetbutler-tract-probe emb <model> <feats.f32> <lens.txt> <out.f32>`를 실행한다. 입력 fact가 `(1, T, 80)`, T 기호, `into_optimized()`다.
+    4. declutter에서 `Downsample over ... Reshape: Invalid axis`로 실패한다. `FIXED_T=536`으로 T를 고정하면 통과하고, `TYPED=1`(최적화 없음)도 통과한다.
+    - 보고에 실을 것은 tract 버전, 모델 출처 URL과 sha256, 실패 메시지, 위 세 경우의 차이다. 실패는 모델을 올리는 단계에서 나므로 입력 값은 필요 없다. 회의 오디오나 특징값은 싣지 않는다.
 
 **onnxruntime 1.31 arena (ERes2NetV2, 같은 40개 입력, 설정마다 별도 프로세스)**
 
@@ -193,5 +210,5 @@ sherpa-onnx(Apache-2.0)의 C API를 Rust에서 부르는 길이다(예: `sherpa-
 - 후보: **직접 구현**한다. FFT는 워크스페이스에 이미 있는 `rustfft` 6.4.1(MIT OR Apache-2.0)을 쓴다. 새 crate가 없다.
 - sherpa의 기본값(snip_edges 끔, 20 Hz~나이퀴스트−400 Hz, 80빈, Povey 창, 0.97 사전 강조, DC 제거, 샘플 [−1, 1])을 numpy로 옮긴 기준이 sherpa와 같은 임베딩을 낸다. 40개 클립(0.5~10초, room과 call)에서 ORT 임베딩이 sherpa와 코사인 0.9999998 이상이다.
 - Rust 구현(약 100줄)과 numpy 기준을 23,256프레임(무음, 440 Hz 사인 포함)에서 프레임 단위로 비교했다. log-mel 차이는 최대 3.6e-4(에너지가 거의 없는 빈, −14.8)이고 평균 2.9e-6이다. Rust fbank → ORT 임베딩은 sherpa와 코사인 0.99999982 이상이다.
-- kaldi-native-fbank 자체와의 직접 비교는 하지 않았다. Python 패키지가 bench 환경에 없어서다. 대신 kaldi-native-fbank를 쓰는 sherpa의 임베딩으로 끝에서 끝까지 맞췄다. 직접 비교가 필요하면 패키지를 해시 고정으로 따로 받아 한다.
+- kaldi-native-fbank 자체와의 직접 비교는 하지 않는다(결정). 대신 kaldi-native-fbank를 쓰는 sherpa의 임베딩으로 끝에서 끝까지 맞췄다.
 - 앱 테스트에는 이 비교를 fixture로 옮긴다. 합성 신호의 fbank 값(도출한 숫자)만 넣는다.
