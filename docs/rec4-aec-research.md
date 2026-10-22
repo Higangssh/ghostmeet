@@ -88,3 +88,43 @@ bench의 조각 단위 test(`bench/results/RESULTS.md` §9, 합성 통화 6회�
 - Microsoft `IAcousticEchoCancellationControl`: https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nn-audioclient-iacousticechocancellationcontrol
 - Microsoft Voice Capture DSP: https://learn.microsoft.com/en-us/windows/win32/medfound/voicecapturedmo
 - `sonora` (AEC3 Rust 포팅): https://docs.rs/crate/sonora/0.1.0
+
+## 확인 실험: 녹음 뒤 소프트웨어 에코 제거 (2026-10-22)
+
+**crate:**
+- **`sonora` 0.2.0**: BSD-3-Clause. WebRTC audio processing(AEC3)을 순수 Rust로 옮긴 것이다. 의존성은 모두 MIT, Apache-2.0, Zlib, BSD-3이고, 빌드 때 받아 오는 것이 없으며 C/C++ 빌드도 없다. MSRV 1.91(우리 툴체인 1.98).
+- `webrtc-audio-processing` 2.1.0: crates.io에 라이선스가 "non-standard"로 표시되고, 저장소의 `COPYING`은 BSD-3-Clause다. 시스템 라이브러리를 동적 링크하거나(`bundled`면 meson·ninja로 C++ 빌드) 해야 하고, Windows는 문서에 없다. 앱에는 맞지 않는다.
+
+**bench:**
+- 실행은 `bench/run_aec.py`, 누출 모델은 `bench/aec_leak.py`(테스트 6개), 에코 제거는 `bench/aec/`(앱 워크스페이스 밖)이다. 결과는 `bench/results/aec/`.
+- 회의: 조각 단위 test의 30분 통화 5개. mic는 나만, system은 상대다.
+- 누출: system을 −25 dB로 mic에 더한다. 그 위에 지연(20/80/200 ms), 방(RT60 0.3초, 합성 임펄스 응답), 클럭 드리프트(50 ppm, 30분에 90 ms), 셋을 합친 "real"(80 ms + 방 + 50 ppm)을 얹는다.
+- 상대 쪽은 사전 등록한 대로 나누고(ERes2NetV2, 조각 단위), "나"만 바뀐다.
+- 비교한 방법:
+  - 처리 없음
+  - `drop_echo`
+  - sonora에 기록된 그대로의 참조
+  - sonora에 참조를 20 ms 앞당겨 준 것(`lead20`)
+
+평균 call DER(collar 0.25, 5회의)이다. 누출이 없을 때가 **0.101**이다. 괄호 안은 "나"로 잡힌 시간 중 내 발화가 아닌 비율이다(누출 없음 0.010).
+
+| 누출 | 처리 없음 | `drop_echo` | sonora | sonora + lead20 |
+|---|---:|---:|---:|---:|
+| −25 dB, 지연 없음 | 0.439 (0.50) | 0.143 (0.15) | 0.198 (0.24) | **0.104** (0.011) |
+| 지연 20 ms | 0.438 | 0.428 | 0.103 | **0.104** |
+| 지연 80 ms | 0.438 | 0.437 | 0.104 | **0.104** |
+| 지연 200 ms | 0.435 | 0.435 | 0.104 | **0.104** |
+| 방 (지연 없음) | 0.397 | 0.180 | 0.181 (0.20) | **0.103** (0.011) |
+| 드리프트 50 ppm | 0.437 | 0.431 | 0.105 | **0.104** |
+| real (80 ms + 방 + 50 ppm) | 0.391 (0.47) | 0.390 | 0.103 (0.011) | **0.103** (0.011) |
+
+- **sonora는 지연이 있는 모든 누출에서 누출 없음 수준으로 되돌린다**(0.103~0.105, 바닥 0.101). 지연, 방, 드리프트를 합친 경우도 같다. 회의별로도 바닥과 0.004 안이다(2명 통화 0.044 대 0.040).
+- **지연이 0이면 실패한다**(0.198, 방 0.181). 에코가 참조와 같은 순간이나 더 일찍 오면 AEC3가 지우지 못한다(인과성). 실제 스피커 누출은 버퍼와 공기 때문에 늘 지연이 있지만, 앱은 두 트랙을 샘플 커서로 맞춰 저장하므로 캡처 경로의 버퍼 차이에 따라 0에 가까울 수 있다. **참조를 20 ms 앞당기면 모든 조건에서 바닥으로 돌아온다.** 디스크의 트랙이라 언제든 할 수 있다. 앱에서는 이것을 기본으로 한다.
+- **내 발화 보존(이중 통화):** "나"로 남은 내 발화가 누출 없음 0.945에서 sonora 0.939로, 0.6점 줄었다.
+- `drop_echo`는 지연이 0일 때만 듣는다(0.143). 20 ms만 늦어도 쓸모가 없다(0.428). 대체 경로로 쓰려면 지연 추정이 꼭 필요하다. sonora가 이렇게 듣는 한 대체 경로의 필요는 작다.
+- **속도:** sonora는 한 스레드에 RTF 약 0.021이다. 4시간 mic에 약 5분이다. final pass 전에 돌려도 회의 후 처리에 5분 정도만 더한다.
+- **남은 것:**
+  - 4시간 드리프트: 50 ppm이면 끝에 720 ms다. 지연 200 ms까지는 문제가 없었지만 720 ms는 재지 않았다.
+  - 비선형 스피커 왜곡과 실제 방 녹음. 합성 RIR은 실제 방보다 단순하다.
+  - 실제 Mac에서의 누출 수준과 지연(실험 순서 2).
+  - 회의 오디오는 쓰지 않았다.

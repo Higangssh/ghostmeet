@@ -1,0 +1,50 @@
+{
+ "meeting": "ck-call-4p-30m-s400-l",
+ "condition": "room",
+ "leak": {
+  "level_db": -25.0,
+  "delay_ms": 0.0,
+  "rt60": 0.3,
+  "drift_ppm": 0.0,
+  "seed": 0
+ },
+ "method": "sonora",
+ "embedding": "eres2netv2-zh",
+ "system_side": "1200s/60/average/0.15/0/0.3/free/share/0.01",
+ "aec_sec": 37.5,
+ "audio_sec": 1806.0,
+ "me_kept": 0.9398,
+ "me_not_mine": 0.1836,
+ "collar0": {
+  "der": 0.251,
+  "missed": 0.1645,
+  "false_alarm": 0.0632,
+  "confusion": 0.0233
+ },
+ "collar25": {
+  "der": 0.2204,
+  "missed": 0.1312,
+  "false_alarm": 0.0678,
+  "confusion": 0.0214
+ },
+ "collar25_no_overlap": {
+  "der": 0.2,
+  "missed": 0.1024,
+  "false_alarm": 0.0754,
+  "confusion": 0.0223
+ },
+ "ref_speakers": 4,
+ "hyp_speakers": 4,
+ "segments_right": 225,
+ "segments": 262,
+ "short_right": 18,
+ "short": 45,
+ "env": {
+  "sherpa_onnx": "1.13.8",
+  "onnxruntime": "1.31.0",
+  "scipy": "1.16.2",
+  "numpy": "2.5.4",
+  "segmentation_sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+  "embedding_sha256": "bf1a75b9930474cf3389ef415e6e5d38ca96fea4a3a00f7e301d080a58ee2239"
+ }
+}
