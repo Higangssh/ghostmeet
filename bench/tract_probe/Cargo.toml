@@ -1,0 +1,17 @@
+[package]
+name = "meetbutler-tract-probe"
+description = "Whether tract runs the diarization models (SPK-2 check), and a Rust Kaldi fbank against bench/kaldi_fbank.py"
+license = "MIT"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+tract-onnx = "=0.23.9"
+rustfft = "=6.4.1"
+
+[profile.release]
+debug = false
+
+# not a member of the app's workspace: the app does not build it
+[workspace]

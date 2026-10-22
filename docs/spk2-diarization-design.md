@@ -75,11 +75,11 @@ bench 측정은 4시간 room 회의(26k 임베딩)에서 단계마다 잰 현재
 | (창, 화자) 쌍과 구간 목록 | 10 MB | 10 MB | 수 MB |
 | 군집 | 조각 안 약 40 MB, 전역 포함 약 160 MB (fixmem, 추출 뒤 872 → 1033 MB) | | 2단계 연결로 전역은 수 MB, 조각 안 40 MB 정도 |
 | turn 복원 | 22 MB | | 같음 |
-| **합계 (최대 RSS)** | 추출 뒤 870 MB, 전체 1046 MB (fixmem) | 411 MB, 1064 MB | ORT 설정 그대로면 약 850 MB, arena를 줄이면 약 350~450 MB (추정) |
+| **합계 (최대 RSS)** | 추출 뒤 870 MB, 전체 1046 MB (fixmem) | 411 MB, 1064 MB | ORT를 직접 부르면 약 600 MB (추정, 아래 확인 실험: 직접 부른 ORT의 ERes2NetV2는 최대 438 MB) |
 
 ERes2NetV2의 메모리 대부분은 가중치가 아니라 ORT의 작업 메모리다. 앱(Rust `ort`)에서 줄일 수 있다고 보는 손잡이는 셋이다. 모두 추정이며 재야 한다.
 
-1. arena 끄기 또는 요청한 만큼만 늘리기(`enable_cpu_mem_arena` 끔, extend 전략 `kSameAsRequested`). 작업 공간은 추론하는 동안에만 잡혔다가 풀린다. 최대치는 입력 하나 분량으로 남는다.
+1. ~~arena 끄기 또는 요청한 만큼만 늘리기~~: 확인 실험에서 효과가 없었다. 끄면 오히려 200 MB 늘었다(아래).
 2. 임베딩 입력 길이에 상한(예: 3~5초)을 둔다. 작업 메모리는 입력 길이에 비례한다. 다만 임베딩이 바뀌므로 bench에서 DER을 다시 잰다.
 3. 스레드 수. 스레드마다 작업 공간을 따로 쓰는지 확인한다.
 
@@ -150,3 +150,48 @@ sherpa-onnx(Apache-2.0)의 C API를 Rust에서 부르는 길이다(예: `sherpa-
 - 바인딩 crate의 유지 상태에 기댄다.
 
 판단: 처음에는 `ort`(또는 `tract`)로 분할과 임베딩을 직접 부른다. 임베딩 일치가 slow tier 기준을 못 넘으면 sherpa 바인딩으로 추출기만 대체한다. 군집과 복원은 어느 쪽이든 앱 코드다.
+
+## 확인 실험: tract, ort arena, fbank (2026-10-22)
+
+앱 코드는 바꾸지 않았다. 실험 crate는 `bench/tract_probe/`(앱 워크스페이스 밖, 빌드 결과는 `bench/data/`)다. 입력은 bench의 한국어 test 회의(합성, 공개 음성 클립)다. 실험 중 머신의 부하가 들쭉날쭉했다(다른 프로세스로 load average 2~34). 시간은 같은 입력을 번갈아 잰 상대값으로 읽는다.
+
+**tract-onnx 0.23.9 (최신 안정판)**
+
+- **segmentation-3.0: 올라간다.**
+  - 입력을 고정 shape(1, 1, 160000)으로 주면 추론 단계에서 "Unifying shapes 1,1,160000 and N,1,T"로 실패한다.
+  - 모델의 기호 그대로(N, 1, T) 두고 `with_ignore_output_shapes(true)`, `into_optimized()`로 실행하면 된다.
+  - onnxruntime과 출력 차이는 최대 2.3e-4이고, 프레임 라벨은 30분 회의 1,796창에서 99.9999% 같다(약 100만 프레임 중 1개).
+  - 한 스레드에 창당 51 ms다. 30분 회의 92초, 4시간 약 12분이다.
+- **ERes2NetV2: 정확하지만 최적화가 안 된다.**
+  - `into_optimized()`가 declutter에서 실패한다: `Pulling #262 ".../layer2/layer2.0/conv1/Conv.downsample..." Downsample over #261 "...conv3/Conv.einsum.concat-einsum-I.0..26.unmerge_out" Reshape: Invalid axis`. 막힌 연산은 **Downsample을 Reshape 너머로 당기는 변환**이다.
+  - T에 하한 단언을 줘도 같고, T를 고정하면 최적화가 된다. 길이마다 다시 컴파일해야 하므로(약 0.2초) 쓰기 어렵다.
+  - 최적화 없이(`into_typed()`) 기호 T로 돌리면 된다. 30분 회의 임베딩 3,104개 전부 sherpa와 코사인 0.99999976 이상이다.
+  - 느리다:
+    - 같은 40개 입력(23,056프레임)에서 tract typed 14.7초, onnxruntime 한 스레드 9.5초, 네 스레드 5.0초다.
+    - 30분 회의는 분할 92초 + 임베딩 940초로 RTF 0.57(한 스레드)이다. 4시간이면 2시간이 넘는다.
+- **판단: tract만으로는 안 된다.** segmentation은 tract로 충분하다. ERes2NetV2는 tract의 이 최적화 버그가 고쳐지기 전에는 ort가 필요하다. ort를 들인다면 두 모델 모두 ort로 하는 편이 단순하다.
+  - 대안 하나: ERes2NetV2 입력을 몇 개의 고정 길이로 잘라 길이별 최적화 계획을 캐시한다. 임베딩이 달라지므로 bench에서 다시 재야 한다.
+  - 대안 둘: tract에 버그를 보고한다. 아직 하지 않았다. 외부에 보내는 일이라 정해 주면 한다.
+
+**onnxruntime 1.31 arena (ERes2NetV2, 같은 40개 입력, 설정마다 별도 프로세스)**
+
+| arena | 스레드 | 로드 후 | 최대 RSS | 시간 |
+|---|---:|---:|---:|---:|
+| 기본 | 1 | 154 MB | 438 MB | 9.45 s |
+| 끔 (`enable_cpu_mem_arena=false`) | 1 | 155 MB | **653 MB** | 9.58 s |
+| `kSameAsRequested` | 1 | 155 MB | 438 MB | 9.59 s |
+| 기본 | 4 | 178 MB | 467 MB | 4.97 s |
+| 끔 | 4 | 178 MB | **666 MB** | 5.10 s |
+| `kSameAsRequested` | 4 | 179 MB | 464 MB | 5.06 s |
+
+- arena를 끄면 최대가 오히려 200 MB 늘었다. 할당을 재사용하지 못하고 해제한 메모리를 OS에 돌려주지 않는 것으로 보인다(추정). `kSameAsRequested`는 차이가 없다. **arena 끄기는 손잡이가 아니다.**
+- 직접 부른 ORT의 작업 메모리는 약 280 MB다(438 − 155). sherpa를 거친 bench long 단계의 545 MB보다 작다. 차이의 원인(sherpa의 세션 설정, 4스레드, 분할 세션과의 공존)은 확인하지 않았다.
+- 남은 손잡이는 임베딩 입력 길이의 상한이다(위 예산표 참고). 앱의 ERes2NetV2 부분은 약 450 MB, 분할과 군집을 더해 약 600 MB로 본다(추정, 앱에서 다시 잰다).
+
+**fbank**
+
+- 후보: **직접 구현**한다. FFT는 워크스페이스에 이미 있는 `rustfft` 6.4.1(MIT OR Apache-2.0)을 쓴다. 새 crate가 없다.
+- sherpa의 기본값(snip_edges 끔, 20 Hz~나이퀴스트−400 Hz, 80빈, Povey 창, 0.97 사전 강조, DC 제거, 샘플 [−1, 1])을 numpy로 옮긴 기준이 sherpa와 같은 임베딩을 낸다. 40개 클립(0.5~10초, room과 call)에서 ORT 임베딩이 sherpa와 코사인 0.9999998 이상이다.
+- Rust 구현(약 100줄)과 numpy 기준을 23,256프레임(무음, 440 Hz 사인 포함)에서 프레임 단위로 비교했다. log-mel 차이는 최대 3.6e-4(에너지가 거의 없는 빈, −14.8)이고 평균 2.9e-6이다. Rust fbank → ORT 임베딩은 sherpa와 코사인 0.99999982 이상이다.
+- kaldi-native-fbank 자체와의 직접 비교는 하지 않았다. Python 패키지가 bench 환경에 없어서다. 대신 kaldi-native-fbank를 쓰는 sherpa의 임베딩으로 끝에서 끝까지 맞췄다. 직접 비교가 필요하면 패키지를 해시 고정으로 따로 받아 한다.
+- 앱 테스트에는 이 비교를 fixture로 옮긴다. 합성 신호의 fbank 값(도출한 숫자)만 넣는다.
