@@ -1,245 +1,260 @@
-# MeetButler — 요구사항 v2
+# MeetButler — requirements v2
 
-> 구 ghostmeet. v0.1.0(Chrome 확장 + 로컬 백엔드)은 태그로 보관하고, 이 문서부터
-> 데스크톱 앱 라인이다. 이전 판은 `git show v0.1.0:requirements.md`.
+> Formerly ghostmeet. v0.1.0 (Chrome extension + local backend) is kept as a tag; this
+> document starts the desktop app line. The previous version: `git show v0.1.0:requirements.md`.
 
-## 1. 한 줄
+## 1. In one line
 
-**회의가 어디서 열리든 — 회의실이든 Meet든 — 내 컴퓨터가 듣고, 정리하고, 기억한다.**
+**Wherever the meeting happens — a meeting room or Meet — my computer listens, sorts it out, and remembers.**
 
-"슈퍼 미팅앱"은 전사기를 뜻하지 않는다. 회의 **전·중·후**를 한 앱이 챙긴다:
+A "super meeting app" does not mean a transcriber. One app takes care of the meeting
+**before, during and after**:
 
-| 단계 | 집사가 하는 일 |
+| Stage | What the butler does |
 |---|---|
-| 전 | 일정에서 회의를 알아보고, 지난 회의에서 걸려 있는 일을 브리핑한다 |
-| 중 | 녹음하고, 실시간 자막을 띄우고, 누가 말했는지 가르고, 중요한 순간을 표시받는다 |
-| 후 | 요약·결정·할 일을 뽑고, 내보내고, 모든 회의를 검색과 질문으로 다시 꺼내준다 |
+| Before | Recognises the meeting from the calendar and briefs on what is still open from past meetings |
+| During | Records, shows live captions, tells who spoke, and takes marks on important moments |
+| After | Pulls out the summary, decisions and action items, exports them, and brings every meeting back through search and questions |
 
-## 2. 원칙 — 기능보다 먼저다
+## 2. Principles — before features
 
-1. **전부 로컬 모델로 돈다.** 전사·화자 분리·요약·질문·검색 모두 기기 안의 모델로
-   끝까지 동작하는 것이 목표다. 오디오와 전사는 기기 밖으로 나가지 않는다. 클라우드
-   LLM(Claude 등)은 사용자가 고르는 **선택지**일 뿐이고, 기본값이 아니다.
-2. **녹음은 보인다.** 녹음 중에는 항상 표시가 떠 있고, 사용자가 누르기 전에는 시작하지
-   않는다. 대면 회의에서 "녹음 중"을 숨기는 기능은 만들지 않는다.
-3. **긴 회의가 기본이다.** 4시간 이상에서도 갱신 한 번의 비용이 일정하다. 세션 전체를
-   다시 처리하는 변경은 회귀다.
-4. **회의 중에는 방해하지 않는다.** 기본 화면은 미니 바 한 줄이다.
-5. **텔레메트리·분석·크래시 리포트 없음.** 외부 SaaS 의존 없음.
+1. **Everything runs on local models.** The goal is that transcription, diarization,
+   summary, questions and search all work end to end with models on the device. Audio and
+   transcripts never leave the device. A cloud LLM (Claude etc.) is only an **option** the
+   user picks, never the default.
+2. **Recording is visible.** While recording, an indicator is always on screen, and nothing
+   starts before the user presses it. We do not build a feature that hides "recording" in
+   an in-person meeting.
+3. **Long meetings are the default.** At 4 hours and more, one update still costs the same.
+   A change that reprocesses the whole session is a regression.
+4. **Stay out of the way during the meeting.** The default screen is a one-line mini bar.
+5. **No telemetry, analytics or crash reports.** No external SaaS dependency.
 
-## 3. 쓰는 장면
+## 3. Where it is used
 
-| 장면 | 오디오 소스 | 화자 구분의 단서 |
+| Scene | Audio source | Clue to who is speaking |
 |---|---|---|
-| 회의실 대면 회의 (노트북을 책상에) | 마이크 | 음성만 — 화자 분리 필수 |
-| 웹 회의 (Meet·Zoom 웹·Teams 웹) | 마이크 + 시스템 오디오 | 채널(나/상대), 확장이 주는 발화자 이름 |
-| 데스크톱 회의 앱 (Zoom·Teams 앱) | 마이크 + 시스템 오디오 | 채널(나/상대) |
-| 지난 녹음 (폰 녹음, 녹음기 파일) | 파일 가져오기 | 음성만 |
+| In-person meeting in a room (laptop on the table) | Microphone | Voice only — diarization required |
+| Web meeting (Meet, Zoom web, Teams web) | Microphone + system audio | Channel (me / them), speaker names from the extension |
+| Desktop meeting app (Zoom, Teams app) | Microphone + system audio | Channel (me / them) |
+| Past recordings (phone recording, recorder file) | File import | Voice only |
 
-## 4. 플랫폼
+## 4. Platforms
 
-- **Windows 10/11, macOS 13+ (Apple Silicon 우선, Intel은 최선 노력)**
-- 데스크톱 앱: Tauri 2 (Rust + 시스템 WebView)
-- 시스템 오디오: Windows WASAPI loopback, macOS ScreenCaptureKit(13+) / Core Audio
-  process tap(14.4+). 가상 오디오 장치(BlackHole 등) 설치를 요구하지 않는다.
-- Chrome 확장: **선택 사항**인 동반자. 없어도 앱은 완전히 동작한다. 앱과는 Chrome
-  Native Messaging으로만 잇는다 — 앱은 **포트를 열지 않는다.** 확장은 오디오를 보내지
-  않고 회의 정보(제목·참가자·발화자)만 보낸다.
-- Linux, 모바일: 범위 밖 (v1 이후 재검토)
+- **Windows 10/11, macOS 13+ (Apple Silicon first, Intel best effort)**
+- Desktop app: Tauri 2 (Rust + system WebView)
+- System audio: Windows WASAPI loopback, macOS ScreenCaptureKit (13+) / Core Audio
+  process tap (14.4+). No virtual audio device (BlackHole etc.) is required.
+- Chrome extension: an **optional** companion. The app works fully without it. It talks to
+  the app only through Chrome Native Messaging — the app **opens no port.** The extension
+  sends no audio, only meeting information (title, participants, speaker).
+- Linux, mobile: out of scope (revisit after v1)
 
-## 5. 기능 정의
+## 5. Features
 
-우선순위: **P0** 없으면 출시 못 함 · **P1** 그 판의 목표 · **P2** 있으면 좋음.
-판은 §8의 로드맵을 따른다.
+Priority: **P0** cannot ship without it · **P1** the goal of that version · **P2** nice to have.
+Versions follow the roadmap in §8.
 
-### 5.1 녹음
+### 5.1 Recording
 
-| ID | 기능 | 우선 | 판 |
+| ID | Feature | Priority | Version |
 |---|---|---|---|
-| REC-1 | 마이크 / 시스템 오디오 / 둘 다 선택 녹음 | P0 | 0.2 |
-| REC-2 | 두 소스를 **채널별로** 저장 (나 = 마이크, 상대 = 시스템) | P0 | 0.2 |
-| REC-3 | 전역 단축키와 트레이로 시작·정지 | P0 | 0.2 |
-| REC-4 | 스피커 사용 시 마이크로 되들어온 상대 음성 제거. 회의 뒤 두 채널에 소프트웨어 에코 제거(sonora 0.2.0, AEC3, BSD-3-Clause)를 final pass 앞에 돌리고, 참조(system)를 20 ms 앞당긴다(지연 0의 누출을 지우려고 사후에 더한 설정). SPK-2가 기대는 항목: 합성 통화에서 -25 dB 누출만으로 call DER이 0.101→0.44, sonora+20 ms로 0.103~0.105 (지연·방·드리프트 모두, `docs/rec4-aec-research.md`). 대체 경로: macOS VoiceProcessingIO, Windows 통신 모드 AEC | P0 | 0.3 |
-| REC-5 | 회의 중 "중요" 표시 (단축키 하나) | P1 | 0.3 |
-| REC-6 | 오디오 파일 가져오기 (m4a, mp3, wav, webm) | P1 | 0.3 |
-| REC-7 | 입력 장치 끊김·변경 시 녹음이 끊기지 않고 이어짐 | P1 | 0.3 |
-| REC-8 | 녹음 고지 문구 템플릿 (대면 회의 시작 시 읽을 한 줄) | P2 | 0.4 |
+| REC-1 | Record the microphone, system audio, or both | P0 | 0.2 |
+| REC-2 | Store the two sources **per channel** (me = microphone, them = system) | P0 | 0.2 |
+| REC-3 | Start and stop from a global shortcut and the tray | P0 | 0.2 |
+| REC-4 | Remove the far side's voice that leaks back into the microphone when speakers are used. After the meeting, software echo cancellation (sonora 0.2.0, AEC3, BSD-3-Clause) runs on the two channels before the final pass, with the reference (system) moved 20 ms earlier (a setting added post hoc to remove the zero-delay leak). SPK-2 relies on this: on synthetic calls a -25 dB leak alone takes call DER from 0.101→0.44, and sonora+20 ms brings it to 0.103~0.105 (across delay, room and drift, `docs/rec4-aec-research.md`). Fallbacks: macOS VoiceProcessingIO, Windows communications-mode AEC | P0 | 0.3 |
+| REC-5 | "Important" mark during the meeting (one shortcut) | P1 | 0.3 |
+| REC-6 | Import audio files (m4a, mp3, wav, webm) | P1 | 0.3 |
+| REC-7 | Recording carries on when an input device drops or changes | P1 | 0.3 |
+| REC-8 | Recording notice template (one line to read at the start of an in-person meeting) | P2 | 0.4 |
 
-### 5.2 전사
+### 5.2 Transcription
 
-| ID | 기능 | 우선 | 판 |
+| ID | Feature | Priority | Version |
 |---|---|---|---|
-| STT-1 | 로컬 실시간 전사, 언어 선택(자동 / 한국어 / 영어 …) | P0 | 0.2 |
-| STT-2 | 4시간 이상 세션에서 갱신 비용 일정 (꼬리 창만 처리) | P0 | 0.2 |
-| STT-3 | 인식되는 대로 저장 — 비정상 종료 시 잃는 것은 현재 창뿐 | P0 | 0.2 |
-| STT-4 | GPU 가속: macOS Metal/CoreML, Windows Vulkan(CUDA는 선택) | P1 | 0.2 |
-| STT-5 | 모델 선택·다운로드 관리 (첫 실행 시 기기 사양에 맞춘 추천) | P1 | 0.2 |
-| STT-6 | 회의 후 더 큰 모델로 다시 전사해 최종본으로 교체 (2단 구조, §5.2.1) | P0 | 0.2 |
-| STT-7 | 사용자 단어장 (참석자 이름·용어를 전사에 힌트로 줌) | P1 | 0.2 |
+| STT-1 | Local live transcription, language choice (auto / Korean / English …) | P0 | 0.2 |
+| STT-2 | Flat update cost in sessions of 4 hours and more (only the tail window is processed) | P0 | 0.2 |
+| STT-3 | Saved as recognised — a crash loses only the current window | P0 | 0.2 |
+| STT-4 | GPU acceleration: macOS Metal/CoreML, Windows Vulkan (CUDA optional) | P1 | 0.2 |
+| STT-5 | Model choice and download management (a recommendation fitted to the device on first run) | P1 | 0.2 |
+| STT-6 | After the meeting, transcribe again with a larger model and replace with the final pass (two passes, §5.2.1) | P0 | 0.2 |
+| STT-7 | User vocabulary (participant names and terms given to transcription as a hint) | P1 | 0.2 |
 
-#### 5.2.1 엔진 (2026-10-19 확정, 근거: `bench/results/RESULTS.md`)
+#### 5.2.1 Engine (settled 2026-10-19, evidence: `bench/results/RESULTS.md`)
 
-- **whisper.cpp 하나**, Rust에서 whisper-rs(Unlicense, 안의 whisper.cpp는 MIT)로 부른다. 앱 전체가 Rust다.
-- **2단 구조.** 회의 중에는 small 모델로 **임시 자막**(실측 CER 약 8%)을 띄우고, 회의가
-  끝나면 turbo 모델로 처음부터 다시 전사해 **최종본**(Rust 경로 실측 2.7%)으로 한 번에 바꾼다.
-  화면과 저장 형식은 임시/최종을 구분한다.
-- **음성 구간은 우리가 자른다.** Silero VAD(MIT, v4 onnx)를 순수 Rust ONNX 런타임 tract로
-  돌려 구간을 자르고 구간마다 디코딩한다. whisper.cpp 내장 Silero v5는 실제 목소리에서
-  말을 놓쳐 뺐다(FLEURS CER 6.0%, `bench/results/RESULTS.md` 7절).
-  실시간과 회의 후가 **같은 함수, 같은 값**을 쓴다. 엔진 내장 VAD에 맡기지 않는다.
-- **환각 문구 차단.** 2초 미만 구간이 알려진 환각 문구("시청해주셔서…" 등)와 맞으면
-  버린다. 진짜 짧은 대답("네", "감사합니다")이 지워지지 않는지 회귀 테스트로 지킨다.
-- 합격선: 실시간 CER 10% 이하, 최종 3% 이하(FLEURS 36분). 짧은 대답은 재현율로 본다 —
-  53개 중 51개 이상, 차단 규칙으로 잃는 것 0. 4시간 회의의 최종 전사는 M4에서 약 23분
-  (RTF 0.094).
-- VAD나 엔진을 바꿀 때는 **합성 음성만으로 판단하지 않는다.** 합성 TTS에서 나아 보인
-  v5가 실제 목소리에서는 나빴다.
-- 제외: faster-whisper(Python), SenseVoice(모델 라이선스가 "참고·학습용"으로 제한).
-  SenseVoice는 사용자가 직접 받는 선택 엔진 후보로만 남긴다.
+- **whisper.cpp only**, called from Rust through whisper-rs (Unlicense; the whisper.cpp
+  inside is MIT). The whole app is Rust.
+- **Two passes.** During the meeting a small model shows **provisional captions** (measured
+  CER about 8%); when the meeting ends a turbo model transcribes again from the start and
+  replaces them at once with the **final pass** (measured 2.7% on the Rust path). Screens and
+  storage tell provisional from final.
+- **We cut the speech spans.** Silero VAD (MIT, v4 onnx) runs on tract, a pure Rust ONNX
+  runtime, to cut spans, and each span is decoded. whisper.cpp's built-in Silero v5 was
+  dropped because it missed speech in real voices (FLEURS CER 6.0%,
+  `bench/results/RESULTS.md` section 7). Live and after the meeting use **the same function
+  and the same values**. We do not leave it to an engine's built-in VAD.
+- **Hallucination blocklist.** A span under 2 s that matches a known hallucinated phrase
+  ("시청해주셔서…" ("thanks for watching…") etc.) is dropped. Regression tests guard that a
+  real short reply ("네" ("yes"), "감사합니다" ("thank you")) is not removed.
+- Pass bar: live CER 10% or less, final 3% or less (FLEURS 36 min). Short replies are judged
+  by recall — at least 51 of 53, none lost to the blocklist. The final transcript of a 4-hour
+  meeting takes about 23 min on an M4 (RTF 0.094).
+- When changing the VAD or the engine, **do not judge on synthetic speech alone.** v5 looked
+  better on synthetic TTS and was worse on real voices.
+- Excluded: faster-whisper (Python), SenseVoice (model licence limited to "reference and
+  study"). SenseVoice stays only as a candidate optional engine the user downloads.
 
-### 5.3 화자
+### 5.3 Speakers
 
-| ID | 기능 | 우선 | 판 |
+| ID | Feature | Priority | Version |
 |---|---|---|---|
-| SPK-1 | 채널 기반 구분: 나 / 상대 (웹·앱 회의) | P0 | 0.2 |
-| SPK-2 | 음성 기반 화자 분리 (대면 회의, 상대 채널 안의 여러 명). 회의 후, 조각 단위 군집 + 전역 연결, 임베딩 ERes2NetV2 (`bench/results/RESULTS.md` §9). 화자 수 상한 20, 4시간 메모리 1 GB 목표 | P1 | 0.3 |
-| SPK-3 | 화자에 이름 붙이기 — 한 번 고치면 그 회의 전체에 반영 | P1 | 0.3 |
-| SPK-4 | 확장이 주는 Meet 발화자 정보로 이름 자동 연결 | P2 | 0.4 |
-| SPK-5 | 회의를 넘어 같은 목소리 알아보기 (로컬 음성 지문, 동의한 사람만) | P2 | 1.x |
+| SPK-1 | Channel-based split: me / them (web and app meetings) | P0 | 0.2 |
+| SPK-2 | Voice-based diarization (in-person meetings, several people in the far-side channel). After the meeting, piece-wise clustering + global link, ERes2NetV2 embeddings (`bench/results/RESULTS.md` §9). Speaker cap 20, 1 GB memory target for 4 hours | P1 | 0.3 |
+| SPK-3 | Name the speakers — one correction applies to the whole meeting | P1 | 0.3 |
+| SPK-4 | Link names automatically from the Meet speaker info the extension gives | P2 | 0.4 |
+| SPK-5 | Recognise the same voice across meetings (local voiceprint, only for people who agree) | P2 | 1.x |
 
-### 5.4 정리
+### 5.4 Summary
 
-| ID | 기능 | 우선 | 판 |
+| ID | Feature | Priority | Version |
 |---|---|---|---|
-| SUM-1 | 요약 · 결정사항 · 할 일(담당자, 기한) — 고정된 출력 형식 | P0 | 0.2 |
-| SUM-2 | 로컬 LLM으로 요약 (기본값). 클라우드 LLM(Claude, 사용자 키)은 선택 | P0 | 0.2 |
-| SUM-3 | 요약의 각 항목에서 근거 발언으로 이동 (타임스탬프 링크) | P0 | 0.2 |
-| SUM-4 | 회의 종류별 템플릿 (1:1, 주간 회의, 인터뷰, 고객 미팅) | P1 | 0.4 |
-| SUM-5 | 회의 전 브리핑 입력(주제, 내 역할, 할 말)을 요약에 반영 | P2 | 0.4 |
+| SUM-1 | Summary · decisions · action items (owner, due date) — a fixed output format | P0 | 0.2 |
+| SUM-2 | Summary with a local LLM (default). A cloud LLM (Claude, user's key) is optional | P0 | 0.2 |
+| SUM-3 | Jump from each summary item to the line it rests on (timestamp link) | P0 | 0.2 |
+| SUM-4 | Templates per meeting type (1:1, weekly, interview, customer meeting) | P1 | 0.4 |
+| SUM-5 | Pre-meeting briefing input (topic, my role, what to say) reflected in the summary | P2 | 0.4 |
 
-기본 요약 모델은 **Qwen3.5-4B(Apache-2.0)를 회의를 나눠 요약한 뒤 합치는 방식**으로 돌린다
-(2026-10-20, `bench/results/RESULTS.md` 8절). 8GB 기기에서도 3.2GB로 돌고 1시간 회의를
-M4에서 약 100초에 요약한다. 9B는 재현율이 같고 2배 느려 16GB 기기의 선택지로만 둔다.
-요약은 틀린 금액·날짜를 쓸 수 있고 전사와 대조해도 잡히지 않으므로(숫자가 전사에 있다),
-**결정마다 근거 발언으로 가는 링크(SUM-3)를 0.2에 넣는다.** 합성 음성 경로에서 가장 큰
-손실은 요약이 아니라 이름·고유명사 받아쓰기여서, 단어장(STT-7)도 0.2로 당긴다.
+The default summary model is **Qwen3.5-4B (Apache-2.0), summarising the meeting in parts and
+then merging** (2026-10-20, `bench/results/RESULTS.md` section 8). It runs in 3.2GB even on
+8GB devices and summarises a 1-hour meeting in about 100 s on an M4. 9B has the same recall
+and is twice as slow, so it stays only as an option for 16GB devices. A summary can write a
+wrong amount or date, and checking it against the transcript does not catch that (the number
+is in the transcript), so **0.2 ships a link from every decision to its evidence (SUM-3).** On
+the synthetic speech route the largest loss was not the summary but transcribing names and
+proper nouns, so the vocabulary (STT-7) is pulled into 0.2 as well.
 
-로컬 LLM은 앱과 **함께 배포하는 별도 실행 파일(sidecar)**로 돌린다(2026-10-19 결정).
-llama.cpp만 링크한 작은 Rust 실행 파일이고, 앱과는 stdin/stdout으로만 말하며 포트를
-열지 않는다. 한 바이너리에 whisper.cpp와 함께 넣으면 서로 다른 ggml 버전이 충돌해
-llama 쪽이 죽었다. 따로 두면 요약이 끝날 때 메모리가 확실히 돌아오고, 두 엔진을 따로
-올릴 수 있다. Ollama 연결은 별도 설치가 필요하고 앱에 HTTP 클라이언트를 넣어야 해서
-하지 않는다.
+The local LLM runs as a **separate executable shipped with the app (sidecar)** (decided
+2026-10-19). It is a small Rust executable that links only llama.cpp, talks to the app only
+over stdin/stdout, and opens no port. Putting it in one binary with whisper.cpp made two ggml
+versions clash and killed the llama side. Kept apart, memory surely comes back when the
+summary ends, and the two engines can be upgraded separately. Connecting to Ollama is not done:
+it needs a separate install and an HTTP client in the app.
 
-### 5.5 기억
+### 5.5 Memory
 
-| ID | 기능 | 우선 | 판 |
+| ID | Feature | Priority | Version |
 |---|---|---|---|
-| MEM-1 | 회의 목록, 회의별 전사·요약 보기, 제목 수정, 삭제 | P0 | 0.2 |
-| MEM-2 | 전체 회의 전문 검색 | P1 | 0.3 |
-| MEM-3 | 모든 회의에 대한 질문 ("지난달 예산 얘기 결론이 뭐였지?") | P1 | 0.4 |
-| MEM-4 | **MCP 서버** — Claude Desktop·Claude Code 등이 회의 기록을 조회 | P1 | 0.4 |
-| MEM-5 | 미해결 할 일 모아보기 (회의를 넘어서) | P2 | 0.5 |
+| MEM-1 | Meeting list, per-meeting transcript and summary view, rename, delete | P0 | 0.2 |
+| MEM-2 | Full-text search across all meetings | P1 | 0.3 |
+| MEM-3 | Questions over all meetings ("What did we conclude about the budget last month?") | P1 | 0.4 |
+| MEM-4 | **MCP server** — Claude Desktop, Claude Code etc. look up the meeting records | P1 | 0.4 |
+| MEM-5 | Open action items in one view (across meetings) | P2 | 0.5 |
 
-### 5.6 연결
+### 5.6 Connections
 
-| ID | 기능 | 우선 | 판 |
+| ID | Feature | Priority | Version |
 |---|---|---|---|
-| OUT-1 | Markdown 내보내기 / 복사 | P0 | 0.2 |
-| OUT-2 | Obsidian 폴더로 자동 저장 | P2 | 0.4 |
-| CAL-1 | 캘린더 연동: 회의 제목·참석자 자동 채움, 시작 알림 | P2 | 0.5 |
-| EXT-1 | Chrome 동반 확장: 회의 제목, 참가자, 발화자 (Native Messaging) | P2 | 0.4 |
+| OUT-1 | Markdown export / copy | P0 | 0.2 |
+| OUT-2 | Save to an Obsidian folder automatically | P2 | 0.4 |
+| CAL-1 | Calendar link: fill in meeting title and participants, start reminder | P2 | 0.5 |
+| EXT-1 | Chrome companion extension: meeting title, participants, speaker (Native Messaging) | P2 | 0.4 |
 
-### 5.7 대리 (Agent Mode)
+### 5.7 Agent Mode
 
-v0.1 기획의 Agent Mode(대신 발언)는 **v1 이후로 미룬다.** 대면 회의 지원과 신뢰(§2의 2)가
-먼저다. 다시 꺼낼 때는 별도 문서로 정책과 가드레일부터 정한다.
+v0.1's planned Agent Mode (speaking on your behalf) is **postponed until after v1.** In-person
+meeting support and trust (§2, item 2) come first. When it comes back, a separate document
+sets its policy and guardrails first.
 
-## 6. 화면
+## 6. Screens
 
-- **미니 바** (기본, 항상 위, 끌어서 위치 고정): 녹음 표시 · 경과 시간 · 소스 · 마지막
-  자막 한 줄 · 중요 표시 · 펼치기
-- **패널** (약 360×560): 자막 / 요약 / 기록 탭, 아래에 소스 상태와 종료
-- **라이브러리 창**: 지난 회의, 검색, 질문 — 회의 밖에서 쓰는 화면
-- 트레이(메뉴 막대) 아이콘으로 어디서든 시작
-- 밝은/어두운 테마, 한국어·영어 UI
-- 브랜드: 집사 시리즈 규칙을 따른다(마스코트 쟁반 위 = 회의 물건). 빨강은 녹음 표시에
-  쓰므로 브랜드색에서 뺀다.
+- **Mini bar** (default, always on top, drag to pin its place): recording indicator · elapsed
+  time · sources · last caption line · important mark · expand
+- **Panel** (about 360×560): captions / summary / notes tabs, with source status and stop below
+- **Library window**: past meetings, search, questions — the screen used outside meetings
+- Start from anywhere with the tray (menu bar) icon
+- Light/dark theme, Korean and English UI
+- Brand: follows the butler series rules (on the mascot's tray = meeting objects). Red is
+  used for the recording indicator, so it is left out of the brand colours.
 
-## 7. 비기능 목표
+## 7. Non-functional targets
 
-수치는 **목표**이고, §8의 첫 작업(엔진 비교 측정)이 끝나면 실측으로 고친다.
+The figures are **targets**, to be corrected with measurements once the first task of §8
+(the engine comparison) is done.
 
-| 항목 | 목표 |
+| Item | Target |
 |---|---|
-| 자막 지연 | 말한 뒤 3초 안에 화면에 (M1 / 최근 6코어 Windows, small급 모델) |
-| 장시간 | 4시간 세션에서 갱신 시간과 메모리가 첫 10분과 같은 수준 |
-| 메모리 | 녹음·전사 중 1.5GB 이하 (모델 포함) |
-| 설치 파일 | 모델 제외 50MB 이하 |
-| 비정상 종료 | 재시작 시 녹음과 전사가 마지막 창 직전까지 남아 있음 |
-| 데이터 위치 | 사용자가 정할 수 있는 단일 폴더 (백업·삭제가 쉬워야 함) |
+| Caption delay | On screen within 3 s of speaking (M1 / recent 6-core Windows, small-class model) |
+| Long sessions | In a 4-hour session, update time and memory at the same level as the first 10 minutes |
+| Memory | 1.5GB or less while recording and transcribing (models included) |
+| Installer | 50MB or less without models |
+| Crash | On restart, recording and transcript remain up to just before the last window |
+| Data location | One folder the user can choose (easy to back up and delete) |
 
-## 8. 로드맵
+## 8. Roadmap
 
-| 판 | 목표 | 핵심 |
+| Version | Goal | Core |
 |---|---|---|
-| 0.1.0 | (보관) ghostmeet 확장 + 로컬 백엔드 | 태그됨 |
-| **0.2** | **데스크톱 첫 판** — 어디서든 녹음해 로컬로 전사하고 요약 | REC-1~3, STT-1~7, SPK-1, SUM-1~3, MEM-1, OUT-1 |
-| 0.3 | 대면 회의를 제대로 | 화자 분리, 에코 제거, 중요 표시, 파일 가져오기, 검색 |
-| 0.4 | 기억하는 집사 | 회의 전체 질문, MCP, 템플릿, 동반 확장 |
-| 0.5 | 회의 전후를 잇는 집사 | 캘린더, 할 일 모아보기 |
-| 1.0 | 안정판 | 서명·자동 업데이트, 설치 10분 안 |
+| 0.1.0 | (archived) ghostmeet extension + local backend | Tagged |
+| **0.2** | **First desktop version** — record anywhere, transcribe locally, and summarise | REC-1~3, STT-1~7, SPK-1, SUM-1~3, MEM-1, OUT-1 |
+| 0.3 | In-person meetings done properly | Diarization, echo cancellation, important mark, file import, search |
+| 0.4 | A butler that remembers | Questions over all meetings, MCP, templates, companion extension |
+| 0.5 | A butler that links before and after | Calendar, open action items view |
+| 1.0 | Stable | Signing and auto-update, install within 10 minutes |
 
-**0.2의 첫 작업이던 엔진 비교 측정은 끝났다**(§5.2.1, `bench/`). 실제 회의 녹음은
-측정에 쓰지 않았다. 0.2의 마일스톤:
+**The engine comparison, 0.2's first task, is done** (§5.2.1, `bench/`). No real meeting
+recordings were used in the measurements. 0.2's milestones:
 
-1. **앱 뼈대와 엔진** — Tauri 앱이 마이크와 시스템 오디오를 따로 받고, Rust 엔진
-   크레이트가 Silero 구간 자르기 + whisper-rs 전사 + 환각 문구 차단을 한다. Python
-   테스트 중 앱의 약속(4시간 구조, 절대 시각, 디스크 저장, SQLite, 장애 시 세션 유지)을
-   담은 것은 Rust 명세로 옮긴다.
-2. 실시간 자막 → 회의 후 최종본 교체 (한 트랜잭션으로 세션 전체 교체)
-3. **로컬 요약 모델 측정** — 같은 공개 전사본으로 한국어 요약 품질과 속도를 본다.
-4. 요약·라이브러리·Markdown 내보내기
+1. **App skeleton and engine** — the Tauri app takes the microphone and system audio
+   separately, and a Rust engine crate does Silero span cutting + whisper-rs transcription +
+   the hallucination blocklist. Python tests that hold the app's promises (4-hour structure,
+   absolute timestamps, storage on disk, SQLite, keeping the session on failure) move into
+   Rust specs.
+2. Live captions → replaced by the final pass after the meeting (the whole session replaced in
+   one transaction)
+3. **Local summary model measurement** — look at Korean summary quality and speed on the same
+   public transcripts.
+4. Summary, library, Markdown export
 
-전부 로컬로 돌리므로 한 기기에 모델 여럿이 동시에 산다(전사 + 화자 + LLM + 임베딩).
-**회의 중에는 전사·화자만, LLM은 회의 뒤에** 올리는 것을 기본 배치로 해 메모리 목표(§7)를
-지킨다.
+Since everything runs locally, several models live on one device at once (transcription +
+speakers + LLM + embeddings). The default layout loads **only transcription and speakers
+during the meeting, the LLM after it**, to keep the memory target (§7).
 
-## 9. 버전 관리
+## 9. Versioning
 
-- SemVer. 1.0 전에는 마이너가 기능 묶음, 패치가 수정
-- Conventional Commits 유지 (`feat:`, `fix:`, `docs:` …)
-- `CHANGELOG.md`를 판마다 갱신하고 `vX.Y.Z` 태그로 릴리스
-- 출시 전 개인정보 스캔(CLAUDE.md)은 태그 push에도 적용
+- SemVer. Before 1.0, a minor is a feature batch and a patch is a fix
+- Keep Conventional Commits (`feat:`, `fix:`, `docs:` …)
+- Update `CHANGELOG.md` every version and release with a `vX.Y.Z` tag
+- The pre-release privacy scan (CLAUDE.md) also applies to tag pushes
 
-## 10. 이름 바꾸기
+## 10. Renaming
 
-- 저장소 `ghostmeet` → `meetbutler` (GitHub 리다이렉트 유지 — 같은 계정에 `ghostmeet`
-  저장소를 다시 만들지 않는다)
-- 사이트 `ghostmeet.sshlab.dev` → `meetbutler.sshlab.dev`, 옛 주소는 301로 넘긴다
-- ClawHub 스킬은 새 이름으로 올리고 옛 이름에 이동 안내
-- 환경 변수는 새 이름을 쓰되 `GHOSTMEET_*`도 한동안 읽는다
-- README 첫 줄에 "구 ghostmeet" 표기를 두 판 동안 유지
+- Repository `ghostmeet` → `meetbutler` (keep GitHub's redirect — do not create a `ghostmeet`
+  repository again on the same account)
+- Site `ghostmeet.sshlab.dev` → `meetbutler.sshlab.dev`, old address redirected with 301
+- Publish the ClawHub skill under the new name, with a move notice on the old name
+- Environment variables use the new names but still read `GHOSTMEET_*` for a while
+- Keep the "formerly ghostmeet" note on the README's first line for two versions
 
-## 11. 금지
+## 11. Not allowed
 
-- 외부 SaaS 의존 (Recall.ai, Deepgram 등)
-- 사용자가 누르지 않은 녹음 시작, 녹음 표시 숨기기
-- 오디오·전사의 기기 밖 전송 (사용자가 요청한 LLM 호출 제외)
-- API 키 하드코딩, 실제 회의 내용이 담긴 테스트 자료·스크린샷
+- External SaaS dependencies (Recall.ai, Deepgram etc.)
+- Starting a recording the user did not press, hiding the recording indicator
+- Sending audio or transcripts off the device (except an LLM call the user asked for)
+- Hard-coded API keys, test material or screenshots holding real meeting content
 
-## 12. 리스크
+## 12. Risks
 
-| 리스크 | 영향 | 대응 |
+| Risk | Impact | Response |
 |---|---|---|
-| 한국어 실시간 화자 분리 품질 (Sortformer는 4명·영어 위주) | 큼 | 측정함(`bench/results/RESULTS.md` §9): 실시간은 라벨이 40% 넘게 바뀌어 **회의 후 분리가 기본**. 조각 단위 군집 + 전역 연결로 정함: ERes2NetV2가 대면 DER 0.169로 1위(CAM++ 0.225), 사라지는 화자 15→1. 남은 문제: bench 기준 4시간 메모리 약 1.05 GB(목표 1 GB), 처리 25~37분, 화자 과다 계산(2명을 7명으로) — 화자 수 상한과 SPK-3 합치기로 다룬다 |
-| macOS 시스템 오디오 권한 흐름 | 중간 | 첫 실행 안내 화면, 권한 없으면 마이크만으로 동작 |
-| Windows GPU 다양성 | 중간 | Vulkan 기본, 실패 시 CPU로 자동 후퇴 |
-| Rust 이식 비용 | 중간 | 이식 확정. Python 설계(PcmStore, 꼬리 창)와 테스트를 명세로 옮긴다 |
-| 코드 서명·공증 비용 | 낮음 | 0.x는 서명 없이, 1.0 전에 해결 |
-| Meet DOM 변경 | 낮음 | 확장은 선택 기능, 깨져도 앱은 동작 |
+| Quality of live Korean diarization (Sortformer is mostly 4 speakers, English) | High | Measured (`bench/results/RESULTS.md` §9): live changes over 40% of labels, so **diarization after the meeting is the default**. Settled on piece-wise clustering + global link: ERes2NetV2 ranks first with in-person DER 0.169 (CAM++ 0.225), vanished speakers 15→1. Remaining issues: about 1.05 GB of memory for 4 hours on the bench (target 1 GB), 25~37 min of processing, speaker over-counting (2 people as 7) — handled with the speaker cap and SPK-3 merging |
+| macOS system audio permission flow | Medium | First-run guide screen; without permission, works with the microphone only |
+| Windows GPU variety | Medium | Vulkan by default, automatic fallback to CPU on failure |
+| Cost of the Rust port | Medium | Port settled. The Python design (PcmStore, tail window) and tests move into specs |
+| Code signing and notarisation cost | Low | Unsigned for 0.x, solved before 1.0 |
+| Meet DOM changes | Low | The extension is optional; the app works if it breaks |
 
-## 13. 열린 질문
+## 13. Open questions
 
-- 로컬 LLM의 메모리 목표: 회의 뒤 요약 시 별도 상한(예: 8GB 기기에서도 동작)
-- 라이선스: 지금처럼 유지할지 (형제 제품과 맞출지)
+- Memory target for the local LLM: a separate cap for the summary after the meeting (e.g. it
+  works on 8GB devices too)
+- Licence: keep it as it is (or match the sibling products)
