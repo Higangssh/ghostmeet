@@ -1,12 +1,12 @@
-# 한국어 STT 엔진 비교 — 측정 결과
+# Korean STT engine comparison — results
 
-기기: Apple M4 (4P+6E), RAM 16GB, macOS 26.6.2, Python 3.12.15. 모든 엔진 스레드 4개. 측정 중 다른 무거운 작업 없음.
+Machine: Apple M4 (4P+6E), RAM 16GB, macOS 26.6.2, Python 3.12.15. 4 threads for every engine. No other heavy work while measuring.
 
-데이터: FLEURS ko_kr test, 382문장 / 80.1분 (google/fleurs, CC BY 4.0). 실제 회의 녹음은 쓰지 않았다.
+Data: FLEURS ko_kr test, 382 sentences / 80.1 min (google/fleurs, CC BY 4.0). No real meeting recordings were used.
 
-## 1. 문장 단위 (엔진 정확도·속도)
+## 1. Sentence by sentence (engine accuracy and speed)
 
-| 엔진 | CER(숫자 없는 문장) | CER(전체) | RTF | 로드 | 첫 결과 | 문장당 지연 중앙/p95 | 최대 메모리 |
+| Engine | CER (sentences without digits) | CER (all) | RTF | Load | First result | Latency per sentence median/p95 | Peak memory |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | faster-whisper large-v3-turbo (CPU int8) | **2.2%** | 2.5% | 0.373 | 1.9s¹ | 6.6s¹ | 4.61 / 5.24s | 2247MB |
 | whisper.cpp large-v3-turbo (Metal) | **2.3%** | 2.5% | 0.165 | 1.0s | 3.4s | 2.07 / 2.26s | 1936MB |
@@ -15,509 +15,509 @@
 | whisper.cpp small (CPU) | **5.2%** | 5.3% | 0.426 | 0.4s | 5.7s | 5.31 / 5.98s | 823MB |
 | whisper.cpp small (Metal) | **5.2%** | 5.4% | 0.056 | 0.5s | 1.2s | 0.69 / 0.93s | 866MB |
 
-- CER: 공백·문장부호를 지운 뒤 글자 편집거리 / 정답 글자 수(코퍼스 합산). 정답의 괄호 안 로마자 병기(`비슈케크(Bishkek)`)는 읽히지 않으므로 지웠다. 한글이 든 괄호는 읽으므로 남겼다.
-- 숫자 없는 문장 CER: 정답에 숫자가 있는 문장을 뺀 값. `2명`/`두 명` 같은 표기 차이가 엔진 비교를 흐리지 않게 한다. **엔진 비교는 이 열로 본다.**
-- RTF = 처리 시간 / 음성 길이. 첫 결과 = 엔진을 만들기 시작해서 첫 문장(14초) 결과가 나올 때까지(모델은 이미 디스크에 있음).
-- 최대 메모리: macOS phys_footprint 최대치(활성 상태 보기의 '메모리'). Metal 할당 포함. whisper.cpp는 whisper-server 프로세스 기준.
-- ¹ 전체 측정 때는 첫 실행이라 모델 다운로드가 로드에 섞였다. 그래서 모델을 캐시한 상태에서 5문장으로 따로 잰 값을 넣었다.
+- CER: letter edit distance after removing spaces and punctuation / letters in the reference (summed over the corpus). Romanised glosses in brackets in the reference (`비슈케크(Bishkek)`) are not read aloud, so they were removed. Brackets that hold Hangul are read, so they were kept.
+- CER without digits: leaving out sentences whose reference has a digit, so spelling differences like `2명`/`두 명` (2 people / two people) do not blur the engine comparison. **Compare engines by this column.**
+- RTF = processing time / speech length. First result = from starting to build the engine until the first sentence (14 s) has a result (the model already on disk).
+- Peak memory: the macOS phys_footprint peak ("Memory" in Activity Monitor), Metal allocations included. For whisper.cpp it is the whisper-server process.
+- ¹ In the full run this was the first run, so a model download got mixed into load. The values are from a separate 5-sentence run with the model cached.
 
-## 2. 긴 세션, 꼬리 창 (legacy/backend/incremental.py의 IncrementalTranscriber 그대로)
+## 2. Long session, tail window (legacy/backend/incremental.py's IncrementalTranscriber as is)
 
-FLEURS 문장을 이어 붙인 36.1분 세션, 창 30초. `수정 전` = 측정 당시 main(창 경계 중복 버그 포함), `수정 후` = 창 경계 보류 수정.
+A 36.1 min session of FLEURS sentences joined together, 30 s window. `before fix` = main at the time of measuring (with the window boundary duplicate bug), `after fix` = the window boundary hold-back fix.
 
-| 엔진 | 코드 | 조건 | 창당 처리 처음10분 → 마지막10분 | p95 | 기울기(초/시간) | 메모리 처음 → 마지막 | 자막 지연 중앙/p95 | CER |
+| Engine | Code | Condition | Per window first 10 min → last 10 min | p95 | Slope (s/hour) | Memory first → last | Caption delay median/p95 | CER |
 |---|---|---|---:|---:|---:|---:|---:|---:|
-| faster-whisper large-v3-turbo (CPU int8) | 수정 전 | backlog(30초 창) | 5.50s → 5.22s | 9.32s | -1.156 | 1705 → 1674MB | — | 18.7% |
-| faster-whisper large-v3-turbo (CPU int8) | 수정 후 | backlog(30초 창) | 5.61s → 5.79s | 9.71s | +0.686 | 1706 → 1693MB | — | 6.7% |
-| faster-whisper large-v3-turbo (CPU int8) | 수정 전 | live(10초 주기) | 4.78s → 4.73s | 5.21s | +0.011 | 1667 → 1593MB | 9.6 / 18.1s | 21.2% |
-| faster-whisper large-v3-turbo (CPU int8) | 수정 후 | live(10초 주기) | 4.96s → 4.92s | 5.37s | -0.222 | 1641 → 1580MB | 12.4 / 20.8s | 3.4% |
-| faster-whisper small (CPU int8) | 수정 전 | backlog(30초 창) | 2.35s → 2.65s | 3.56s | +0.138 | 1013 → 1229MB | — | 23.9% |
-| faster-whisper small (CPU int8) | 수정 후 | backlog(30초 창) | 2.38s → 2.53s | 2.92s | +0.354 | 1147 → 1096MB | — | 9.5% |
-| faster-whisper small (CPU int8) | 수정 전 | live(10초 주기) | 1.48s → 1.47s | 2.28s | -0.054 | 903 → 839MB | 4.9 / 12.3s | 29.7% |
-| faster-whisper small (CPU int8) | 수정 후 | live(10초 주기) | 1.62s → 1.62s | 2.19s | -0.044 | 899 → 829MB | 8.1 / 14.7s | 6.6% |
-| sherpa-onnx SenseVoice-Small (CPU int8) | 수정 전 | backlog(30초 창) | 0.44s → 0.38s | 0.58s | -0.141 | 1184 → 1133MB | — | 10.0% |
-| sherpa-onnx SenseVoice-Small (CPU int8) | 수정 후 | backlog(30초 창) | 0.38s → 0.39s | 0.54s | +0.004 | 1142 → 956MB | — | 6.2% |
-| sherpa-onnx SenseVoice-Small (CPU int8) | 수정 전 | live(10초 주기) | 0.16s → 0.15s | 0.22s | -0.005 | 1050 → 879MB | 0.9 / 8.2s | 17.0% |
-| sherpa-onnx SenseVoice-Small (CPU int8) | 수정 후 | live(10초 주기) | 0.24s → 0.21s | 0.42s | -0.086 | 1115 → 1048MB | 6.5 / 11.2s | 6.0% |
-| whisper.cpp large-v3-turbo (Metal) | 수정 전 | backlog(30초 창) | 2.35s → 2.36s | 2.55s | +0.038 | 1943 → 1956MB | — | 13.9% |
-| whisper.cpp large-v3-turbo (Metal) | 수정 후 | backlog(30초 창) | 2.39s → 2.42s | 2.59s | +0.056 | 1942 → 1949MB | — | 5.8% |
-| whisper.cpp large-v3-turbo (Metal) | 수정 전 | live(10초 주기) | 2.12s → 2.10s | 2.26s | -0.029 | 1927 → 1929MB | 5.1 / 12.0s | 21.6% |
-| whisper.cpp large-v3-turbo (Metal) | 수정 후 | live(10초 주기) | 2.15s → 2.13s | 2.34s | -0.022 | 1933 → 1942MB | 9.3 / 16.0s | 5.8% |
-| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | 수정 후 | live(10초 주기) | 4.69s → 4.07s | 5.93s | -1.007 | 1923 → 1924MB | 13.5 / 20.5s | 6.5% |
-| whisper.cpp large-v3-turbo (Metal, Silero spans) | 수정 후 | live(10초 주기) | 4.71s → 4.49s | 6.27s | -1.027 | 1924 → 1932MB | 13.2 / 21.8s | 5.9% |
-| whisper.cpp small (Metal) | 수정 전 | backlog(30초 창) | 0.94s → 0.86s | 1.28s | -0.119 | 862 → 866MB | — | 29.9% |
-| whisper.cpp small (Metal) | 수정 후 | backlog(30초 창) | 1.13s → 1.04s | 1.55s | -0.223 | 862 → 864MB | — | 8.6% |
-| whisper.cpp small (Metal) | 수정 전 | live(10초 주기) | 0.68s → 0.68s | 0.93s | -0.018 | 857 → 836MB | 4.7 / 11.3s | 31.9% |
-| whisper.cpp small (Metal) | 수정 후 | live(10초 주기) | 0.76s → 0.72s | 0.95s | -0.104 | 856 → 863MB | 6.8 / 12.5s | 8.9% |
-| whisper.cpp small (Metal, Silero spans + filter) | 수정 후 | live(10초 주기) | 1.03s → 1.16s | 1.69s | +0.300 | 857 → 787MB | 8.2 / 13.1s | 8.3% |
-| whisper.cpp small (Metal, no VAD) | 수정 후 | live(10초 주기) | 0.89s → 0.77s | 1.19s | -0.176 | 859 → 864MB | 7.4 / 17.3s | 13.2% |
-| whisper.cpp small (Metal, no VAD, DTW) | 수정 후 | live(10초 주기) | 0.93s → 0.81s | 1.22s | -0.201 | 899 → 926MB | 8.4 / 15.5s | 12.2% |
-| whisper.cpp small (Metal, Silero spans) | 수정 후 | live(10초 주기) | 1.32s → 1.22s | 1.88s | -0.301 | 858 → 820MB | 7.8 / 13.7s | 8.6% |
+| faster-whisper large-v3-turbo (CPU int8) | before fix | backlog (30 s window) | 5.50s → 5.22s | 9.32s | -1.156 | 1705 → 1674MB | — | 18.7% |
+| faster-whisper large-v3-turbo (CPU int8) | after fix | backlog (30 s window) | 5.61s → 5.79s | 9.71s | +0.686 | 1706 → 1693MB | — | 6.7% |
+| faster-whisper large-v3-turbo (CPU int8) | before fix | live (10 s period) | 4.78s → 4.73s | 5.21s | +0.011 | 1667 → 1593MB | 9.6 / 18.1s | 21.2% |
+| faster-whisper large-v3-turbo (CPU int8) | after fix | live (10 s period) | 4.96s → 4.92s | 5.37s | -0.222 | 1641 → 1580MB | 12.4 / 20.8s | 3.4% |
+| faster-whisper small (CPU int8) | before fix | backlog (30 s window) | 2.35s → 2.65s | 3.56s | +0.138 | 1013 → 1229MB | — | 23.9% |
+| faster-whisper small (CPU int8) | after fix | backlog (30 s window) | 2.38s → 2.53s | 2.92s | +0.354 | 1147 → 1096MB | — | 9.5% |
+| faster-whisper small (CPU int8) | before fix | live (10 s period) | 1.48s → 1.47s | 2.28s | -0.054 | 903 → 839MB | 4.9 / 12.3s | 29.7% |
+| faster-whisper small (CPU int8) | after fix | live (10 s period) | 1.62s → 1.62s | 2.19s | -0.044 | 899 → 829MB | 8.1 / 14.7s | 6.6% |
+| sherpa-onnx SenseVoice-Small (CPU int8) | before fix | backlog (30 s window) | 0.44s → 0.38s | 0.58s | -0.141 | 1184 → 1133MB | — | 10.0% |
+| sherpa-onnx SenseVoice-Small (CPU int8) | after fix | backlog (30 s window) | 0.38s → 0.39s | 0.54s | +0.004 | 1142 → 956MB | — | 6.2% |
+| sherpa-onnx SenseVoice-Small (CPU int8) | before fix | live (10 s period) | 0.16s → 0.15s | 0.22s | -0.005 | 1050 → 879MB | 0.9 / 8.2s | 17.0% |
+| sherpa-onnx SenseVoice-Small (CPU int8) | after fix | live (10 s period) | 0.24s → 0.21s | 0.42s | -0.086 | 1115 → 1048MB | 6.5 / 11.2s | 6.0% |
+| whisper.cpp large-v3-turbo (Metal) | before fix | backlog (30 s window) | 2.35s → 2.36s | 2.55s | +0.038 | 1943 → 1956MB | — | 13.9% |
+| whisper.cpp large-v3-turbo (Metal) | after fix | backlog (30 s window) | 2.39s → 2.42s | 2.59s | +0.056 | 1942 → 1949MB | — | 5.8% |
+| whisper.cpp large-v3-turbo (Metal) | before fix | live (10 s period) | 2.12s → 2.10s | 2.26s | -0.029 | 1927 → 1929MB | 5.1 / 12.0s | 21.6% |
+| whisper.cpp large-v3-turbo (Metal) | after fix | live (10 s period) | 2.15s → 2.13s | 2.34s | -0.022 | 1933 → 1942MB | 9.3 / 16.0s | 5.8% |
+| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | after fix | live (10 s period) | 4.69s → 4.07s | 5.93s | -1.007 | 1923 → 1924MB | 13.5 / 20.5s | 6.5% |
+| whisper.cpp large-v3-turbo (Metal, Silero spans) | after fix | live (10 s period) | 4.71s → 4.49s | 6.27s | -1.027 | 1924 → 1932MB | 13.2 / 21.8s | 5.9% |
+| whisper.cpp small (Metal) | before fix | backlog (30 s window) | 0.94s → 0.86s | 1.28s | -0.119 | 862 → 866MB | — | 29.9% |
+| whisper.cpp small (Metal) | after fix | backlog (30 s window) | 1.13s → 1.04s | 1.55s | -0.223 | 862 → 864MB | — | 8.6% |
+| whisper.cpp small (Metal) | before fix | live (10 s period) | 0.68s → 0.68s | 0.93s | -0.018 | 857 → 836MB | 4.7 / 11.3s | 31.9% |
+| whisper.cpp small (Metal) | after fix | live (10 s period) | 0.76s → 0.72s | 0.95s | -0.104 | 856 → 863MB | 6.8 / 12.5s | 8.9% |
+| whisper.cpp small (Metal, Silero spans + filter) | after fix | live (10 s period) | 1.03s → 1.16s | 1.69s | +0.300 | 857 → 787MB | 8.2 / 13.1s | 8.3% |
+| whisper.cpp small (Metal, no VAD) | after fix | live (10 s period) | 0.89s → 0.77s | 1.19s | -0.176 | 859 → 864MB | 7.4 / 17.3s | 13.2% |
+| whisper.cpp small (Metal, no VAD, DTW) | after fix | live (10 s period) | 0.93s → 0.81s | 1.22s | -0.201 | 899 → 926MB | 8.4 / 15.5s | 12.2% |
+| whisper.cpp small (Metal, Silero spans) | after fix | live (10 s period) | 1.32s → 1.22s | 1.88s | -0.301 | 858 → 820MB | 7.8 / 13.7s | 8.6% |
 
-- backlog: 음성이 이미 다 있어 매 회차가 30초 창을 꽉 채운다. 창당 비용이 세션 위치와 무관한지 보는 조건.
-- live: 가상 시계로 실시간 유입을 흉내 낸다. 직전 회차가 끝나고 10초 뒤에 다음 회차를 돈다(파이프라인 워커와 같음). 자막 지연 = 회차가 끝난 시각 − 세그먼트 끝 시각.
-- 기울기: 창당 처리 시간을 세션 위치에 대해 1차 회귀한 값. 0에 가까우면 일정하다는 뜻이다.
+- backlog: the speech is all there already, so every pass fills the 30 s window. This condition shows whether the cost per window is independent of the position in the session.
+- live: a virtual clock imitates audio arriving in real time. The next pass runs 10 s after the last one ends (as the pipeline worker does). Caption delay = when the pass ended − when the segment ended.
+- Slope: a linear fit of the time per window against the position in the session. Near 0 means flat.
 
-## 3. 창 경계 수정 전후 (live 10초 주기)
+## 3. Before and after the window boundary fix (live, 10 s period)
 
-완료 기준: live CER ≤ 문장 단위 CER(전체) + 2.0%p.
+Done when: live CER ≤ sentence-by-sentence CER (all) + 2.0%p.
 
-| 엔진 | 문장 단위 CER | live CER 전 → 후 | 차이(후 − 문장) | 기준 | 자막 지연 중앙/p95 전 → 후 |
+| Engine | Sentence CER | live CER before → after | Gap (after − sentence) | Bar | Caption delay median/p95 before → after |
 |---|---:|---:|---:|---|---:|
-| faster-whisper large-v3-turbo (CPU int8) | 2.5% | 21.2% → **3.4%** | +0.9%p | 통과 | 9.6 / 18.1s → 12.4 / 20.8s |
-| faster-whisper small (CPU int8) | 5.4% | 29.7% → **6.6%** | +1.2%p | 통과 | 4.9 / 12.3s → 8.1 / 14.7s |
-| sherpa-onnx SenseVoice-Small (CPU int8) | 6.1% | 17.0% → **6.0%** | -0.1%p | 통과 | 0.9 / 8.2s → 6.5 / 11.2s |
-| whisper.cpp large-v3-turbo (Metal) | 2.5% | 21.6% → **5.8%** | +3.2%p | 미달 | 5.1 / 12.0s → 9.3 / 16.0s |
-| whisper.cpp small (Metal) | 5.4% | 31.9% → **8.9%** | +3.5%p | 미달 | 4.7 / 11.3s → 6.8 / 12.5s |
+| faster-whisper large-v3-turbo (CPU int8) | 2.5% | 21.2% → **3.4%** | +0.9%p | pass | 9.6 / 18.1s → 12.4 / 20.8s |
+| faster-whisper small (CPU int8) | 5.4% | 29.7% → **6.6%** | +1.2%p | pass | 4.9 / 12.3s → 8.1 / 14.7s |
+| sherpa-onnx SenseVoice-Small (CPU int8) | 6.1% | 17.0% → **6.0%** | -0.1%p | pass | 0.9 / 8.2s → 6.5 / 11.2s |
+| whisper.cpp large-v3-turbo (Metal) | 2.5% | 21.6% → **5.8%** | +3.2%p | fail | 5.1 / 12.0s → 9.3 / 16.0s |
+| whisper.cpp small (Metal) | 5.4% | 31.9% → **8.9%** | +3.5%p | fail | 4.7 / 11.3s → 6.8 / 12.5s |
 
-- 비교 기준은 문장 단위 '전체' CER이다. 세션도 숫자가 든 문장을 포함하기 때문이다.
-- 문장 단위는 문장 하나를 통째로 넣고, 세션은 문장들을 0.6초 간격으로 이어 붙여 창으로 자른다. 그래서 같은 엔진이라도 문맥과 경계 조건이 조금 다르다.
+- The comparison is against the sentence-by-sentence CER on 'all', because the session also holds sentences with digits.
+- Sentence by sentence feeds one whole sentence; the session joins sentences 0.6 s apart and cuts them into windows. So even the same engine sees slightly different context and boundaries.
 
-## 4. 회의 후 일괄 재전사 (세션 전체를 한 번에)
+## 4. Batch re-transcription after the meeting (the whole session at once)
 
-같은 36.1분 세션을 엔진에 통째로 넣었다. 창을 나누는 일은 엔진의 long-form 디코딩이 한다. 비교용으로 같은 엔진의 꼬리 창 backlog(수정 후) CER을 붙였다.
+The same 36.1 min session fed to the engine whole. The engine's long-form decoding does the windowing. For comparison, the same engine's tail-window backlog (after fix) CER is beside it.
 
-| 엔진 | long-form CER | 처리 시간 | RTF | 최대 메모리 | 꼬리 창 backlog CER |
+| Engine | long-form CER | Processing time | RTF | Peak memory | Tail-window backlog CER |
 |---|---:|---:|---:|---:|---:|
 | whisper.cpp large-v3-turbo (Metal) | **17.3%** | 93s | 0.043 | 2503MB | 5.8% |
 
-## 5. 우리 VAD 구간 + 구간별 디코딩
+## 5. Our VAD spans + decoding span by span
 
-엔진의 VAD와 long-form을 쓰지 않는다. Silero VAD(MIT)로 음성 구간을 자르고 구간마다 따로 디코딩한다. 시각은 구간에서 온다. live(꼬리 창)와 일괄(세션 전체)이 같은 함수(`engines.speech_spans`)와 같은 값을 쓴다. SenseVoice 행도 같은 규칙이다.
+Neither the engine's VAD nor long-form is used. Silero VAD (MIT) cuts the speech spans and each span is decoded on its own. Times come from the spans. live (tail window) and batch (whole session) use the same function (`engines.speech_spans`) with the same values. The SenseVoice row follows the same rules.
 
-구간 규칙: `threshold=0.3`, `min_silence_sec=0.5`, `min_speech_sec=0.25`, `max_speech_sec=25.0`, `pad_sec=0.2`.
+Span rules: `threshold=0.3`, `min_silence_sec=0.5`, `min_speech_sec=0.25`, `max_speech_sec=25.0`, `pad_sec=0.2`.
 
-| 엔진 | 조건 | CER | 문장 단위 CER | 창당 처리 / 처리 시간 | 자막 지연 중앙/p95 | 측정 중 부하(1분 평균) |
+| Engine | Condition | CER | Sentence CER | Per window / processing time | Caption delay median/p95 | Load while measuring (1 min average) |
 |---|---|---:|---:|---:|---:|---|
-| whisper.cpp large-v3-turbo (Metal, Silero spans) | live(10초 주기) | **5.9%** | 2.5% | 4.71s → 4.49s | 13.2 / 21.8s | 1.96 → 1.00 |
-| whisper.cpp large-v3-turbo (Metal, Silero spans) | 일괄 | **6.9%** | 2.5% | 430s (RTF 0.199) | — | 1.17 → 3.70 (중간 최대 6.2) |
-| whisper.cpp small (Metal, Silero spans) | live(10초 주기) | **8.6%** | 5.4% | 1.32s → 1.22s | 7.8 / 13.7s | 1.93 → 1.17 |
-| sherpa-onnx SenseVoice-Small (CPU int8) (기준) | live(10초 주기) | 6.0% | 6.1% | 0.24s → 0.21s | 6.5 / 11.2s | — |
+| whisper.cpp large-v3-turbo (Metal, Silero spans) | live (10 s period) | **5.9%** | 2.5% | 4.71s → 4.49s | 13.2 / 21.8s | 1.96 → 1.00 |
+| whisper.cpp large-v3-turbo (Metal, Silero spans) | batch | **6.9%** | 2.5% | 430s (RTF 0.199) | — | 1.17 → 3.70 (peak in between 6.2) |
+| whisper.cpp small (Metal, Silero spans) | live (10 s period) | **8.6%** | 5.4% | 1.32s → 1.22s | 7.8 / 13.7s | 1.93 → 1.17 |
+| sherpa-onnx SenseVoice-Small (CPU int8) (reference) | live (10 s period) | 6.0% | 6.1% | 0.24s → 0.21s | 6.5 / 11.2s | — |
 
-## 6. 마지막 라운드: 필터, 묶기, 짧은 대답
+## 6. Last round: filter, packing, short replies
 
-5절의 구간 규칙에 Whisper 세그먼트 필터를 더했다. 필터는 `no_speech_prob > 0.6` 이면서 `avg_logprob < -1.0`인 세그먼트를 버린다(OpenAI/faster-whisper와 같은 규칙, whisper-rs로 그대로 옮길 수 있다). `packed`는 이웃 구간을 25초까지 묶어 한 번에 디코딩하고, `spans`는 구간마다 따로 디코딩한다. 기준은 문장 단위 CER + 2.0%p다.
+Section 5's span rules plus a Whisper segment filter. The filter drops a segment with `no_speech_prob > 0.6` and `avg_logprob < -1.0` (the same rule as OpenAI/faster-whisper, and it carries over to whisper-rs as is). `packed` joins neighbouring spans up to 25 s and decodes them at once; `spans` decodes each span on its own. The bar is sentence CER + 2.0%p.
 
-짧은 대답: macOS `say -v Yuna`로 합성한 8개(네, 아니요, 맞아요, 좋습니다, 그렇죠, 알겠습니다, 잠깐만요, 글쎄요)를 3문장마다 하나씩 앞뒤 0.8초 간격으로 끼웠다(`make_replies.sh`, 합성 음성은 bench/data에만 있다). 글자 정렬에서 절반 넘게 그대로 맞으면 나온 것으로 센다.
+Short replies: 8 replies made with macOS `say -v Yuna` (네, 아니요, 맞아요, 좋습니다, 그렇죠, 알겠습니다, 잠깐만요, 글쎄요: yes, no, right, good, sure, got it, one moment, well) were put in after every third sentence with 0.8 s on either side (`make_replies.sh`; the synthetic audio lives only in bench/data). A reply counts as found when more than half of it matches as is in the letter alignment.
 
-| 엔진 | 조건 | CER | 문장 단위 CER | 기준 | 짧은 대답 | 필터가 버린 세그먼트 | 창당 처리 / 처리 시간 | 자막 지연 중앙/p95 | 부하(1분 평균) |
+| Engine | Condition | CER | Sentence CER | Bar | Short replies | Segments dropped by the filter | Per window / processing time | Caption delay median/p95 | Load (1 min average) |
 |---|---|---:|---:|---|---:|---:|---:|---:|---|
-| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | live(10초 주기) | **6.5%** | 2.5% | 미달 | — | — | 4.69s → 4.07s | 13.5 / 20.5s | 1.35 → 1.24 |
-| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | 일괄 | **6.9%** | 2.5% | 미달 | — | 0 | 418s (RTF 0.193) | — | 1.63 → 0.57 |
-| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | 일괄 + 짧은 대답 | **3.2%** | 2.5% | 통과 | 49/53 (필터로 잃음 0) | 0 | 471s (RTF 0.217) | — | 0.97 → 1.09 |
-| whisper.cpp large-v3-turbo (Metal, Silero packed + filter) | 일괄 + 짧은 대답 | **3.8%** | 2.5% | 통과 | 31/53 (필터로 잃음 0) | 0 | 222s (RTF 0.103) | — | 1.60 → 0.97 |
-| whisper.cpp small (Metal, Silero spans + filter) | live(10초 주기) | **8.3%** | 5.4% | 미달 | — | — | 1.03s → 1.16s | 8.2 / 13.1s | 0.57 → 1.35 |
-| faster-whisper small (CPU int8) | live(10초 주기), 비교 | **6.6%** | 5.4% | 통과 | — | — | 1.62s → 1.62s | 8.1 / 14.7s | — |
-| faster-whisper large-v3-turbo (CPU int8) | live(10초 주기), 비교 | **3.4%** | 2.5% | 통과 | — | — | 4.96s → 4.92s | 12.4 / 20.8s | — |
-| sherpa-onnx SenseVoice-Small (CPU int8) | live(10초 주기), 비교 | **6.0%** | 6.1% | 통과 | — | — | 0.24s → 0.21s | 6.5 / 11.2s | — |
+| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | live (10 s period) | **6.5%** | 2.5% | fail | — | — | 4.69s → 4.07s | 13.5 / 20.5s | 1.35 → 1.24 |
+| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | batch | **6.9%** | 2.5% | fail | — | 0 | 418s (RTF 0.193) | — | 1.63 → 0.57 |
+| whisper.cpp large-v3-turbo (Metal, Silero spans + filter) | batch + short replies | **3.2%** | 2.5% | pass | 49/53 (lost to the filter 0) | 0 | 471s (RTF 0.217) | — | 0.97 → 1.09 |
+| whisper.cpp large-v3-turbo (Metal, Silero packed + filter) | batch + short replies | **3.8%** | 2.5% | pass | 31/53 (lost to the filter 0) | 0 | 222s (RTF 0.103) | — | 1.60 → 0.97 |
+| whisper.cpp small (Metal, Silero spans + filter) | live (10 s period) | **8.3%** | 5.4% | fail | — | — | 1.03s → 1.16s | 8.2 / 13.1s | 0.57 → 1.35 |
+| faster-whisper small (CPU int8) | live (10 s period), comparison | **6.6%** | 5.4% | pass | — | — | 1.62s → 1.62s | 8.1 / 14.7s | — |
+| faster-whisper large-v3-turbo (CPU int8) | live (10 s period), comparison | **3.4%** | 2.5% | pass | — | — | 4.96s → 4.92s | 12.4 / 20.8s | — |
+| sherpa-onnx SenseVoice-Small (CPU int8) | live (10 s period), comparison | **6.0%** | 6.1% | pass | — | — | 0.24s → 0.21s | 6.5 / 11.2s | — |
 
-## 7. Rust 엔진의 회의 후 최종본 (앱이 쓸 경로 그대로)
+## 7. The Rust engine's final pass after the meeting (the app's own path)
 
-`crates/meetbutler-engine`의 `final_transcript`를 그대로 돌렸다(`examples/final_pass`). 6절 `*-filtered`와 같은 규칙(우리 구간을 하나씩 디코딩, 2초 미만 구간의 자막 문구 차단)이지만 VAD 확률, 구간 규칙, 차단 목록, whisper.cpp 호출이 모두 Rust다. 오디오는 앱이 녹음하는 형식(16 kHz s16le)으로 넘긴다. 합격선은 최종본 CER 3% 이하다. 짧은 대답을 끼운 세션은 재현율로 판정한다: 대답 51/53 이상, 차단 규칙으로 잃은 대답 0, CER은 같은 경로의 본 세션 대비 +1.0%p 이내.
+`crates/meetbutler-engine`'s `final_transcript` run as is (`examples/final_pass`). The same rules as section 6's `*-filtered` (decode our spans one by one, block subtitle credits in spans under 2 s), but the VAD probabilities, span rules, blocklist and whisper.cpp calls are all Rust. The audio is passed in the format the app records (16 kHz s16le). The bar is a final pass CER of 3% or less. The session with short replies is judged by recall: at least 51/53 replies, 0 replies lost to the blocklist, and CER within +1.0%p of the plain session on the same path.
 
-| 엔진 | 조건 | CER | 기준 | 짧은 대답 | 처리 시간 | RTF | 최대 메모리 | 부하(1분 평균) |
+| Engine | Condition | CER | Bar | Short replies | Processing time | RTF | Peak memory | Load (1 min average) |
 |---|---|---:|---|---:|---:|---:|---:|---|
-| Rust engine large-v3-turbo (Metal, Silero spans + blocklist) | 일괄 | **2.7%** | 통과 | — | 203s | 0.094 | 1965MB | 1.81 → 0.73 |
-| Rust engine large-v3-turbo (Metal, Silero spans + blocklist) | 일괄 + 짧은 대답 | **3.3%** | 통과 | 52/53 | 261s | 0.121 | 1961MB | 0.73 → 1.03 |
-| Rust engine large-v3-turbo (Metal, whisper.cpp ggml Silero v5.1.2 spans + blocklist) | 일괄 | **6.0%** | 미달 | — | 234s | 0.108 | 1963MB | 1.89 → 3.60 |
-| Rust engine large-v3-turbo (Metal, whisper.cpp ggml Silero v5.1.2 spans + blocklist) | 일괄 + 짧은 대답 | **6.7%** | — (본 세션 미달) | 52/53 | 283s | 0.130 | 1963MB | 3.60 → 1.26 |
+| Rust engine large-v3-turbo (Metal, Silero spans + blocklist) | batch | **2.7%** | pass | — | 203s | 0.094 | 1965MB | 1.81 → 0.73 |
+| Rust engine large-v3-turbo (Metal, Silero spans + blocklist) | batch + short replies | **3.3%** | pass | 52/53 | 261s | 0.121 | 1961MB | 0.73 → 1.03 |
+| Rust engine large-v3-turbo (Metal, whisper.cpp ggml Silero v5.1.2 spans + blocklist) | batch | **6.0%** | fail | — | 234s | 0.108 | 1963MB | 1.89 → 3.60 |
+| Rust engine large-v3-turbo (Metal, whisper.cpp ggml Silero v5.1.2 spans + blocklist) | batch + short replies | **6.7%** | — (plain session failed) | 52/53 | 283s | 0.130 | 1963MB | 3.60 → 1.26 |
 
-- whisper.cpp의 ggml Silero v5.1.2(`-ggmlvad` 행)는 쓰지 않는다. 원래 Silero는 프레임마다 이전 프레임의 마지막 64샘플을 문맥으로 붙이는데, ggml 이식판은 프레임마다 반사 패딩(`ggml_pad_reflect_1d(…, 64, 64)`)을 한다. 이 세션에서 말을 23.0분만 찾았고(v4는 int16 입력에서 26.9분), 발화를 통째로 놓쳐 삭제가 314자였다. 합성 음성(TTS)에서는 오히려 더 많이 잡아서 합성 음성 대조로는 드러나지 않았다. VAD나 엔진을 바꿀 때는 FLEURS로도 확인한다(`tests/slow_vad.rs`).
-- 채택한 VAD는 bench와 같은 `silero_vad.onnx`(k2-fsa가 내보낸 Silero v4, MIT)를 tract(순수 Rust ONNX 런타임)로 돌린다. onnxruntime 대비 프레임 확률 차이는 합성 세션 6.2e-6, FLEURS 10분 1.9e-5이고, 같은 입력에서 구간은 sherpa-onnx와 하나도 다르지 않다.
-- 같은 VAD라도 입력이 float인지 int16인지에 따라 구간이 달라진다. 이 36분 세션에서 sherpa 구간은 float 입력 205개, int16 입력 174개였다(겹치지 않는 구간이 많다). 5·6절은 float으로 쟀고, 앱은 int16으로 녹음하므로 이 절은 int16으로 쟀다.
+- whisper.cpp's ggml Silero v5.1.2 (the `-ggmlvad` rows) is not used. The original Silero prepends the last 64 samples of the previous frame to each frame as context; the ggml port reflect-pads each frame instead (`ggml_pad_reflect_1d(…, 64, 64)`). On this session it found only 23.0 min of speech (v4 found 26.9 min on int16 input) and missed whole utterances, for 314 deleted letters. On synthetic speech (TTS) it caught more, so a synthetic comparison did not show it. When changing the VAD or the engine, check against FLEURS too (`tests/slow_vad.rs`).
+- The VAD we adopted is the same `silero_vad.onnx` as bench (Silero v4 as exported by k2-fsa, MIT), run on tract (a pure Rust ONNX runtime). Against onnxruntime the frame probabilities differ by 6.2e-6 on the synthetic session and 1.9e-5 on 10 min of FLEURS, and on the same input not a single span differs from sherpa-onnx.
+- The same VAD gives different spans for float and int16 input. On this 36 min session sherpa gave 205 spans on float input and 174 on int16 (many do not overlap). Sections 5 and 6 were measured on float; the app records int16, so this section was measured on int16.
 
-## 8. 로컬 요약 모델 (합성 회의 대본, 정답 대본 입력)
+## 8. Local summary models (synthetic meeting scripts, answer script as input)
 
-`run_summary.py`가 앱의 요약 sidecar를 앱과 같은 방식으로 돌렸다. 요약마다 프로세스를 새로 띄우고, GGUF 안의 chat template, 고정 형식(SUM-1)을 강제하는 grammar, repeat penalty 1.1, greedy를 쓴다. 대본은 `meeting_gen.py`의 주간·1:1·고객 × 30·60·120분이고 정답지와 맞춰 채점했다(`summary_score.py`). 모든 모델에 같은 프롬프트를 썼다. single은 전사를 통째로 넣고, chunked는 약 10분씩 요약한 뒤 목록을 잇는다.
+`run_summary.py` ran the app's summary sidecar the way the app does: a new process per summary, the chat template inside the GGUF, a grammar that forces the fixed format (SUM-1), repeat penalty 1.1, greedy. The scripts are `meeting_gen.py`'s weekly, 1:1 and customer meetings × 30, 60 and 120 min, scored against the answer key (`summary_score.py`). Every model got the same prompt. single takes the whole transcript; chunked summarises about 10 min at a time and joins the lists.
 
-재현율은 대본 합계다(형식이 깨진 요약은 하나도 못 찾은 것으로 센다). 값 틀림은 안건은 맞게 적었는데 숫자나 날짜가 정답과 다른 결정의 수다(읽는 사람에게 가장 해로운 오류라 재현율과 같은 무게로 본다). 한 번 나온 결정은 같은 틀이 숫자만 바뀌어 다시 나오지 않은 결정만의 재현율이다. 지어낸 담당자는 회의에 없는 이름이나 사람이 아닌 담당자의 수이고, 지어낸 숫자는 회의에서 말하지 않은 숫자의 수다. 최대 메모리는 peak footprint와 max RSS 중 큰 값이다. 기기 상한은 8GB 묶음 4GB, 16GB 묶음 9GB이고, 넘으면 탈락이다. single의 n_ctx는 전사 + 8192(출력 상한)로 잡았다.
+Recall is summed over the scripts (a summary with a broken format counts as finding nothing). Wrong value is the number of decisions with the right agenda item but a number or date that differs from the answer (the error that hurts a reader most, so it weighs as much as recall). One-off decisions is the recall over only the decisions whose template does not come back with different numbers. Invented owner counts owners who are not in the meeting or are not people; invented number counts numbers never said in the meeting. Peak memory is the larger of peak footprint and max RSS. The device caps are 4GB for the 8GB tier and 9GB for the 16GB tier; going over is out. single's n_ctx was set to transcript + 8192 (the output cap).
 
-아래 두 표는 이전 생성기(v1, 1ac7bf2)의 대본으로 쟀다. v1은 같은 항목 틀을 한 회의에 숫자만 바꿔 여러 번 심었다("개발자 N명 채용"이 한 회의에 네 번). 채점기를 고친 뒤 다시 채점해 b76f90b의 표와 수치가 다르다: 철회를 결정으로는 철회를 밝힌 문장("600만 원 취소 후 800만 원으로 확정")을 더는 세지 않아 거의 0이 됐고, 같은 정답 항목은 한 번만 세어 결정 분모가 줄었다.
+The two tables below were measured on the earlier generator's scripts (v1, 1ac7bf2). v1 planted the same item template several times in one meeting with only the numbers changed ("개발자 N명 채용", hire N developers, four times in one meeting). After the scorer was fixed everything was scored again, so the numbers differ from b76f90b's tables: retracted as decision no longer counts a sentence that states the retraction ("600만 원 취소 후 800만 원으로 확정", 6 million won cancelled, then confirmed at 8 million) and fell to almost 0, and the same answer item is counted once, so the decisions denominator shrank.
 
-### 30·60분 대본 6개, 모든 모델 (이전 생성기 v1)
+### Six 30 and 60 min scripts, every model (earlier generator v1)
 
-| 모델 | 묶음 | 방식 | 실행 실패 | 형식 깨짐 | 결정 | 한 번 나온 결정 | 값 틀림 | 할 일 | 담당자 맞음 | 기한 맞음 | 미해결 | 철회를 결정으로 | 지어낸 담당자 | 지어낸 숫자 | 회의당 시간 | 최대 메모리 | 생성 tok/s | 판정 |
+| Model | Tier | Mode | Run failed | Broken format | Decisions | One-off decisions | Wrong value | Action items | Owner right | Due date right | Open questions | Retracted as decision | Invented owner | Invented number | Time per meeting | Peak memory | Generation tok/s | Verdict |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| gemma-4-e4b | 8GB | chunked | 0/6 | 0/6 | 58/99 (59%) | 51/70 (73%) | 1 | 53/60 (88%) | 53/53 (100%) | 53/53 (100%) | 14/18 (78%) | 0 | 4 | 0 | 117s | 5.8GB | 17.8 | 탈락(메모리) |
-| gemma-4-e4b | 8GB | single | 0/6 | 0/6 | 28/99 (28%) | 27/70 (39%) | 0 | 30/60 (50%) | 29/30 (97%) | 30/30 (100%) | 3/18 (17%) | 0 | 0 | 1 | 67s | 7.2GB | 17.0 | 탈락(메모리) |
+| gemma-4-e4b | 8GB | chunked | 0/6 | 0/6 | 58/99 (59%) | 51/70 (73%) | 1 | 53/60 (88%) | 53/53 (100%) | 53/53 (100%) | 14/18 (78%) | 0 | 4 | 0 | 117s | 5.8GB | 17.8 | out (memory) |
+| gemma-4-e4b | 8GB | single | 0/6 | 0/6 | 28/99 (28%) | 27/70 (39%) | 0 | 30/60 (50%) | 29/30 (97%) | 30/30 (100%) | 3/18 (17%) | 0 | 0 | 1 | 67s | 7.2GB | 17.0 | out (memory) |
 | kanana-1.5-2.1b | 8GB | chunked | 0/6 | 0/6 | 35/99 (35%) | 29/70 (41%) | 1 | 49/60 (82%) | 43/49 (88%) | 48/49 (98%) | 4/18 (22%) | 2 | 16 | 2 | 69s | 2.7GB | 33.1 | — |
-| kanana-1.5-2.1b | 8GB | single | 0/6 | 2/6 | 20/99 (20%) | 20/70 (29%) | 0 | 19/60 (32%) | 16/19 (84%) | 17/19 (89%) | 1/18 (6%) | 0 | 1 | 0 | 177s | 5.9GB | 22.6 | 탈락(메모리) |
+| kanana-1.5-2.1b | 8GB | single | 0/6 | 2/6 | 20/99 (20%) | 20/70 (29%) | 0 | 19/60 (32%) | 16/19 (84%) | 17/19 (89%) | 1/18 (6%) | 0 | 1 | 0 | 177s | 5.9GB | 22.6 | out (memory) |
 | midm-2.0-mini | 8GB | chunked | 0/6 | 0/6 | 45/99 (45%) | 40/70 (57%) | 1 | 41/60 (68%) | 38/41 (93%) | 41/41 (100%) | 10/18 (56%) | 0 | 9 | 0 | 54s | 3.4GB | 31.1 | — |
-| midm-2.0-mini | 8GB | single | 0/6 | 0/6 | 20/99 (20%) | 20/70 (29%) | 0 | 20/60 (33%) | 15/20 (75%) | 20/20 (100%) | 5/18 (28%) | 0 | 3 | 0 | 43s | 8.3GB | 21.4 | 탈락(메모리) |
+| midm-2.0-mini | 8GB | single | 0/6 | 0/6 | 20/99 (20%) | 20/70 (29%) | 0 | 20/60 (33%) | 15/20 (75%) | 20/20 (100%) | 5/18 (28%) | 0 | 3 | 0 | 43s | 8.3GB | 21.4 | out (memory) |
 | qwen3.5-4b | 8GB | chunked | 0/6 | 0/6 | 62/99 (63%) | 52/70 (74%) | 2 | 51/60 (85%) | 50/51 (98%) | 51/51 (100%) | 7/18 (39%) | 0 | 4 | 1 | 99s | 3.2GB | 19.4 | — |
-| qwen3.5-4b | 8GB | single | 0/6 | 0/6 | 49/99 (49%) | 48/70 (69%) | 0 | 33/60 (55%) | 31/33 (94%) | 33/33 (100%) | 2/18 (11%) | 0 | 0 | 1 | 64s | 4.0GB | 17.7 | 탈락(메모리) |
+| qwen3.5-4b | 8GB | single | 0/6 | 0/6 | 49/99 (49%) | 48/70 (69%) | 0 | 33/60 (55%) | 31/33 (94%) | 33/33 (100%) | 2/18 (11%) | 0 | 0 | 1 | 64s | 4.0GB | 17.7 | out (memory) |
 | ax-4.0-light | 16GB | chunked | 0/6 | 0/6 | 39/99 (39%) | 36/70 (51%) | 0 | 47/60 (78%) | 45/47 (96%) | 47/47 (100%) | 4/18 (22%) | 0 | 6 | 0 | 95s | 4.8GB | 16.6 | — |
 | ax-4.0-light | 16GB | single | 0/6 | 0/6 | 24/99 (24%) | 22/70 (31%) | 0 | 30/60 (50%) | 22/30 (73%) | 30/30 (100%) | 0/18 (0%) | 0 | 1 | 0 | 62s | 6.2GB | 16.2 | — |
 | kanana-1.5-8b | 16GB | chunked | 0/6 | 0/6 | 47/99 (47%) | 38/70 (54%) | 0 | 42/60 (70%) | 40/42 (95%) | 41/42 (98%) | 13/18 (72%) | 0 | 9 | 1 | 167s | 5.9GB | 14.7 | — |
-| kanana-1.5-8b | 16GB | single | 0/6 | 0/6 | 23/99 (23%) | 20/70 (29%) | 0 | 16/60 (27%) | 10/16 (62%) | 16/16 (100%) | 5/18 (28%) | 0 | 5 | 8 | 121s | 9.0GB | 12.7 | 탈락(메모리) |
+| kanana-1.5-8b | 16GB | single | 0/6 | 0/6 | 23/99 (23%) | 20/70 (29%) | 0 | 16/60 (27%) | 10/16 (62%) | 16/16 (100%) | 5/18 (28%) | 0 | 5 | 8 | 121s | 9.0GB | 12.7 | out (memory) |
 | midm-2.0-base | 16GB | chunked | 0/6 | 0/6 | 33/99 (33%) | 28/70 (40%) | 0 | 42/60 (70%) | 40/42 (95%) | 26/42 (62%) | 10/18 (56%) | 0 | 6 | 14 | 179s | 8.7GB | 10.9 | — |
-| midm-2.0-base | 16GB | single | 3/6 | 0/3 | 6/33 (18%) | 4/24 (17%) | 0 | 9/20 (45%) | 6/9 (67%) | 7/9 (78%) | 2/7 (29%) | 0 | 0 | 2 | 76s | 11.2GB | 9.6 | 탈락(메모리) |
+| midm-2.0-base | 16GB | single | 3/6 | 0/3 | 6/33 (18%) | 4/24 (17%) | 0 | 9/20 (45%) | 6/9 (67%) | 7/9 (78%) | 2/7 (29%) | 0 | 0 | 2 | 76s | 11.2GB | 9.6 | out (memory) |
 | qwen3.5-9b | 16GB | chunked | 0/6 | 0/6 | 58/99 (59%) | 42/70 (60%) | 9 | 54/60 (90%) | 54/54 (100%) | 54/54 (100%) | 11/18 (61%) | 1 | 9 | 2 | 179s | 5.9GB | 13.0 | — |
 | qwen3.5-9b | 16GB | single | 0/6 | 0/6 | 47/99 (47%) | 42/70 (60%) | 2 | 41/60 (68%) | 40/41 (98%) | 41/41 (100%) | 5/18 (28%) | 0 | 0 | 7 | 111s | 6.7GB | 12.2 | — |
 
-### 120분 대본 3개, 30·60분 결과로 고른 모델 (이전 생성기 v1)
+### Three 120 min scripts, models chosen by the 30 and 60 min results (earlier generator v1)
 
-묶음마다 상한 안에 든 방식의 결정+할 일 재현율이 높은 두 모델이다. llama 구조 모델(Kanana, Mi:dm)의 single은 시작하자마자 디코딩이 실패했다(`Decode Error -3`, 최대 메모리 11GB대). 실패한 실행은 n_ctx를 남기지 못했지만 같은 식(전사 + 8192)이면 57344로, 학습 문맥 32768을 넘고 KV 캐시만 Mi:dm Mini 10.5GB, Kanana 8B 7GB다. 30·60분 표의 Mi:dm Base single 60분 3개도 같은 실패다(n_ctx 약 36864, KV 6.75GB + 모델 6.5GB). 측정 설정 탓이지만, 프롬프트를 60분의 두 배로 잡아(Mi:dm 약 2.3만, Kanana 약 3.1만 토큰) n_ctx를 맞춰도 KV만 Mi:dm Mini 약 4.2GB, Kanana 8B 약 3.9GB다. Mi:dm Mini는 8GB 묶음 상한을 넘고 Kanana 8B는 9GB 상한 근처이며 학습 문맥 끝에 걸린다.
+For each tier, the two models with the highest decision + action item recall in a mode that fit the cap. single on the llama-architecture models (Kanana, Mi:dm) failed to decode right at the start (`Decode Error -3`, peak memory around 11GB). A failed run leaves no n_ctx, but by the same formula (transcript + 8192) it would be 57344, past the training context of 32768, with the KV cache alone at 10.5GB for Mi:dm Mini and 7GB for Kanana 8B. The three Mi:dm Base single 60 min runs in the 30 and 60 min table are the same failure (n_ctx about 36864, KV 6.75GB + model 6.5GB). The measurement setup is to blame, but even with n_ctx sized to a prompt twice the 60 min one (about 23 thousand tokens for Mi:dm, about 31 thousand for Kanana), the KV alone is about 4.2GB for Mi:dm Mini and about 3.9GB for Kanana 8B. Mi:dm Mini goes over the 8GB tier's cap, and Kanana 8B sits near the 9GB cap and at the end of its training context.
 
-| 모델 | 묶음 | 방식 | 실행 실패 | 형식 깨짐 | 결정 | 한 번 나온 결정 | 값 틀림 | 할 일 | 담당자 맞음 | 기한 맞음 | 미해결 | 철회를 결정으로 | 지어낸 담당자 | 지어낸 숫자 | 회의당 시간 | 최대 메모리 | 생성 tok/s | 판정 |
+| Model | Tier | Mode | Run failed | Broken format | Decisions | One-off decisions | Wrong value | Action items | Owner right | Due date right | Open questions | Retracted as decision | Invented owner | Invented number | Time per meeting | Peak memory | Generation tok/s | Verdict |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | midm-2.0-mini | 8GB | chunked | 0/3 | 0/3 | 51/122 (42%) | 43/83 (52%) | 2 | 56/80 (70%) | 51/56 (91%) | 56/56 (100%) | 13/19 (68%) | 0 | 11 | 0 | 140s | 3.4GB | 30.3 | — |
-| midm-2.0-mini | 8GB | single | 3/3 | 0/0 | — | — | 0 | — | — | — | — | 0 | 0 | 0 | — | 11.0GB | — | 실행 실패 |
+| midm-2.0-mini | 8GB | single | 3/3 | 0/0 | — | — | 0 | — | — | — | — | 0 | 0 | 0 | — | 11.0GB | — | run failed |
 | qwen3.5-4b | 8GB | chunked | 0/3 | 0/3 | 90/122 (74%) | 68/83 (82%) | 0 | 74/80 (92%) | 73/74 (99%) | 74/74 (100%) | 8/19 (42%) | 0 | 3 | 0 | 268s | 3.2GB | 19.2 | — |
-| qwen3.5-4b | 8GB | single | 0/3 | 0/3 | 49/122 (40%) | 43/83 (52%) | 5 | 47/80 (59%) | 37/47 (79%) | 47/47 (100%) | 2/19 (11%) | 0 | 0 | 0 | 247s | 4.7GB | 13.8 | 탈락(메모리) |
+| qwen3.5-4b | 8GB | single | 0/3 | 0/3 | 49/122 (40%) | 43/83 (52%) | 5 | 47/80 (59%) | 37/47 (79%) | 47/47 (100%) | 2/19 (11%) | 0 | 0 | 0 | 247s | 4.7GB | 13.8 | out (memory) |
 | kanana-1.5-8b | 16GB | chunked | 0/3 | 0/3 | 59/122 (48%) | 46/83 (55%) | 0 | 60/80 (75%) | 60/60 (100%) | 60/60 (100%) | 9/19 (47%) | 0 | 16 | 3 | 425s | 5.9GB | 14.7 | — |
-| kanana-1.5-8b | 16GB | single | 3/3 | 0/0 | — | — | 0 | — | — | — | — | 0 | 0 | 0 | — | 11.7GB | — | 실행 실패 |
+| kanana-1.5-8b | 16GB | single | 3/3 | 0/0 | — | — | 0 | — | — | — | — | 0 | 0 | 0 | — | 11.7GB | — | run failed |
 | qwen3.5-9b | 16GB | chunked | 0/3 | 0/3 | 80/122 (66%) | 53/83 (64%) | 7 | 72/80 (90%) | 66/72 (92%) | 72/72 (100%) | 10/19 (53%) | 0 | 15 | 2 | 446s | 5.9GB | 13.4 | — |
 | qwen3.5-9b | 16GB | single | 0/3 | 0/3 | 53/122 (43%) | 51/83 (61%) | 10 | 56/80 (70%) | 50/56 (89%) | 56/56 (100%) | 2/19 (11%) | 0 | 0 | 0 | 298s | 7.5GB | 10.6 | — |
 
-### single의 메모리를 n_ctx 때문에 얼마나 크게 쟀나 (추정, 다시 돌리지 않음)
+### How much n_ctx inflated single's measured memory (estimated, not run again)
 
-llama.cpp는 n_ctx만큼의 KV 캐시를 처음에 다 잡는다. 필요한 n_ctx = 프롬프트 + 그 모델이 형식을 지킨 요약 중 가장 긴 출력 + 64를 256 단위로 올린 값이다. 추정 최대 메모리 = 잰 값 − (쓴 n_ctx − 필요한 n_ctx) × KV/토큰. 계산 버퍼는 n_ctx에 따라 조금 더 줄어들 수 있으니 상한 쪽 추정이다.
+llama.cpp reserves the KV cache for all of n_ctx up front. n_ctx needed = prompt + the longest output among that model's well-formed summaries + 64, rounded up to a multiple of 256. Estimated peak memory = measured − (n_ctx used − n_ctx needed) × KV/token. Compute buffers may shrink a little more with n_ctx, so this is an upper-side estimate.
 
-| 모델 | 묶음 | 대본 | KV/토큰 | 쓴 n_ctx | 필요한 n_ctx | 잰 최대 메모리 | 줄어드는 KV | 추정 최대 메모리 | 상한 |
+| Model | Tier | Script | KV/token | n_ctx used | n_ctx needed | Measured peak memory | KV saved | Estimated peak memory | Cap |
 |---|---|---|---:|---:|---:|---:|---:|---:|---|
-| gemma-4-e4b | 8GB | customer-30m | 16KiB | 22528 | 8192 | 6.6GB | 0.2GB | 6.4GB | 넘음 |
-| gemma-4-e4b | 8GB | one_on_one-30m | 16KiB | 22528 | 8192 | 6.6GB | 0.2GB | 6.4GB | 넘음 |
-| gemma-4-e4b | 8GB | weekly-30m | 16KiB | 22528 | 8192 | 6.3GB | 0.2GB | 6.1GB | 넘음 |
-| gemma-4-e4b | 8GB | customer-60m | 16KiB | 34816 | 14848 | 7.2GB | 0.3GB | 6.9GB | 넘음 |
-| gemma-4-e4b | 8GB | one_on_one-60m | 16KiB | 34816 | 15104 | 7.2GB | 0.3GB | 6.9GB | 넘음 |
-| gemma-4-e4b | 8GB | weekly-60m | 16KiB | 34816 | 14848 | 7.2GB | 0.3GB | 6.9GB | 넘음 |
-| kanana-1.5-2.1b | 8GB | customer-30m | 128KiB | 22528 | 9216 | 4.4GB | 1.6GB | 2.8GB | 안 넘음 |
-| kanana-1.5-2.1b | 8GB | one_on_one-30m | 128KiB | 22528 | 9216 | 4.4GB | 1.6GB | 2.8GB | 안 넘음 |
-| kanana-1.5-2.1b | 8GB | weekly-30m | 128KiB | 22528 | 9216 | 4.4GB | 1.6GB | 2.8GB | 안 넘음 |
-| kanana-1.5-2.1b | 8GB | customer-60m | 128KiB | 34816 | 16640 | 5.9GB | 2.2GB | 3.7GB | 안 넘음 |
-| kanana-1.5-2.1b | 8GB | one_on_one-60m | 128KiB | 34816 | 16640 | 5.9GB | 2.2GB | 3.7GB | 안 넘음 |
-| kanana-1.5-2.1b | 8GB | weekly-60m | 128KiB | 34816 | 16384 | 5.9GB | 2.2GB | 3.7GB | 안 넘음 |
-| midm-2.0-mini | 8GB | customer-30m | 192KiB | 24576 | 6912 | 6.1GB | 3.2GB | 2.8GB | 안 넘음 |
-| midm-2.0-mini | 8GB | one_on_one-30m | 192KiB | 24576 | 6656 | 6.1GB | 3.3GB | 2.8GB | 안 넘음 |
-| midm-2.0-mini | 8GB | weekly-30m | 192KiB | 24576 | 6656 | 6.0GB | 3.3GB | 2.8GB | 안 넘음 |
-| midm-2.0-mini | 8GB | customer-60m | 192KiB | 36864 | 11776 | 8.3GB | 4.6GB | 3.7GB | 안 넘음 |
-| midm-2.0-mini | 8GB | one_on_one-60m | 192KiB | 36864 | 12032 | 8.3GB | 4.5GB | 3.8GB | 안 넘음 |
-| midm-2.0-mini | 8GB | weekly-60m | 192KiB | 34816 | 11776 | 7.9GB | 4.2GB | 3.7GB | 안 넘음 |
-| qwen3.5-4b | 8GB | customer-30m | 32KiB | 22528 | 10240 | 3.6GB | 0.4GB | 3.3GB | 안 넘음 |
-| qwen3.5-4b | 8GB | one_on_one-30m | 32KiB | 22528 | 9984 | 3.6GB | 0.4GB | 3.3GB | 안 넘음 |
-| qwen3.5-4b | 8GB | weekly-30m | 32KiB | 22528 | 10240 | 3.6GB | 0.4GB | 3.2GB | 안 넘음 |
-| qwen3.5-4b | 8GB | customer-60m | 32KiB | 34816 | 16640 | 4.0GB | 0.6GB | 3.5GB | 안 넘음 |
-| qwen3.5-4b | 8GB | one_on_one-60m | 32KiB | 34816 | 16896 | 4.0GB | 0.5GB | 3.5GB | 안 넘음 |
-| qwen3.5-4b | 8GB | weekly-60m | 32KiB | 34816 | 16384 | 4.0GB | 0.6GB | 3.5GB | 안 넘음 |
-| qwen3.5-4b | 8GB | customer-120m | 32KiB | 57344 | 29440 | 4.7GB | 0.9GB | 3.9GB | 안 넘음 |
-| qwen3.5-4b | 8GB | one_on_one-120m | 32KiB | 57344 | 29440 | 4.7GB | 0.9GB | 3.9GB | 안 넘음 |
-| qwen3.5-4b | 8GB | weekly-120m | 32KiB | 57344 | 29696 | 4.7GB | 0.8GB | 3.9GB | 안 넘음 |
-| ax-4.0-light | 16GB | customer-30m | 56KiB | 22528 | 6144 | 5.6GB | 0.9GB | 4.7GB | 안 넘음 |
-| ax-4.0-light | 16GB | one_on_one-30m | 56KiB | 22528 | 5888 | 5.6GB | 0.9GB | 4.7GB | 안 넘음 |
-| ax-4.0-light | 16GB | weekly-30m | 56KiB | 22528 | 6144 | 5.5GB | 0.9GB | 4.6GB | 안 넘음 |
-| ax-4.0-light | 16GB | customer-60m | 56KiB | 34816 | 11008 | 6.2GB | 1.3GB | 5.0GB | 안 넘음 |
-| ax-4.0-light | 16GB | one_on_one-60m | 56KiB | 34816 | 11008 | 6.2GB | 1.3GB | 4.9GB | 안 넘음 |
-| ax-4.0-light | 16GB | weekly-60m | 56KiB | 34816 | 10752 | 6.2GB | 1.3GB | 4.9GB | 안 넘음 |
-| kanana-1.5-8b | 16GB | customer-30m | 128KiB | 22528 | 9216 | 7.6GB | 1.6GB | 5.9GB | 안 넘음 |
-| kanana-1.5-8b | 16GB | one_on_one-30m | 128KiB | 22528 | 9216 | 7.6GB | 1.6GB | 5.9GB | 안 넘음 |
-| kanana-1.5-8b | 16GB | weekly-30m | 128KiB | 22528 | 9216 | 7.5GB | 1.6GB | 5.9GB | 안 넘음 |
-| kanana-1.5-8b | 16GB | customer-60m | 128KiB | 34816 | 16384 | 9.0GB | 2.2GB | 6.8GB | 안 넘음 |
-| kanana-1.5-8b | 16GB | one_on_one-60m | 128KiB | 34816 | 16640 | 9.0GB | 2.2GB | 6.8GB | 안 넘음 |
-| kanana-1.5-8b | 16GB | weekly-60m | 128KiB | 34816 | 16384 | 9.0GB | 2.2GB | 6.8GB | 안 넘음 |
-| midm-2.0-base | 16GB | customer-30m | 192KiB | 24576 | 6656 | 11.2GB | 3.3GB | 7.9GB | 안 넘음 |
-| midm-2.0-base | 16GB | one_on_one-30m | 192KiB | 24576 | 6656 | 11.2GB | 3.3GB | 7.9GB | 안 넘음 |
-| midm-2.0-base | 16GB | weekly-30m | 192KiB | 24576 | 6656 | 11.1GB | 3.3GB | 7.8GB | 안 넘음 |
-| qwen3.5-9b | 16GB | customer-30m | 32KiB | 22528 | 9216 | 6.3GB | 0.4GB | 5.9GB | 안 넘음 |
-| qwen3.5-9b | 16GB | one_on_one-30m | 32KiB | 22528 | 9216 | 6.4GB | 0.4GB | 6.0GB | 안 넘음 |
-| qwen3.5-9b | 16GB | weekly-30m | 32KiB | 22528 | 9472 | 6.3GB | 0.4GB | 5.9GB | 안 넘음 |
-| qwen3.5-9b | 16GB | customer-60m | 32KiB | 34816 | 15872 | 6.7GB | 0.6GB | 6.1GB | 안 넘음 |
-| qwen3.5-9b | 16GB | one_on_one-60m | 32KiB | 34816 | 15872 | 6.7GB | 0.6GB | 6.1GB | 안 넘음 |
-| qwen3.5-9b | 16GB | weekly-60m | 32KiB | 34816 | 15616 | 6.7GB | 0.6GB | 6.1GB | 안 넘음 |
-| qwen3.5-9b | 16GB | customer-120m | 32KiB | 57344 | 28672 | 7.5GB | 0.9GB | 6.6GB | 안 넘음 |
-| qwen3.5-9b | 16GB | one_on_one-120m | 32KiB | 57344 | 28672 | 7.5GB | 0.9GB | 6.6GB | 안 넘음 |
-| qwen3.5-9b | 16GB | weekly-120m | 32KiB | 57344 | 28928 | 7.4GB | 0.9GB | 6.5GB | 안 넘음 |
+| gemma-4-e4b | 8GB | customer-30m | 16KiB | 22528 | 8192 | 6.6GB | 0.2GB | 6.4GB | over |
+| gemma-4-e4b | 8GB | one_on_one-30m | 16KiB | 22528 | 8192 | 6.6GB | 0.2GB | 6.4GB | over |
+| gemma-4-e4b | 8GB | weekly-30m | 16KiB | 22528 | 8192 | 6.3GB | 0.2GB | 6.1GB | over |
+| gemma-4-e4b | 8GB | customer-60m | 16KiB | 34816 | 14848 | 7.2GB | 0.3GB | 6.9GB | over |
+| gemma-4-e4b | 8GB | one_on_one-60m | 16KiB | 34816 | 15104 | 7.2GB | 0.3GB | 6.9GB | over |
+| gemma-4-e4b | 8GB | weekly-60m | 16KiB | 34816 | 14848 | 7.2GB | 0.3GB | 6.9GB | over |
+| kanana-1.5-2.1b | 8GB | customer-30m | 128KiB | 22528 | 9216 | 4.4GB | 1.6GB | 2.8GB | under |
+| kanana-1.5-2.1b | 8GB | one_on_one-30m | 128KiB | 22528 | 9216 | 4.4GB | 1.6GB | 2.8GB | under |
+| kanana-1.5-2.1b | 8GB | weekly-30m | 128KiB | 22528 | 9216 | 4.4GB | 1.6GB | 2.8GB | under |
+| kanana-1.5-2.1b | 8GB | customer-60m | 128KiB | 34816 | 16640 | 5.9GB | 2.2GB | 3.7GB | under |
+| kanana-1.5-2.1b | 8GB | one_on_one-60m | 128KiB | 34816 | 16640 | 5.9GB | 2.2GB | 3.7GB | under |
+| kanana-1.5-2.1b | 8GB | weekly-60m | 128KiB | 34816 | 16384 | 5.9GB | 2.2GB | 3.7GB | under |
+| midm-2.0-mini | 8GB | customer-30m | 192KiB | 24576 | 6912 | 6.1GB | 3.2GB | 2.8GB | under |
+| midm-2.0-mini | 8GB | one_on_one-30m | 192KiB | 24576 | 6656 | 6.1GB | 3.3GB | 2.8GB | under |
+| midm-2.0-mini | 8GB | weekly-30m | 192KiB | 24576 | 6656 | 6.0GB | 3.3GB | 2.8GB | under |
+| midm-2.0-mini | 8GB | customer-60m | 192KiB | 36864 | 11776 | 8.3GB | 4.6GB | 3.7GB | under |
+| midm-2.0-mini | 8GB | one_on_one-60m | 192KiB | 36864 | 12032 | 8.3GB | 4.5GB | 3.8GB | under |
+| midm-2.0-mini | 8GB | weekly-60m | 192KiB | 34816 | 11776 | 7.9GB | 4.2GB | 3.7GB | under |
+| qwen3.5-4b | 8GB | customer-30m | 32KiB | 22528 | 10240 | 3.6GB | 0.4GB | 3.3GB | under |
+| qwen3.5-4b | 8GB | one_on_one-30m | 32KiB | 22528 | 9984 | 3.6GB | 0.4GB | 3.3GB | under |
+| qwen3.5-4b | 8GB | weekly-30m | 32KiB | 22528 | 10240 | 3.6GB | 0.4GB | 3.2GB | under |
+| qwen3.5-4b | 8GB | customer-60m | 32KiB | 34816 | 16640 | 4.0GB | 0.6GB | 3.5GB | under |
+| qwen3.5-4b | 8GB | one_on_one-60m | 32KiB | 34816 | 16896 | 4.0GB | 0.5GB | 3.5GB | under |
+| qwen3.5-4b | 8GB | weekly-60m | 32KiB | 34816 | 16384 | 4.0GB | 0.6GB | 3.5GB | under |
+| qwen3.5-4b | 8GB | customer-120m | 32KiB | 57344 | 29440 | 4.7GB | 0.9GB | 3.9GB | under |
+| qwen3.5-4b | 8GB | one_on_one-120m | 32KiB | 57344 | 29440 | 4.7GB | 0.9GB | 3.9GB | under |
+| qwen3.5-4b | 8GB | weekly-120m | 32KiB | 57344 | 29696 | 4.7GB | 0.8GB | 3.9GB | under |
+| ax-4.0-light | 16GB | customer-30m | 56KiB | 22528 | 6144 | 5.6GB | 0.9GB | 4.7GB | under |
+| ax-4.0-light | 16GB | one_on_one-30m | 56KiB | 22528 | 5888 | 5.6GB | 0.9GB | 4.7GB | under |
+| ax-4.0-light | 16GB | weekly-30m | 56KiB | 22528 | 6144 | 5.5GB | 0.9GB | 4.6GB | under |
+| ax-4.0-light | 16GB | customer-60m | 56KiB | 34816 | 11008 | 6.2GB | 1.3GB | 5.0GB | under |
+| ax-4.0-light | 16GB | one_on_one-60m | 56KiB | 34816 | 11008 | 6.2GB | 1.3GB | 4.9GB | under |
+| ax-4.0-light | 16GB | weekly-60m | 56KiB | 34816 | 10752 | 6.2GB | 1.3GB | 4.9GB | under |
+| kanana-1.5-8b | 16GB | customer-30m | 128KiB | 22528 | 9216 | 7.6GB | 1.6GB | 5.9GB | under |
+| kanana-1.5-8b | 16GB | one_on_one-30m | 128KiB | 22528 | 9216 | 7.6GB | 1.6GB | 5.9GB | under |
+| kanana-1.5-8b | 16GB | weekly-30m | 128KiB | 22528 | 9216 | 7.5GB | 1.6GB | 5.9GB | under |
+| kanana-1.5-8b | 16GB | customer-60m | 128KiB | 34816 | 16384 | 9.0GB | 2.2GB | 6.8GB | under |
+| kanana-1.5-8b | 16GB | one_on_one-60m | 128KiB | 34816 | 16640 | 9.0GB | 2.2GB | 6.8GB | under |
+| kanana-1.5-8b | 16GB | weekly-60m | 128KiB | 34816 | 16384 | 9.0GB | 2.2GB | 6.8GB | under |
+| midm-2.0-base | 16GB | customer-30m | 192KiB | 24576 | 6656 | 11.2GB | 3.3GB | 7.9GB | under |
+| midm-2.0-base | 16GB | one_on_one-30m | 192KiB | 24576 | 6656 | 11.2GB | 3.3GB | 7.9GB | under |
+| midm-2.0-base | 16GB | weekly-30m | 192KiB | 24576 | 6656 | 11.1GB | 3.3GB | 7.8GB | under |
+| qwen3.5-9b | 16GB | customer-30m | 32KiB | 22528 | 9216 | 6.3GB | 0.4GB | 5.9GB | under |
+| qwen3.5-9b | 16GB | one_on_one-30m | 32KiB | 22528 | 9216 | 6.4GB | 0.4GB | 6.0GB | under |
+| qwen3.5-9b | 16GB | weekly-30m | 32KiB | 22528 | 9472 | 6.3GB | 0.4GB | 5.9GB | under |
+| qwen3.5-9b | 16GB | customer-60m | 32KiB | 34816 | 15872 | 6.7GB | 0.6GB | 6.1GB | under |
+| qwen3.5-9b | 16GB | one_on_one-60m | 32KiB | 34816 | 15872 | 6.7GB | 0.6GB | 6.1GB | under |
+| qwen3.5-9b | 16GB | weekly-60m | 32KiB | 34816 | 15616 | 6.7GB | 0.6GB | 6.1GB | under |
+| qwen3.5-9b | 16GB | customer-120m | 32KiB | 57344 | 28672 | 7.5GB | 0.9GB | 6.6GB | under |
+| qwen3.5-9b | 16GB | one_on_one-120m | 32KiB | 57344 | 28672 | 7.5GB | 0.9GB | 6.6GB | under |
+| qwen3.5-9b | 16GB | weekly-120m | 32KiB | 57344 | 28928 | 7.4GB | 0.9GB | 6.5GB | under |
 
-### 새 기준선(v2 대본), 프롬프트 개선, 음성 경로
+### New baseline (v2 scripts), a better prompt, the speech route
 
-v2 대본은 같은 항목 틀을 한 회의에 두 번 심지 않는다. qwen3.5-4b chunked만 쟀다. p2는 첫 프롬프트에 규칙 셋을 더했다: 정하는 말(확정, 승인, 유지, 진행, 채택)이 나오면 결정이다, 할 일을 정했어도 결정은 따로 적는다, 숫자와 날짜는 전사 그대로 옮기고 바뀐 값은 마지막 값을 적는다. 정하는 말은 대본 생성기의 문장이 아닌 일반 낱말로 적었다.
+The v2 scripts never plant the same item template twice in one meeting. Only qwen3.5-4b chunked was measured. p2 adds three rules to the first prompt: a deciding word (확정, 승인, 유지, 진행, 채택: confirmed, approved, kept, go ahead, adopted) makes a decision; a decision is written down even when an action item was also set; numbers and dates are copied as transcribed, and a changed value is written as its last value. The deciding words are common words, not the script generator's sentences.
 
-음성 경로(asr)는 v2 대본을 macOS 한국어 음성 여섯 개로 번갈아 읽어(`asr_meetings.py`) 앱의 회의 후 최종본 경로(`final_pass`, Silero 구간 + large-v3-turbo)로 받아 적고, 그 전사를 요약했다. 채점은 대본의 정답지 그대로다.
+The speech route (asr) reads the v2 scripts aloud with six macOS Korean voices in turn (`asr_meetings.py`), transcribes them with the app's after-meeting final pass (`final_pass`, Silero spans + large-v3-turbo), and summarises that transcript. Scoring uses the scripts' answer key as is.
 
-| 모델 | 묶음 | 방식 | 실행 실패 | 형식 깨짐 | 결정 | 한 번 나온 결정 | 값 틀림 | 할 일 | 담당자 맞음 | 기한 맞음 | 미해결 | 철회를 결정으로 | 지어낸 담당자 | 지어낸 숫자 | 회의당 시간 | 최대 메모리 | 생성 tok/s | 판정 |
+| Model | Tier | Mode | Run failed | Broken format | Decisions | One-off decisions | Wrong value | Action items | Owner right | Due date right | Open questions | Retracted as decision | Invented owner | Invented number | Time per meeting | Peak memory | Generation tok/s | Verdict |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | qwen3.5-4b | 8GB | chunked | 0/6 | 0/6 | 69/100 (69%) | 69/100 (69%) | 1 | 58/66 (88%) | 56/58 (97%) | 58/58 (100%) | 10/20 (50%) | 1 | 2 | 0 | 101s | 3.2GB | 20.0 | — |
 | qwen3.5-4b | 8GB | chunked · asr | 0/6 | 0/6 | 48/100 (48%) | 48/100 (48%) | 2 | 41/66 (62%) | 28/41 (68%) | 41/41 (100%) | 5/20 (25%) | 1 | 20 | 5 | 98s | 3.2GB | 19.9 | — |
 | qwen3.5-4b | 8GB | chunked · asr · p2 | 0/6 | 0/6 | 48/100 (48%) | 48/100 (48%) | 3 | 44/66 (67%) | 32/44 (73%) | 44/44 (100%) | 4/20 (20%) | 2 | 18 | 4 | 99s | 3.2GB | 19.6 | — |
 | qwen3.5-4b | 8GB | chunked · p2 | 0/6 | 0/6 | 74/100 (74%) | 74/100 (74%) | 1 | 59/66 (89%) | 58/59 (98%) | 59/59 (100%) | 12/20 (60%) | 0 | 4 | 0 | 103s | 3.2GB | 19.7 | — |
 
-"확인 필요" 표시 후보: chunked가 구간마다 결정의 숫자(단위 한 글자까지, "11월", "250만")가 그 구간 전사에 그대로 있는지 보고, 없으면 표시한다(`summary_score.unsupported_numbers`).
+A candidate "확인 필요" (needs checking) flag: for each span, chunked checks that a decision's numbers (down to a one-letter unit, "11월", "250만") appear as is in that span's transcript, and flags the decision if not (`summary_score.unsupported_numbers`).
 
-| 조건 | 표시한 결정 | 그중 값 틀림 | 값 틀림 전체 | 값 틀림을 잡은 비율 |
+| Condition | Decisions flagged | Of which wrong value | Wrong value in all | Share of wrong values caught |
 |---|---:|---:|---:|---:|
 | asr · p1 | 0 | 0 | 2 | 0% |
 | asr · p2 | 0 | 0 | 3 | 0% |
 | p1 | 0 | 0 | 1 | 0% |
 | p2 | 0 | 0 | 1 | 0% |
 
-표시는 한 번도 켜지지 않았다. 값 틀림의 숫자는 모두 그 구간 전사에 있었다: 정답 대본에서는 같은 안건의 다른 숫자(남은 버그 수, 철회된 첫 제안 금액)를 결정 값으로 옮겼고, 음성 경로에서는 받아 적기가 숫자를 바꿨다("28일"→"18일", "20일"→"21일")는 것을 요약이 그대로 옮겼다. 전사와 대조하는 검사로는 어느 쪽도 잡을 수 없다.
+The flag never fired. Every number in a wrong value was in that span's transcript: on the answer scripts the summary moved another number from the same agenda item (bugs left, the first offer that was withdrawn) into the decision; on the speech route the transcription changed a number ("28일"→"18일", "20일"→"21일") and the summary copied it. A check against the transcript cannot catch either.
 
-음성 경로의 전사: 6개 회의, 음성 355분, CER 5.3%(회의 평균), 처리 RTF 0.198. CER은 낮아도 틀린 글자가 기능 이름과 사람 이름에 몰린다("주소록 동기화"→"수소로 전기화", 지어낸 담당자 20). p1이 음성 경로에서 놓친 결정 52개 중 18개는 열쇠말이 전사 어디에도 없었고, 나머지는 전사에 맞게 적힌 곳이 있어도 요약이 다른 곳의 잘못 적힌 이름을 쓰거나 빠뜨렸다. 이름이 한 글자 틀린 것까지 맞다고 쳐도 48→51개다.
+Speech route transcripts: 6 meetings, 355 min of speech, CER 5.3% (meeting mean), processing RTF 0.198. CER is low, but the wrong letters gather in feature names and people's names ("주소록 동기화"→"수소로 전기화", contact sync heard as nonsense; 20 invented owners). Of the 52 decisions p1 missed on the speech route, 18 had their keywords nowhere in the transcript; for the rest the transcript had them right somewhere, but the summary used a misheard name from elsewhere or left them out. Counting names one letter off as right still gives only 48→51.
 
-### 단어장(STT-7): 같은 녹음을 단어장 없이, 있게
+### Vocabulary (STT-7): the same recordings without and with a vocabulary
 
-음성 경로의 녹음을 그대로 두고(`asr_meetings.py --keep-audio`) 최종본 경로에 단어장을 whisper initial prompt로 줬다(`--vocabulary`, `WhisperDecoder::with_vocabulary`). 단어장은 사용자가 적을 법한 것: 회의에 나온 사람 이름, 회의에서 말하지 않은 기능 이름 1~2개(미끼), 회사 이름, 많이 나온 기능 이름 순으로 100자까지. 이름·용어는 대본에서 말한 횟수 중 전사에서 들린 횟수를 셌고("들림"), 말한 것보다 많이 들린 횟수("더 들림")와 미끼가 들린 횟수를 따로 셌다. 요약은 4B chunked p2.
+The speech route's recordings were kept (`asr_meetings.py --keep-audio`) and the final pass was given a vocabulary as whisper's initial prompt (`--vocabulary`, `WhisperDecoder::with_vocabulary`). The vocabulary is what a user would plausibly type: the people's names in the meeting, 1–2 feature names never said in the meeting (decoys), the company name, then the most frequent feature names, up to 100 characters. For names and terms we counted how many of the times said in the script were heard in the transcript ("heard"), and separately how many times one was heard more often than said ("extra") and how many times a decoy was heard. Summaries are 4B chunked p2.
 
-| 조건 | 이름·용어 들림 | 그중 단어장 안 | 더 들림 | 미끼 들림 | CER | 디코딩 | 결정 | 할 일 | 담당자 맞음 | 지어낸 담당자 |
+| Condition | Names and terms heard | Of which in vocabulary | Extra | Decoys heard | CER | Decoding | Decisions | Action items | Owner right | Invented owner |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 단어장 없음 | 209/321 (65%) | 145/232 (62%) | 0 | 0 | 5.3% | 4214s | 48/100 | 44/66 | 32/44 | 18 |
-| 단어장 | 238/321 (74%) | 180/232 (78%) | 14 | 0 | 5.1% | 4289s | 57/100 | 39/66 | 36/39 | 10 |
+| no vocabulary | 209/321 (65%) | 145/232 (62%) | 0 | 0 | 5.3% | 4214s | 48/100 | 44/66 | 32/44 | 18 |
+| vocabulary | 238/321 (74%) | 180/232 (78%) | 14 | 0 | 5.1% | 4289s | 57/100 | 39/66 | 36/39 | 10 |
 
-단어장이 없으면 전사가 이전 음성 경로 실행과 글자 하나까지 같았다(회귀 없음). 단어장은 이름·용어를 65%→74%, 결정을 48→57개로 올렸고 디코딩은 1.8% 늘었다. 미끼는 한 번도 들리지 않았다. 더 들린 14번은 두 종류다: 짧은 구간 하나가 "지호, 지호, 지호, 지호."로 단어장 이름을 되풀이했고(4번), 나머지 10번은 다른 이름을 말한 자리에서 단어장의 다른 이름이 들렸다("시온 님이"가 단어장 없이는 "시원님이", 단어장으로는 "지호님이"). 없는 이름보다 실제 참석자 이름으로 틀리는 쪽이 더 그럴듯해 해롭지만, 담당자 맞음은 전체로 올랐다.
+Without a vocabulary the transcript matched the earlier speech route run to the letter (no regression). The vocabulary raised names and terms from 65%→74% and decisions from 48→57, and decoding took 1.8% longer. No decoy was ever heard. The 14 extras are of two kinds: one short span repeated a vocabulary name as "지호, 지호, 지호, 지호." (4 times), and the other 10 heard another vocabulary name where a different name was said ("시온 님이" was "시원님이" without the vocabulary and "지호님이" with it). Getting it wrong with a real attendee's name is more believable than a name that does not exist, so it does more harm, but owner right went up overall.
 
-되풀이 거르기(`blocklist::is_vocabulary_echo`: 단어장 용어만 셋 이상 이어진 구간은 버림)는 이 단어장 전사에서 그 한 구간만 버렸고, 단어장 없는 전사와 대본 문장에서는 하나도 버리지 않았다.
+The echo filter (`blocklist::is_vocabulary_echo`: drop a span made only of three or more vocabulary terms in a row) dropped only that one span in this vocabulary transcript, and nothing in the transcript without a vocabulary or in the script sentences.
 
-단어장 실행에서 사라진 할 일 10개(새로 찾은 것을 빼면 5개 순감): 3개는 전사가 바뀌었다("다음 주 화요일"이 "다음 주와 요일"로, 날짜를 못 들음). 7개는 전사에 열쇠말이 그대로 있는데 요약이 같은 틀의 다른 할 일("배포 전 점검표 정리", "견적 다시 요청")과 날짜를 뒤섞었다. 채점 매칭 탓은 없었다. greedy 디코딩이라 같은 입력에는 같은 출력이 나오니, 이 차이는 전사의 작은 변화가 요약을 흔든 결과다.
+The 10 action items lost in the vocabulary run (5 net, after the newly found ones): in 3 the transcript changed ("다음 주 화요일", next Tuesday, became "다음 주와 요일", so the date was not heard). In 7 the keywords were in the transcript as is, but the summary mixed up the date with another action item from the same template ("배포 전 점검표 정리", "견적 다시 요청"). None came from score matching. Greedy decoding gives the same output for the same input, so the difference is a small change in the transcript shaking the summary.
 
-### 앱의 요약: 합치기 단계와 근거 구간(SUM-3)
+### The app's summary: the merge step and evidence spans (SUM-3)
 
-앱이 쓰는 Rust 경로(`examples/summarise`, `app_summary.py`)로 같은 4B chunked p2를 돌렸다. 프롬프트가 같고 greedy라 구간마다 모델의 답은 bench와 같고, 다른 것은 합치기뿐이다. 앱의 합치기는 나중 값이 같은 항목의 앞 값을 대신하고, 미룬 결정은 미해결로 옮기고, 의장 선포("계속 심사", "가결되었음을 선포")가 있는 회의에서는 계속 심사된 안건 구간의 결정을 미해결로 내린다. 근거가 맞음은 찾은 항목의 근거 줄(앞뒤 한 줄 포함)이 그 항목의 값(값이 없으면 열쇠말)을 말하는 비율이다.
+The same 4B chunked p2 was run through the Rust path the app uses (`examples/summarise`, `app_summary.py`). The prompt is the same and decoding is greedy, so the model's answer for each span is the same as in bench; only the merge differs. The app's merge lets a later value replace an earlier one for the same item, moves deferred decisions to open questions, and in a meeting with chair rulings ("계속 심사", held over for further review; "가결되었음을 선포", declared passed) moves the decisions of a held-over item's spans to open questions. Evidence right is the share of found items whose evidence line (with one line either side) states the item's value (or its keyword when it has no value).
 
-| 대본 | 합치기 | 결정 | 값 틀림 | 철회를 결정으로 | 미해결 | 할 일 | 결정 근거 맞음 | 할 일 근거 맞음 |
+| Script | Merge | Decisions | Wrong value | Retracted as decision | Open questions | Action items | Decision evidence right | Action item evidence right |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | v2 | bench | 74/100 | 1 | 0 | 12/20 | 59/66 | — | — |
-| v2 | 앱 | 74/100 | 1 | 0 | 12/20 | 59/66 | 74/74 (100%) | 59/59 (100%) |
+| v2 | app | 74/100 | 1 | 0 | 12/20 | 59/66 | 74/74 (100%) | 59/59 (100%) |
 | asr | bench | 48/100 | 3 | 2 | 4/20 | 44/66 | — | — |
-| asr | 앱 | 48/100 | 3 | 2 | 4/20 | 44/66 | 45/48 (94%) | 44/44 (100%) |
+| asr | app | 48/100 | 3 | 2 | 4/20 | 44/66 | 45/48 (94%) | 44/44 (100%) |
 
-합성 대본에서 앱의 합치기는 점수를 바꾸지 않았다. 바뀐 것은 한 건뿐으로, 결정에 적힌 "다음 회의 때 다시 보며 오늘 정하지 않습니다"를 미해결로 옮겼다. 철회된 값이 결정으로 남은 경우는 한 구간 안에서 모델이 적은 것이라 합치기가 볼 수 없다(음성 경로의 하나는 받아 적기가 최종 금액을 놓쳤다). 채점기는 "500만 원에서 400만 원으로 확정"을 철회 값으로 세고 있었다. 이제 "에서 + 숫자"를 바뀐 값으로 보고, 모든 표를 다시 채점했다(결과 9개에서 "철회를 결정으로" 12건이 빠짐).
+On the synthetic scripts the app's merge did not change the scores. It changed one thing only: it moved a decision that read "다음 회의 때 다시 보며 오늘 정하지 않습니다" (we will look again at the next meeting and not decide today) to open questions. A retracted value left as a decision was written by the model inside one span, so the merge cannot see it (one on the speech route was the transcription missing the final amount). The scorer was counting "500만 원에서 400만 원으로 확정" (confirmed at 4 million won, down from 5 million) as a retracted value. It now reads "에서 + number" (from + number) as a changed value, and every table was scored again (12 "retracted as decision" fewer across 9 results).
 
-의장 선포가 있는 회의(국회 상임위 소위 회의록 한 건, 로컬에서만 돌리고 원문과 요약은 커밋하지 않음)에서 같은 모델 답에 앱의 합치기를 쓰면: 계속 심사된 두 안건 구간의 결정 18개가 미해결로 내려갔고(계속 심사된 법안을 "통과"로 적은 오류가 사라짐), 가결된 안건 안에서 미룬 조항 2개만 미해결로 갔고, 의장의 선포 문장이 근거 줄과 함께 목록에 들어갔다. 결정 75→62, 미해결 16→38.
+In a meeting with chair rulings (one set of National Assembly subcommittee minutes, run locally only; neither the text nor the summary is committed), the app's merge on the same model answers: moved the 18 decisions in the two held-over items' spans to open questions (the error of writing a held-over bill as "통과", passed, went away), moved only 2 deferred clauses inside passed items to open questions, and put the chair's ruling sentences in the list with their evidence lines. Decisions 75→62, open questions 16→38.
 
-## 9. 화자 분리 (requirements §12 위험 1)
+## 9. Diarization (requirements §12 risk 1)
 
-앱이 넣을 후보인 sherpa-onnx의 회의 후 화자 분리(pyannote segmentation-3.0, 화자 임베딩 하나, 군집)를 임베딩 모델별로 쟀다. 데이터, 모델, 버전, 다시 돌리는 명령은 `bench/README.md`의 "화자 분리 측정"에 있고, 결과 JSON은 `bench/results/diar/`에 있다. 결과 JSON마다 sherpa-onnx·onnxruntime·scipy·numpy 버전과 모델 파일의 sha256이 들어 있다. 이 기록이 생기기 전에 만든 결과(tune, korean·ami의 `.th`·`.absorb`·`.oracle`·`.online`, long)에는 버전 기록이 없다. 기본 채점은 DER(collar 0.25 s, 겹침 포함)이고, 괄호 안은 collar 0이다. 회의마다 DER을 구해 평균했다.
+We measured sherpa-onnx's after-meeting diarization (pyannote segmentation-3.0, one speaker embedding, clustering), the app's candidate, for each embedding model. Data, models, versions and the commands to run it again are in the diarization section of `bench/README.md`; the result JSONs are in `bench/results/diar/`. Each result JSON records the sherpa-onnx, onnxruntime, scipy and numpy versions and the sha256 of the model files. Results made before this was recorded (tune, korean and ami `.th`, `.absorb`, `.oracle`, `.online`, long) have no versions. The default score is DER (collar 0.25 s, overlap included); the value in brackets is collar 0. DER is computed per meeting and averaged.
 
-**데이터와 한계**
-- 한국어: Zeroth-Korean(OpenSLR 40, CC BY 4.0)의 낭독 문장을 이어 붙여 만든 합성 회의다. 장면(room: 한 마이크, 화자마다 거리가 다른 잔향과 잡음 바닥 / call: 통화 상대편, 300~3400 Hz 대역 제한, mu-law, 약한 잡음) × 화자 2·4·6명, 30분. 발화의 10%가 겹치고, 차례의 15%는 듣는 사람의 0.3~0.9초 짧은 대답이다. test는 Zeroth test 화자로 만든 12회의(6시간)다. dev는 test와 겹치지 않는 train 화자 12명으로 만든 같은 구성 6회의(3시간)다. 같은 화자 풀에서 문장 클립을 다시 쓰므로 한 회의 안에서도 같은 클립이 되풀이될 수 있다. 화자마다 클립이 한 녹음 환경에서 왔으므로 채널이 화자를 드러낼 수 있다(room의 화자별 잔향이 흐리게 하지만 없애지는 못한다). **그래서 한국어 test는 낙관적일 수 있다.** 실제 대화가 아니라 낭독이고, 짧은 대답은 문장의 조각이지 실제 "네"가 아니다.
-- AMI: 실제 영어 회의 16개(test 분할, BUT AMI-diarization-setup의 only_words 정답과 UEM), Mix-Headset과 Array1-01 두 마이크다. 회의당 화자는 3~4명, 합계 63명이다. AMI와 한국어의 순위가 다르면 AMI를 믿는다(실제 대화, 실제 말수 차이).
-- 실제 회의 녹음은 쓰지 않았다.
-- 이 절의 한국어 결과는 6aa83d1 이전 mixer(결과 커밋 167a9b8)로 만든 회의에서 나왔다. 6aa83d1이 call 장면의 대역 제한을 바꿔 call 회의의 끝부분 출력이 조금 달라졌으므로, 다시 만들려면 167a9b8을 체크아웃한다(`bench/README.md`의 "화자 분리 측정").
+**Data and limits**
+- Korean: synthetic meetings made by joining read sentences from Zeroth-Korean (OpenSLR 40, CC BY 4.0). Scene (room: one microphone, reverb and noise floor at a different distance per speaker / call: the far side of a call, 300–3400 Hz band limit, mu-law, light noise) × 2, 4 or 6 speakers, 30 min. 10% of utterances overlap, and 15% of turns are a listener's short reply of 0.3–0.9 s. test is 12 meetings (6 hours) made from Zeroth test speakers. dev is 6 meetings (3 hours) with the same make-up, made from 12 train speakers who do not overlap with test. Sentence clips are reused from the same speaker pool, so the same clip can repeat even within one meeting. Each speaker's clips come from one recording setup, so the channel can give the speaker away (room's per-speaker reverb blurs this but does not remove it). **So the Korean test may be optimistic.** It is read speech, not real conversation, and the short replies are pieces of sentences, not real "네" (yes).
+- AMI: 16 real English meetings (test split, the only_words reference and UEM from BUT AMI-diarization-setup), two microphones: Mix-Headset and Array1-01. 3–4 speakers per meeting, 63 in all. If AMI and Korean rank differently, trust AMI (real conversation, real differences in how much people talk).
+- No real meeting recordings were used.
+- The Korean results in this section come from meetings made with the mixer before 6aa83d1 (results commit 167a9b8). 6aa83d1 changed the call scene's band limit, which changed the end of call meetings' output a little, so check out 167a9b8 to make them again (the diarization section of `bench/README.md`).
 
-**후보 모델** (5분 dev로 고른 threshold만 쓴 sherpa 기본 경로 `.th`. 군집은 complete, 흡수 없음. 추출 RTF는 한국어 test)
+**Candidate models** (sherpa's default path `.th`, with only the threshold chosen on a 5 min dev. Clustering is complete, no absorb. Extraction RTF is on the Korean test)
 
-| 모델 | 라이선스 | threshold | AMI Headset | AMI Array1 | 한국어 test | 화자 ± (한국어) | RTF |
+| Model | Licence | threshold | AMI Headset | AMI Array1 | Korean test | Speakers ± (Korean) | RTF |
 |---|---|---:|---:|---:|---:|---:|---:|
 | CAM++ zh_en (3D-Speaker) | Apache-2.0 | 0.7 | 0.329 | 0.475 | 0.401 | +17.2 | 0.033 |
 | ERes2NetV2 zh (3D-Speaker) | Apache-2.0 | 0.8 | 0.253 | 0.288 | 0.331 | +10.6 | 0.134 |
-| TitaNet small (NeMo) | CC-BY-4.0, 저작자 표시 필요 | 0.8 | 0.284 | 0.407 | 0.343 | +13.3 | 0.037 |
-| WeSpeaker r34 LM | CC-BY-4.0, 저작자 표시 필요 | 0.5 | 0.541 | 0.636 | 0.450 | +3.8 | 0.055 |
+| TitaNet small (NeMo) | CC-BY-4.0, attribution required | 0.8 | 0.284 | 0.407 | 0.343 | +13.3 | 0.037 |
+| WeSpeaker r34 LM | CC-BY-4.0, attribution required | 0.5 | 0.541 | 0.636 | 0.450 | +3.8 | 0.055 |
 | ERes2Net en (3D-Speaker) | Apache-2.0 | 0.9 | 0.280 | 0.395 | 0.383 | +18.0 | 0.071 |
 
-- ERes2Net en은 다음 단계에서 뺐다. 같은 계열의 ERes2NetV2보다 DER이 모든 데이터에서 나쁘고, CAM++·TitaNet보다 두 배 느리다.
-- 게이트가 걸린 모델(pyannote community-1, Sortformer)은 재지 않았다.
-- WeSpeaker: 우리 파일은 wespeaker 공식 voxceleb_resnet34_LM을 sherpa가 ONNX로 다시 배포한 것이다. pyannote 3.1이 쓰는 hbredin 배포본과 sha256이 다르다(e9848563… 대 7bb2f06e…). 같은 원본에서 나왔다는 것은 확인했지만 **가중치가 같다는 것은 추정**이다. pyannote 3.1의 config.yaml은 게이트가 걸려 있어 군집 설정(linkage, threshold, min_cluster_size)의 실제 값을 보지 못했다(추정). 공개 소스(pyannote.audio 3.1.1)에서 확인한 것은 세 가지다. AgglomerativeClustering이 method·threshold·min_cluster_size(임베딩 개수)를 하이퍼파라미터로 두고 작은 클러스터를 centroid가 가장 가까운 큰 클러스터에 재배정한다. 임베딩이 max_num_embeddings를 넘으면 무작위로 줄인다. `embedding_exclude_overlap`의 코드 기본값은 False다.
-- 공개 기준값(목표선이 아님): pyannote 3.1 모델 카드의 AMI는 Headset 18.8%(FA 3.6 / Miss 9.5 / Conf 5.7), Array1 22.4%이고, collar 0, 겹침 포함이다. 평가 분할과 정답 규칙이 우리와 같은지 확인하지 않았으므로, 우리 숫자와 직접 비교하지 않는다.
+- ERes2Net en was dropped from the next stage. Its DER is worse than ERes2NetV2 from the same family on every data set, and it is twice as slow as CAM++ and TitaNet.
+- Gated models (pyannote community-1, Sortformer) were not measured.
+- WeSpeaker: our file is the official wespeaker voxceleb_resnet34_LM as re-released in ONNX by sherpa. Its sha256 differs from the hbredin release that pyannote 3.1 uses (e9848563… vs 7bb2f06e…). We checked that both come from the same original, but **that the weights are the same is assumed**. pyannote 3.1's config.yaml is gated, so we could not see the actual clustering settings (linkage, threshold, min_cluster_size) (assumed). From the public source (pyannote.audio 3.1.1) we confirmed three things. AgglomerativeClustering has method, threshold and min_cluster_size (a number of embeddings) as hyperparameters and reassigns small clusters to the large cluster with the nearest centroid. When the embeddings exceed max_num_embeddings it subsamples them at random. The code default of `embedding_exclude_overlap` is False.
+- Published reference values (not targets): pyannote 3.1's model card gives AMI Headset 18.8% (FA 3.6 / Miss 9.5 / Conf 5.7) and Array1 22.4%, collar 0, overlap included. We did not check that the evaluation split and reference rules are the same as ours, so we do not compare them directly with our numbers.
 
-**oracle은 상한이 아님.** 참 화자 수를 알려 준 `.oracle`(CAM++)이 흡수보다 나쁜 곳이 있다(AMI Headset 0.229 대 0.152). 화자 수를 고정하면 sherpa는 complete linkage를 그 개수에서 자르므로, 짧은 조각 클러스터가 개수를 차지하고 실제 화자 둘이 하나로 합쳐진다. 고정 개수의 클러스터별 총 발화를 출력해 이 현상을 확인했고, 두 경로가 같은 채점기와 같은 UEM으로 채점된다는 것도 확인했다. 버그가 아니다.
+**The oracle is not an upper bound.** `.oracle` (CAM++), given the true number of speakers, is worse than absorb in places (AMI Headset 0.229 vs 0.152). With a fixed number of speakers sherpa cuts complete linkage at that count, so short fragment clusters take up the count and two real speakers merge into one. We confirmed this by printing the total speech per cluster at the fixed count, and confirmed that both paths are scored by the same scorer with the same UEM. It is not a bug.
 
-### 흡수 (탐색용)
+### Absorb (exploratory)
 
-sherpa 경로의 결과는 화자를 크게 부풀린다(AMI Headset 평균 +64명). 이 짧은 조각 클러스터를 가장 가까운 큰 클러스터로 접는 후처리(`diar_post.absorb`)를 만들었다. 처음에는 "총 발화 N초 미만"인 초 단위 바닥이었다. **초 단위 바닥이 test에서 실패한 것을 보고 비율로 바꿨다.** test를 보고 설계를 바꿨으므로 아래 숫자는 확증이 아니라 탐색용이다. 그 뒤로는 dev를 test와 같은 길이·구성(30분, room/call × 2·4·6명)으로 다시 만들고, 비율과 threshold를 그 dev에서만 골랐다. 고른 값은 threshold 0.9, 비율 8%다. 8%는 격자의 위쪽 끝이어서, 다음 격자(B)에서 16%까지 넓혔다.
+The sherpa path's results inflate the speakers a lot (AMI Headset +64 on average). We wrote a post-process (`diar_post.absorb`) that folds these short fragment clusters into the nearest large cluster. At first it was a floor in seconds, "under N s of total speech". **We switched to a share after seeing the seconds floor fail on test.** The design changed after looking at test, so the numbers below are exploratory, not confirmatory. After that we rebuilt dev with the same length and make-up as test (30 min, room/call × 2, 4 or 6 speakers) and chose the share and threshold on that dev only. The chosen values are threshold 0.9 and share 8%. 8% was at the top end of the grid, so the next grid (B) widened it to 16%.
 
-| 데이터 (CAM++) | `.th` | 화자 ± | + 흡수 8% | 화자 ± | `.oracle` | 참 화자 수 |
+| Data (CAM++) | `.th` | Speakers ± | + absorb 8% | Speakers ± | `.oracle` | True speakers |
 |---|---:|---:|---:|---:|---:|---:|
-| AMI Headset | 0.329 | +64.4 | 0.152 | +2.3 | 0.229 | 63 (16회의) |
-| AMI Array1 | 0.475 | +78.6 | 0.242 | +2.4 | 0.288 | 63 (16회의) |
-| 한국어 test | 0.401 | +17.2 | 0.316 | −0.8 | 0.340 | 48 (12회의) |
-| 한국어 room | 0.483 | +27.2 | 0.127 | +0.5 | 0.211 | 24 (6회의) |
-| 한국어 call | 0.319 | +7.2 | 0.505 | −2.0 | 0.468 | 24 (6회의) |
+| AMI Headset | 0.329 | +64.4 | 0.152 | +2.3 | 0.229 | 63 (16 meetings) |
+| AMI Array1 | 0.475 | +78.6 | 0.242 | +2.4 | 0.288 | 63 (16 meetings) |
+| Korean test | 0.401 | +17.2 | 0.316 | −0.8 | 0.340 | 48 (12 meetings) |
+| Korean room | 0.483 | +27.2 | 0.127 | +0.5 | 0.211 | 24 (6 meetings) |
+| Korean call | 0.319 | +7.2 | 0.505 | −2.0 | 0.468 | 24 (6 meetings) |
 
-room은 크게 좋아지고 call은 나빠졌다. 6명 통화 회의는 2명으로 접혔다(DER 0.64~0.66). 통화 대역에서는 화자 사이 임베딩 거리가 좁아져 threshold 0.9가 서로 다른 사람을 한 클러스터로 묶고, 흡수가 남은 것을 더 접는 것으로 보인다(추정, 따로 재지 않음).
+room gets much better and call gets worse. 6-speaker calls folded into 2 (DER 0.64–0.66). In the call band the embedding distance between speakers narrows, so threshold 0.9 seems to put different people in one cluster and absorb folds what is left even further (assumed, not measured separately).
 
-### 재현 확인: sherpa의 단계를 numpy로 다시 짜기
+### Reproduction check: sherpa's steps rewritten in numpy
 
-군집 방법을 바꿔 보려고 sherpa의 회의 후 경로를 `bench/diar_pipe.py`로 다시 짰다. 임베딩은 한 번만 뽑아 저장하고(`bench/data/`, 커밋하지 않음), 군집은 scipy(BSD-3-Clause)로 한다. 격자로 넘어가기 전 기준은 "sherpa와 DER 0.5%p 이내, 화자 수 동일"로 정했다. 결과는 complete 0.7, dev 2회의 × 4모델이다.
+To try other clustering methods we rewrote sherpa's after-meeting path as `bench/diar_pipe.py`. Embeddings are extracted once and stored (`bench/data/`, not committed), and clustering uses scipy (BSD-3-Clause). The bar before moving on to the grid was "within 0.5%p DER of sherpa, same number of speakers". The results are complete 0.7, 2 dev meetings × 4 models.
 
-| 회의 | 모델 | DER sherpa | DER 우리 | 화자 sherpa | 화자 우리 |
+| Meeting | Model | DER sherpa | DER ours | Speakers sherpa | Speakers ours |
 |---|---|---:|---:|---:|---:|
-| room 2명 | CAM++ | 0.1080 | 0.1081 | 13 | 13 |
-| room 2명 | ERes2NetV2 | 0.1795 | 0.1792 | 14 | 14 |
-| room 2명 | TitaNet | 0.2513 | 0.2511 | 15 | 14 |
-| room 2명 | WeSpeaker | 0.5047 | 0.5047 | 1 | 1 |
-| room 4명 | CAM++ | 0.3768 | 0.3764 | 28 | 28 |
-| room 4명 | ERes2NetV2 | 0.3632 | 0.3621 | 31 | 31 |
-| room 4명 | TitaNet | 0.5077 | 0.5085 | 29 | 28 |
-| room 4명 | WeSpeaker | 0.7273 | 0.7273 | 1 | 1 |
+| room 2 speakers | CAM++ | 0.1080 | 0.1081 | 13 | 13 |
+| room 2 speakers | ERes2NetV2 | 0.1795 | 0.1792 | 14 | 14 |
+| room 2 speakers | TitaNet | 0.2513 | 0.2511 | 15 | 14 |
+| room 2 speakers | WeSpeaker | 0.5047 | 0.5047 | 1 | 1 |
+| room 4 speakers | CAM++ | 0.3768 | 0.3764 | 28 | 28 |
+| room 4 speakers | ERes2NetV2 | 0.3632 | 0.3621 | 31 | 31 |
+| room 4 speakers | TitaNet | 0.5077 | 0.5085 | 29 | 28 |
+| room 4 speakers | WeSpeaker | 0.7273 | 0.7273 | 1 | 1 |
 
-- 첫 실행은 기준에 못 미쳤다(CAM++ 4명 0.3768 대 0.3975, 화자 28 대 32). 원인은 클러스터 번호였다. sherpa는 처음 나온 순서로 번호를 매기고, scipy fcluster는 다르게 매긴다. 프레임마다 화자를 고르는 top-k에서 동점은 낮은 번호가 가져가므로, 번호만 달라도 결과가 달라진다. 군집 자체는 같았다(sherpa FastClustering과 scipy complete의 분할이 8/8 동일). sherpa는 결정적이었다(1·4스레드, 반복 실행 동일). 우리 segmentation도 1스레드·그래프 최적화 끔에서 0프레임이 바뀌었다. ORT 버전 차이(sherpa 내장 1.28.2 대 1.31.0)도 원인이 아니었다. 번호를 처음 나온 순서로 고친 뒤 위 표가 나왔다.
-- **남은 차이는 k≥2일 때 libc++ `std::partial_sort`의 동점 처리 하나뿐이다.** 예: TitaNet 2명 회의 422.04~422.24 s에서 그 프레임의 화자 수는 2, 표는 {3:3, 1:2, 2:2, 5:2}였다. 우리는 1, sherpa는 2를 골랐다. "앞 번호를 남긴다"는 동작은 k=1에서만 성립한다. 이 때문에 sherpa에는 0.30 s짜리 꼬리 화자가 하나 더 생긴다(15 대 14, 29 대 28).
-- **우리 규칙은 "낮은 번호 우선"으로 명시적이고 결정적이다.**
-- 허용 조건 세 가지를 확인했다. (a) 차이는 바닥이 없는 과분할 상태에서만 생긴다. (b) DER 차이는 0.02·0.08%p다. (c) 흡수를 켜면 화자 수가 같아야 하는데, 2명 회의(흡수 8%)에서 sherpa 4 대 우리 3이었다(DER 0.1366 대 0.1364). **(c)의 2명 차이는 `diar_post.absorb`가 임베딩을 뽑을 수 없는 0.30 s 꼬리를 그대로 남겨서 생긴다**(centroid가 없어 접을 곳을 못 찾음). 통과로 판정했다.
+- The first run missed the bar (CAM++ 4 speakers 0.3768 vs 0.3975, 28 vs 32 speakers). The cause was cluster numbering. sherpa numbers clusters in order of first appearance; scipy fcluster numbers them differently. In the top-k that picks the speakers for each frame, a tie goes to the lower number, so a different numbering alone changes the result. The clustering itself was the same (sherpa FastClustering and scipy complete gave the same partition 8/8). sherpa was deterministic (1 and 4 threads, repeated runs identical). Our segmentation also changed 0 frames with 1 thread and graph optimisation off. The ORT version difference (sherpa's bundled 1.28.2 vs 1.31.0) was not the cause either. The table above is after fixing the numbering to order of first appearance.
+- **The only difference left is how libc++ `std::partial_sort` breaks ties when k≥2.** Example: in the TitaNet 2-speaker meeting at 422.04–422.24 s the frame's speaker count was 2 and the votes were {3:3, 1:2, 2:2, 5:2}. We picked 1, sherpa picked 2. "Keep the earlier number" holds only for k=1. Because of this sherpa gets one more 0.30 s tail speaker (15 vs 14, 29 vs 28).
+- **Our rule, "lower number first", is explicit and deterministic.**
+- We checked three conditions for accepting it. (a) The difference only appears in the over-split state with no floor. (b) The DER difference is 0.02 and 0.08%p. (c) With absorb on, the speaker counts should match, but in the 2-speaker meeting (absorb 8%) sherpa had 4 and we had 3 (DER 0.1366 vs 0.1364). **(c)'s difference of 2 comes from `diar_post.absorb` leaving in place a 0.30 s tail it cannot extract an embedding for** (no centroid, so nowhere to fold it). We judged it a pass.
 
-### 군집 격자 (B, 30분 dev, 탐색용)
+### Clustering grid (B, 30 min dev, exploratory)
 
-모델 넷(CAM++, ERes2NetV2, TitaNet, WeSpeaker) × linkage(complete, average, centroid) × threshold(0.10~1.50) × 바닥(개수 1~20, 또는 임베딩 수 대비 비율 0.5~16%)으로 돌렸다. 바닥보다 작은 클러스터는 centroid가 가장 가까운 큰 클러스터로 간다(pyannote 방식). centroid linkage는 L2 정규화한 임베딩 위에서 돌리고, threshold는 코사인 척도로 읽는다(d_euc = √(2·d_cos)). 최적값이 threshold 아래쪽 끝(0.10)에 닿은 두 모델(CAM++, WeSpeaker)은 그 모델만 0.02~0.08을 더 돌렸다.
+Four models (CAM++, ERes2NetV2, TitaNet, WeSpeaker) × linkage (complete, average, centroid) × threshold (0.10–1.50) × floor (a count of 1–20, or a share of the embeddings of 0.5–16%). Clusters under the floor go to the large cluster with the nearest centroid (the pyannote way). centroid linkage runs on L2-normalised embeddings and the threshold is read on the cosine scale (d_euc = √(2·d_cos)). For the two models whose optimum touched the bottom end of the threshold (0.10) (CAM++, WeSpeaker), we also ran 0.02–0.08 for that model only.
 
-장면별 값도 허용했다. 앱은 system 채널에 소리가 있으면 통화이고 마이크뿐이면 대면 회의라는 것을 안다. 장면별 값은 같은 장면 dev 3회의에서만 골랐으므로 **과적합 위험이 크다**.
+Per-scene values were allowed too. The app knows that sound on the system channel means a call and the microphone alone means an in-person meeting. Per-scene values were chosen only on the 3 dev meetings of the same scene, so **the risk of overfitting is high**.
 
-두 칸을 함께 센다.
-- **erased** = 흡수된 클러스터 가운데 한 실제 화자가 80% 넘게 차지한 것의 수(순수한 조각이 접힘). 그 화자가 다른 큰 클러스터를 갖고 있어도 센다.
-- **vanished** = 어떤 최종 클러스터에서도 발화가 가장 많은 사람이 아닌 실제 화자 수. 임베딩 구간 아래의 정답 발화로 센다.
+Two columns are counted alongside.
+- **erased** = the number of absorbed clusters in which one real speaker holds over 80% (a pure fragment got folded). Counted even if that speaker has another large cluster.
+- **vanished** = the number of real speakers who are not the one who talks most in any final cluster. Counted from the reference speech under the embedding spans.
 
-| 모델 | 공통값(6회의) | dev DER | 화자 ± | vanished | 공통값의 room / call | room 값 | call 값 | sherpa식 |
+| Model | Shared value (6 meetings) | dev DER | Speakers ± | vanished | Shared value room / call | room value | call value | sherpa-like |
 |---|---|---:|---:|---:|---|---|---|---:|
 | CAM++ | average 0.25, 3% | 0.129 | −0.33 | 2/24 | 0.080 / 0.177 | centroid 0.1, 1%: 0.077 | average 0.2, 5%: 0.099 | 0.170 (+2.83) |
 | ERes2NetV2 | complete 0.8, 8% | 0.139 | −0.17 | 2/24 | 0.144 / 0.134 | complete 0.9, 8%: 0.078 | complete 0.6, 8%: 0.124 | 0.197 (+8.67) |
 | TitaNet | complete 0.8, 8% | 0.144 | −0.17 | 1/24 | 0.142 / 0.147 | complete 0.85, 8%: 0.102 | complete 0.75, 8%: 0.146 | 0.205 (+9.0) |
 | WeSpeaker | centroid 0.04, 2% | 0.255 | −1.17 | 7/24 | 0.246 / 0.263 | centroid 0.02, 2%: 0.137 | average 0.15, 12%: 0.253 | 0.408 (+2.0) |
 
-- pyannote식 개수 바닥(12)의 공통 최적은 CAM++ 0.171, ERes2NetV2 0.185, TitaNet 0.190, WeSpeaker 0.296이다. 비율 바닥보다 4~5점 나쁘고 화자가 남는다. 개수 격자의 최적도 위쪽 끝(20)에 붙었다. 바닥은 회의 길이에 비례하는 비율이 맞다.
-- erased는 average·centroid를 낮은 threshold에서 쓰면 수천이 된다. 이때 대부분의 임베딩이 혼자 클러스터를 이루고, 한 사람의 조각들이 접히기 때문이다. 사람이 실제로 사라졌는지는 vanished로 본다.
-- centroid linkage의 높이 역전(6회의 합): CAM++ 2086, ERes2NetV2 1759, TitaNet 1648, WeSpeaker 3221. complete와 average는 0이다. 역전이 있는 덴드로그램은 threshold로 자른 결과의 뜻이 흐려지므로, **centroid 값은 표에 남기되 앱 후보에서 뺀다.**
-- 넓힌 격자: CAM++ room의 최적은 0.10 그대로였다(끝 효과가 아님). WeSpeaker는 0.04와 0.02로 내려갔지만, 0.02에서 바닥 전 클러스터가 임베딩의 29%(room)~60%(call)라서 퇴화한 상태다(아래).
-- 퇴화 확인(dev): CAM++ average 0.25에서 바닥 전 클러스터는 room 321~459개, call 164~230개다(회의당 임베딩 약 3,200개의 5~15%). 임베딩 수에 가깝지 않으므로 완전한 퇴화는 아니다. 다만 3% 바닥이 옮기는 임베딩이 room 25~52%, call 9~14%이고, 6회의 모두 "바닥을 넘는 클러스터 수 = 최종 화자 수"였다. complete 0.9(8%)는 바닥 전 4~23개, 옮기는 비율 1~11%로 컷이 일을 한다. WeSpeaker centroid 0.02는 call dev에서 바닥을 넘는 클러스터가 하나도 없어 아무것도 접히지 않았다(화자 약 2,000명).
+- With a pyannote-style count floor (12), the shared optimum is CAM++ 0.171, ERes2NetV2 0.185, TitaNet 0.190, WeSpeaker 0.296. That is 4–5 points worse than the share floor, with speakers left over. The count grid's optimum also sat at the top end (20). The floor should be a share that scales with the meeting's length.
+- erased runs into the thousands when average or centroid is used at a low threshold. Most embeddings then form a cluster of their own, and one person's fragments get folded. Whether a person really vanished is read from vanished.
+- Height inversions in centroid linkage (sum over 6 meetings): CAM++ 2086, ERes2NetV2 1759, TitaNet 1648, WeSpeaker 3221. complete and average have 0. In a dendrogram with inversions, cutting at a threshold loses its meaning, so **the centroid values stay in the table but are dropped from the app candidates.**
+- The widened grid: CAM++ room's optimum stayed at 0.10 (not an end effect). WeSpeaker went down to 0.04 and 0.02, but at 0.02 the clusters before the floor are 29% (room) to 60% (call) of the embeddings, a degenerate state (below).
+- Degeneracy check (dev): at CAM++ average 0.25 there are 321–459 clusters before the floor in room and 164–230 in call (5–15% of about 3,200 embeddings per meeting). That is not close to the number of embeddings, so it is not fully degenerate. But the 3% floor moves 25–52% of embeddings in room and 9–14% in call, and in all 6 meetings "clusters over the floor = final speakers". complete 0.9 (8%) has 4–23 clusters before the floor and moves 1–11%, so the cut does the work. WeSpeaker centroid 0.02 had no cluster over the floor in call dev, so nothing was folded (about 2,000 speakers).
 
-### 사전 등록과 test 결과
+### Preregistration and test results
 
-test와 AMI에 쓸 값은 test를 보기 전에 `bench/results/diar/preregistered.json`(2026-10-21 06:48 +0900, 한 번만 쓰고 덮어쓰지 않음)에 적었고, 그 파일이 test 결과보다 먼저 공개 저장소에 올라갔다. `pipe` 단계는 이 파일에서만 값을 읽는다. 대표값은 모델별 공통값, 보조는 장면별 값(AMI에는 room 값), 기준선은 sherpa식(complete, 흡수 없음, dev 최적 threshold)이다. 앱 후보는 CAM++ average 0.25, 3%(역전 없음) 하나다. 아래 표는 등록한 그대로이며, 결과를 본 뒤 더하거나 바꾼 후보는 없다.
+The values for test and AMI were written before looking at test into `bench/results/diar/preregistered.json` (2026-10-21 06:48 +0900, written once and never overwritten), and that file reached the public repository before the test results. The `pipe` step reads values from this file only. The headline is each model's shared value, the secondary is the per-scene values (the room value for AMI), and the baseline is sherpa-like (complete, no absorb, dev-optimal threshold). The app candidate is one: CAM++ average 0.25, 3% (no inversions). The table below is as registered; no candidate was added or changed after seeing the results.
 
-| 모델 | 계열 | 설정 | AMI Headset | 화자 ± | vanished | AMI Array1 | 화자 ± | vanished | 한국어 test | 화자 ± | vanished |
+| Model | Series | Setting | AMI Headset | Speakers ± | vanished | AMI Array1 | Speakers ± | vanished | Korean test | Speakers ± | vanished |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| CAM++ | 대표 | average 0.25, 3% | **0.181** (0.246) | −0.3 | 9/63 | 0.335 (0.391) | −0.1 | 17/63 | 0.274 (0.316) | −0.2 | 7/48 |
-| CAM++ | 장면별 | room centroid 0.1, 1% / call average 0.2, 5% | 0.159 (0.225) | +0.0 | 7/63 | 0.234 (0.298) | −0.2 | 13/63 | 0.259 (0.301) | +1.2 | 4/48 |
-| CAM++ | sherpa식 | complete 0.9 | 0.214 (0.292) | +27.2 | 0/63 | 0.320 (0.398) | +32.4 | 0/63 | 0.345 (0.382) | +4.2 | 8/48 |
-| ERes2NetV2 | 대표 | complete 0.8, 8% | 0.190 (0.251) | −0.1 | 8/63 | **0.218** (0.283) | −0.1 | 9/63 | **0.261** (0.304) | +0.2 | 2/48 |
-| ERes2NetV2 | 장면별 | room complete 0.9, 8% / call complete 0.6, 8% | 0.181 (0.243) | +0.1 | 6/63 | 0.229 (0.292) | −0.4 | 10/63 | 0.245 (0.288) | +0.2 | 2/48 |
-| ERes2NetV2 | sherpa식 | complete 0.8 | 0.253 (0.329) | +33.8 | 0/63 | 0.286 (0.364) | +36.2 | 0/63 | 0.333 (0.375) | +10.8 | 0/48 |
-| TitaNet | 대표 | complete 0.8, 8% | 0.194 (0.256) | −0.4 | 12/63 | 0.313 (0.368) | −1.1 | 22/63 | 0.299 (0.339) | +0.1 | 5/48 |
-| TitaNet | 장면별 | room complete 0.85, 8% / call complete 0.75, 8% | 0.196 (0.259) | −0.1 | 10/63 | 0.285 (0.343) | −0.9 | 20/63 | 0.262 (0.305) | +0.1 | 3/48 |
-| TitaNet | sherpa식 | complete 0.8 | 0.284 (0.365) | +49.0 | 0/63 | 0.406 (0.488) | +62.2 | 0/63 | 0.343 (0.383) | +13.3 | 0/48 |
-| WeSpeaker | 대표 | centroid 0.04, 2% | 0.792 (0.827) | +294.1 | 4/63 | 0.498 (0.536) | −0.9 | 33/63 | 0.337 (0.374) | −0.3 | 10/48 |
-| WeSpeaker | 장면별 | room centroid 0.02, 2% / call average 0.15, 12% | 0.996 (1.022) | +574.1 | 0/63 | 0.874 (0.904) | +434.9 | 11/63 | 0.382 (0.417) | −1.2 | 16/48 |
-| WeSpeaker | sherpa식 | complete 0.55 | 0.492 (0.567) | +80.1 | 0/63 | 0.611 (0.657) | +21.3 | 5/63 | 0.442 (0.475) | +2.1 | 9/48 |
+| CAM++ | headline | average 0.25, 3% | **0.181** (0.246) | −0.3 | 9/63 | 0.335 (0.391) | −0.1 | 17/63 | 0.274 (0.316) | −0.2 | 7/48 |
+| CAM++ | per scene | room centroid 0.1, 1% / call average 0.2, 5% | 0.159 (0.225) | +0.0 | 7/63 | 0.234 (0.298) | −0.2 | 13/63 | 0.259 (0.301) | +1.2 | 4/48 |
+| CAM++ | sherpa-like | complete 0.9 | 0.214 (0.292) | +27.2 | 0/63 | 0.320 (0.398) | +32.4 | 0/63 | 0.345 (0.382) | +4.2 | 8/48 |
+| ERes2NetV2 | headline | complete 0.8, 8% | 0.190 (0.251) | −0.1 | 8/63 | **0.218** (0.283) | −0.1 | 9/63 | **0.261** (0.304) | +0.2 | 2/48 |
+| ERes2NetV2 | per scene | room complete 0.9, 8% / call complete 0.6, 8% | 0.181 (0.243) | +0.1 | 6/63 | 0.229 (0.292) | −0.4 | 10/63 | 0.245 (0.288) | +0.2 | 2/48 |
+| ERes2NetV2 | sherpa-like | complete 0.8 | 0.253 (0.329) | +33.8 | 0/63 | 0.286 (0.364) | +36.2 | 0/63 | 0.333 (0.375) | +10.8 | 0/48 |
+| TitaNet | headline | complete 0.8, 8% | 0.194 (0.256) | −0.4 | 12/63 | 0.313 (0.368) | −1.1 | 22/63 | 0.299 (0.339) | +0.1 | 5/48 |
+| TitaNet | per scene | room complete 0.85, 8% / call complete 0.75, 8% | 0.196 (0.259) | −0.1 | 10/63 | 0.285 (0.343) | −0.9 | 20/63 | 0.262 (0.305) | +0.1 | 3/48 |
+| TitaNet | sherpa-like | complete 0.8 | 0.284 (0.365) | +49.0 | 0/63 | 0.406 (0.488) | +62.2 | 0/63 | 0.343 (0.383) | +13.3 | 0/48 |
+| WeSpeaker | headline | centroid 0.04, 2% | 0.792 (0.827) | +294.1 | 4/63 | 0.498 (0.536) | −0.9 | 33/63 | 0.337 (0.374) | −0.3 | 10/48 |
+| WeSpeaker | per scene | room centroid 0.02, 2% / call average 0.15, 12% | 0.996 (1.022) | +574.1 | 0/63 | 0.874 (0.904) | +434.9 | 11/63 | 0.382 (0.417) | −1.2 | 16/48 |
+| WeSpeaker | sherpa-like | complete 0.55 | 0.492 (0.567) | +80.1 | 0/63 | 0.611 (0.657) | +21.3 | 5/63 | 0.442 (0.475) | +2.1 | 9/48 |
 
-한국어 test 장면별 (대표 / 장면별 / sherpa식, DER):
+Korean test by scene (headline / per scene / sherpa-like, DER):
 
-| 모델 | room | call |
+| Model | room | call |
 |---|---|---|
 | CAM++ | 0.198 / 0.221 / 0.185 | 0.351 / 0.297 / 0.505 |
 | ERes2NetV2 | 0.253 / 0.170 / 0.380 | 0.269 / 0.319 / 0.285 |
 | TitaNet | 0.210 / 0.147 / 0.279 | 0.388 / 0.378 / 0.407 |
 | WeSpeaker | 0.301 / 0.280 / 0.409 | 0.373 / 0.484 / 0.476 |
 
-**순위.** 사전 등록에는 "대표값의 AMI 결과로 순위를 정한다"고만 적었고, 어느 마이크인지는 정하지 않았다. 지금 하나를 고르면 사후 결정이 되므로 두 순위를 나란히 적고, 어느 쪽도 사전 등록 순위라 부르지 않는다.
-- Headset만 보면 CAM++ (0.181) ≥ ERes2NetV2 (0.190) ≈ TitaNet (0.194).
-- Array1만 보면 ERes2NetV2 (0.218) > TitaNet (0.313) ≈ CAM++ (0.335).
-- 앱의 장면과 연결하면 이렇다. 대면 회의는 노트북 마이크 하나로 듣는 원거리 음성이라 Array1에 가깝다. 통화의 원격 화자는 system 채널로 들어오는 깨끗한 음성이라 Headset에 가깝다. 결론: **대면 회의에서는 ERes2NetV2가 크게 앞서고(0.218 대 0.335), 깨끗한 음성에서는 셋이 비슷하다.**
-- WeSpeaker는 후보에서 뺀다. 퇴화한 centroid 값이 AMI에서 회의당 화자를 최대 1,185명까지 만들었고, 퇴화하지 않은 sherpa식에서도 가장 나쁘다.
-- 장면별 값은 일반화되지 않는다. test에서 장면별 값이 대표값보다 나쁜 곳이 있다(CAM++ room 0.198→0.221, ERes2NetV2 call 0.269→0.319). dev 3회의로 고른 값이다.
+**Ranking.** The preregistration only said "rank by the headline's AMI result" and did not say which microphone. Choosing one now would be a post hoc decision, so both rankings are written side by side and neither is called the preregistered ranking.
+- Headset alone: CAM++ (0.181) ≥ ERes2NetV2 (0.190) ≈ TitaNet (0.194).
+- Array1 alone: ERes2NetV2 (0.218) > TitaNet (0.313) ≈ CAM++ (0.335).
+- Tied to the app's scenes: an in-person meeting is far-field speech heard by one laptop microphone, close to Array1. A call's remote speakers are clean speech coming in on the system channel, close to Headset. Conclusion: **in in-person meetings ERes2NetV2 leads clearly (0.218 vs 0.335), and on clean speech the three are about even.**
+- WeSpeaker is dropped from the candidates. Its degenerate centroid value made up to 1,185 speakers per meeting on AMI, and it is the worst even in the non-degenerate sherpa-like setting.
+- Per-scene values do not generalize. On test the per-scene value is worse than the headline in places (CAM++ room 0.198→0.221, ERes2NetV2 call 0.269→0.319). They were chosen on 3 dev meetings.
 
-**이번 측정으로 최종 모델을 정하지 않는다.** 근거는 셋이다.
-1. dev와 test의 격차가 크다. CAM++ 대표값은 dev 0.129에서 한국어 test 0.274가 됐다. 30분 dev 6회의는 고르는 데 쓰기에 작다.
-2. 비율 바닥이 사람을 지운다. 화자 수는 거의 맞지만(±0.4), AMI에서 vanished가 참 화자 63명 가운데 8~22명이다. sherpa식은 vanished 0 대신 화자가 +27~+62명이다. AMI는 4명 회의라도 말수 차이가 커서, 조용한 사람이 바닥에 걸린다.
-3. 앱의 구조(조각 단위 처리, mic/system 채널 분리)는 아직 재지 않은 조건이다.
+**This measurement does not settle the final model.** Three reasons:
+1. The gap between dev and test is large. The CAM++ headline went from 0.129 on dev to 0.274 on the Korean test. Six 30 min dev meetings are too few to choose with.
+2. The share floor erases people. The speaker count is almost right (±0.4), but on AMI 8–22 of the 63 true speakers vanished. sherpa-like has 0 vanished but +27 to +62 speakers. Even in 4-person AMI meetings people talk very different amounts, so quiet people fall under the floor.
+3. The app's structure (processing in pieces, separate mic/system channels) is a condition not measured yet.
 
-조각 단위 시제품에는 CAM++(속도)와 ERes2NetV2(원거리 정확도) 둘을 올린다.
+The chunked prototype gets both CAM++ (speed) and ERes2NetV2 (far-field accuracy).
 
-참고(탐색용, 순위에 넣지 않음): 앞의 흡수(CAM++ threshold 0.9 + `diar_post` 8%)는 AMI Headset 0.152, Array1 0.242로 대표값보다 낫다. 사전 등록 대상이 아니었다.
+For reference (exploratory, not in the ranking): the earlier absorb (CAM++ threshold 0.9 + `diar_post` 8%) gives AMI Headset 0.152 and Array1 0.242, better than the headline. It was not preregistered.
 
-### 실시간 대 회의 후, 4시간 회의
+### Live vs after the meeting, a 4-hour meeting
 
-**실시간(online)**: 60초 조각마다 따로 화자를 나누고, 조각의 화자를 그때까지의 화자에 임베딩 유사도로 잇는다(link threshold 0.4/0.5/0.6). 준 라벨은 고치지 않는다. relabelled는 회의 후 결과(`.th`)가 실시간 결과를 대신할 때 화자가 바뀌는 전사 구간의 비율이다. CAM++, AMI는 Headset만 쟀다.
+**Live (online)**: diarize each 60 s piece on its own and link the piece's speakers to the speakers so far by embedding similarity (link threshold 0.4/0.5/0.6). Labels once given are not changed. relabelled is the share of transcript spans whose speaker changes when the after-meeting result (`.th`) replaces the live one. CAM++; on AMI only Headset was measured.
 
-| 데이터 | `.th` | online 0.4 | online 0.5 | online 0.6 | relabelled |
+| Data | `.th` | online 0.4 | online 0.5 | online 0.6 | relabelled |
 |---|---:|---:|---:|---:|---:|
-| AMI Headset | 0.329 | 0.233 | 0.147 | 0.145 | 41.5~53.1% |
-| 한국어 test | 0.401 | 0.552 | 0.508 | 0.442 | 48.1~56.3% |
+| AMI Headset | 0.329 | 0.233 | 0.147 | 0.145 | 41.5–53.1% |
+| Korean test | 0.401 | 0.552 | 0.508 | 0.442 | 48.1–56.3% |
 
-미리 정한 규칙은 "실시간이 DER 3점 넘게 나쁘거나 relabelled가 5%를 넘으면 회의 후 화자 분리를 기본으로 한다"였다. 한국어에서 실시간이 4~15점 나쁘고 relabelled가 모든 경우에 40%를 넘으므로, **회의 후 화자 분리가 기본이다.** 실시간 화자 표시는 넣더라도 잠정값으로 보여 준다. 다만 AMI에서는 실시간이 `.th`보다 낫다. 조각마다 나눈 뒤 전역으로 잇는 구조가 회의 전체를 한 번에 complete로 자르는 것보다 과분할에 강하다는 신호이고, 아래 조각 단위 시제품의 근거가 된다. relabelled는 과분할된 `.th`를 기준으로 쟀으므로 실제보다 크게 나왔을 수 있다.
+The rule set beforehand was "if live is more than 3 DER points worse or relabelled is over 5%, after-meeting diarization is the default". On Korean, live is 4–15 points worse and relabelled is over 40% in every case, so **after-meeting diarization is the default.** If live speaker labels go in, they are shown as provisional. On AMI, though, live is better than `.th`. That is a sign that diarizing each piece and then linking globally resists over-splitting better than cutting the whole meeting with complete at once, and it is the reason for the chunked prototype below. relabelled was measured against an over-split `.th`, so it may have come out larger than it really is.
 
-**4시간 회의**(한국어 room 4명 합성, sherpa 기본 경로 `.th`, 모델마다 따로 돌린 프로세스):
+**A 4-hour meeting** (Korean room with 4 speakers, synthetic, sherpa's default path `.th`, a separate process per model):
 
-| 모델 | 처리 시간 | RTF | 최대 메모리 | 화자 (참 4) | DER |
+| Model | Processing time | RTF | Peak memory | Speakers (true 4) | DER |
 |---|---:|---:|---:|---:|---:|
-| CAM++ | 9.0분 | 0.038 | 6.0GB | 86 | 0.442 |
-| ERes2NetV2 | 35.8분 | 0.149 | 5.5GB | 75 | 0.498 |
-| TitaNet | 9.8분 | 0.041 | 6.5GB | 61 | 0.369 |
-| WeSpeaker | 14.7분 | 0.061 | 5.8GB | 10 | 0.437 |
-| ERes2Net en | 18.9분 | 0.079 | 6.1GB | 83 | 0.544 |
+| CAM++ | 9.0 min | 0.038 | 6.0GB | 86 | 0.442 |
+| ERes2NetV2 | 35.8 min | 0.149 | 5.5GB | 75 | 0.498 |
+| TitaNet | 9.8 min | 0.041 | 6.5GB | 61 | 0.369 |
+| WeSpeaker | 14.7 min | 0.061 | 5.8GB | 10 | 0.437 |
+| ERes2Net en | 18.9 min | 0.079 | 6.1GB | 83 | 0.544 |
 
-- 메모리는 군집의 거리 행렬에서 나온다. 4시간이면 임베딩이 N ≈ 35,900개이고, 응축 거리 행렬(N(N−1)/2개의 double)이 5.16GB다. 잰 최대치 5.5~6.7GB와 맞는다. average·complete linkage를 scipy로 돌려도 같은 행렬이 필요하므로, 4시간 회의를 회의 전체 한 번의 군집으로 처리하면 앱 메모리가 6GB를 넘는다. 조각 단위로 나누고 조각 중심만 전역으로 다시 묶으면 상한이 생긴다(다음 단계).
-- 앱의 final pass(large-v3-turbo, 7절 RTF 0.094)는 4시간에 약 22.6분이다. 화자 분리를 그 뒤에 이어 돌리면 4시간 회의의 회의 후 처리는 CAM++ 약 9분 + 22.6분 ≈ **32분**, ERes2NetV2 약 36분 + 22.6분 ≈ **58분**이다. 앞의 것은 Metal, 뒤의 것은 CPU라서 겹쳐 돌릴 여지는 있지만 재지 않았다.
-- 처리 시간: AMI의 `.th` 처리 시간은 다른 실행이 동시에 돌던 때라 빼고, 위 표의 한국어 값만 쓴다. test 추출(`extract-test`, 임베딩 24.1시간 분량)의 RTF는 CAM++ 0.035, TitaNet 0.037, WeSpeaker 0.054, ERes2NetV2 0.128이다. 그중 몇 분은 dev 퇴화 확인 스크립트와 겹쳤다.
+- The memory comes from the clustering's distance matrix. 4 hours gives N ≈ 35,900 embeddings, and the condensed distance matrix (N(N−1)/2 doubles) is 5.16GB, matching the measured peaks of 5.5–6.7GB. average and complete linkage in scipy need the same matrix, so clustering a 4-hour meeting in one go over the whole meeting takes the app over 6GB. Splitting into pieces and clustering only the piece centroids again globally puts a cap on it (the next stage).
+- The app's final pass (large-v3-turbo, section 7 RTF 0.094) takes about 22.6 min for 4 hours. Running diarization after it, after-meeting processing for a 4-hour meeting is CAM++ about 9 min + 22.6 min ≈ **32 min** and ERes2NetV2 about 36 min + 22.6 min ≈ **58 min**. The former runs on Metal and the latter on CPU, so there is room to overlap them, but that was not measured.
+- Processing time: AMI's `.th` processing times are left out because other runs were going at the same time; only the Korean values in the table above are used. The RTF of the test extraction (`extract-test`, 24.1 hours of embeddings) is CAM++ 0.035, TitaNet 0.037, WeSpeaker 0.054, ERes2NetV2 0.128. A few minutes of it overlapped with the dev degeneracy check script.
 
-### 조각 단위 시제품: dev 격자 (CAM++, ERes2NetV2)
+### Chunked prototype: dev grid (CAM++, ERes2NetV2)
 
-회의를 시간 조각으로 잘라 조각마다 군집하고, 조각의 화자를 전역에서 묶고(중심 간 average linkage), 묶은 화자의 총 발화에 전역 바닥을 두는 방식이다(`bench/diar_chunk.py`, `bench/run_chunk.py`). dev는 늦게 합류한 사람, 말수 적은 사람(발화의 1~3%), 일찍 나간 사람을 넣은 30분 10회의(seed 300·301)와 4시간 2회의(room·call)다. call은 앱처럼 mic와 system을 따로 두고, mic는 통째로 "나", system만 나눈다. 점수는 30분 dev DER 평균과 4시간 dev DER의 평균이다(collar 0.25). 결과는 `bench/results/diar/chunk/grid/`, 사전 등록은 `bench/results/diar/chunk/preregistered.json`이다(56b700a에 첫 판, 2b660dd에서 test를 만들기 전에 관문 문구와 한계 한 줄을 고쳤다).
+Cut the meeting into time pieces, cluster each piece, link the pieces' speakers globally (average linkage between centroids), and put a global floor on the linked speakers' total speech (`bench/diar_chunk.py`, `bench/run_chunk.py`). dev is ten 30 min meetings (seeds 300 and 301) with a late joiner, a quiet speaker (1–3% of the speech) and an early leaver, and two 4-hour meetings (room and call). call keeps mic and system apart as the app does: the mic is "me" whole, and only system is diarized. The score is the mean of the 30 min dev mean DER and the 4-hour dev DER (collar 0.25). Results are in `bench/results/diar/chunk/grid/`, the preregistration in `bench/results/diar/chunk/preregistered.json` (first version in 56b700a; 2b660dd fixed the gate wording and one limit line before test was built).
 
 | | CAM++ | ERes2NetV2 |
 |---|---:|---:|
-| 사전 등록한 설정 | 1200 s 조각, 겹침 60 s, average 0.15, link 0.25, 바닥 2% | 1200 s 조각, 겹침 60 s, average 0.15, link 0.3, 바닥 1% |
-| dev 점수 (처음 격자의 최선) | 0.116 (0.135) | 0.086 (0.091) |
-| 30분 dev DER / vanished(특수 화자) | 0.123 / 6(5) | 0.080 / 1(1) |
-| 4시간 dev DER / vanished(특수 화자) | 0.110 / 2(2) | 0.093 / 0(0) |
-| 상위 1% 점수 범위 (62개) | 0.116~0.159 | 0.086~0.114 |
-| 교차 seed(확장한 480개 안에서): s300에서 고른 것을 s301에 (s301 자신의 최선) | 0.206 (0.101) | 0.126 (0.086) |
-| 교차 seed: s301에서 고른 것을 s300에 (s300 자신의 최선) | 0.098 (0.089) | 0.101 (0.057) |
+| Preregistered setting | 1200 s pieces, 60 s overlap, average 0.15, link 0.25, floor 2% | 1200 s pieces, 60 s overlap, average 0.15, link 0.3, floor 1% |
+| dev score (best of the first grid) | 0.116 (0.135) | 0.086 (0.091) |
+| 30 min dev DER / vanished (special speakers) | 0.123 / 6(5) | 0.080 / 1(1) |
+| 4-hour dev DER / vanished (special speakers) | 0.110 / 2(2) | 0.093 / 0(0) |
+| Top 1% score range (62 settings) | 0.116–0.159 | 0.086–0.114 |
+| Cross seed (within the widened 480): chosen on s300, applied to s301 (s301's own best) | 0.206 (0.101) | 0.126 (0.086) |
+| Cross seed: chosen on s301, applied to s300 (s300's own best) | 0.098 (0.089) | 0.101 (0.057) |
 
-- **통화에서 화자 찾기가 갈린다.** 대면 우선인 순위 기준과 따로 적는다. ERes2NetV2는 사전 등록한 설정으로 dev 통화 6회의 모두에서 화자 수를 맞혔다(DER 0.02~0.12). CAM++는 6명 통화에서 4명(DER 0.30), 말수 적은 사람이 있는 4명 통화에서 3명(DER 0.35)만 찾았다. 처음 격자의 최선에서는 6명 통화에서 3명(DER 0.47)이었다.
-- **ERes2NetV2가 dev 점수, 통화 화자 찾기, 교차 seed에서 앞선다.** CAM++는 교차 seed 낙폭이 한쪽으로 크다(s300에서 고른 설정이 s301에서 0.206, s301 자신의 최선은 0.101): 설정에 민감하다. 반대 방향 낙폭은 CAM++ 1점, ERes2NetV2 4~4.4점으로, ERes2NetV2도 두 방향 모두 4점 넘게 낙관적이다. dev 최선은 test에서 낙관적일 것으로 본다.
-- **30분 최선과 4시간 최선이 다르다.** 처음 격자에서 30분 dev만으로 고르면 4시간 dev에서 3.5~4점 잃었다. 그래서 둘을 같은 무게로 섞었다.
-- **격자 확장은 한 번뿐이었다.** 처음 격자(모델당 5,760개)의 최선이 link·local threshold·piece share의 가장 낮은 값에 걸려서, 상위 1%에서 사실상 만장일치였던 축(average, piece share 0, cannot-link 끔)은 고정하고 link 0.15~0.3, local average 0.1~0.2, 조각 600~1800 s로 넓혔다(480개, 그중 40개는 처음 격자와 같은 설정으로 점수가 정확히 같았다). 새 끝에 걸리면 더 쫓지 않기로 미리 정했고, 두 모델 모두 안쪽에서 최선이 나왔다.
-- **조각 1800 s는 30분 회의에서 회의 전체 군집에 가깝다.** 30분 dev 회의는 1800.8~1809.0 s이므로 1800 s 조각은 회의 전체와 마지막 몇 초의 꼬리 조각이다. 상위 1%에 1800 s가 많은 것(CAM++ 22, ERes2NetV2 14)은 30분 회의에서 조각을 나누지 않는 쪽이 낫다는 뜻이고, 조각의 효과는 4시간 회의에서만 본다.
-- **cannot-link는 해가 됐다.** 원인은 추정이다: 한 조각 안에서 과분할된 한 사람이 다시 합쳐지지 못한다.
-- **상위 1%에서 평평한 축:** 겹침(0/60), 전역 바닥 값, 조각 길이. link가 가장 크게 움직인다. link가 낮아지면 바닥 0은 상위 1%에서 사라진다(바닥이 과분할을 거둔다).
-- 낮은 link와 바닥 0의 조합은 4시간 dev에서 화자를 수천 명 낸다(4,937명). bench는 이 경우 채점(a0c7827)과 turn 복원(7f21b5c)에서 메모리가 터져 고쳤고, 두 수정 모두 이전과 출력이 같다.
+- **Finding the speakers in a call splits the two.** This is written apart from the ranking criterion, which puts in-person first. With its preregistered setting ERes2NetV2 got the speaker count right in all 6 dev calls (DER 0.02–0.12). CAM++ found only 4 in the 6-speaker call (DER 0.30) and 3 in the 4-speaker call with a quiet speaker (DER 0.35). With the first grid's best it found 3 in the 6-speaker call (DER 0.47).
+- **ERes2NetV2 leads on the dev score, on finding speakers in calls, and across seeds.** CAM++ drops a lot in one cross-seed direction (the setting chosen on s300 gives 0.206 on s301, where s301's own best is 0.101): it is sensitive to the setting. The drop in the other direction is 1 point for CAM++ and 4–4.4 points for ERes2NetV2, so ERes2NetV2 is also optimistic by over 4 points in both directions. We expect the dev best to be optimistic on test.
+- **The 30 min best and the 4-hour best differ.** In the first grid, choosing on the 30 min dev alone lost 3.5–4 points on the 4-hour dev. So the two are mixed with equal weight.
+- **The grid was widened once only.** The first grid's best (5,760 settings per model) sat at the lowest values of link, local threshold and piece share, so the axes that were effectively unanimous in the top 1% (average, piece share 0, cannot-link off) were fixed, and link was widened to 0.15–0.3, local average to 0.1–0.2 and pieces to 600–1800 s (480 settings, of which 40 were the same settings as in the first grid and scored exactly the same). We decided beforehand not to chase a new end, and both models' best came out inside.
+- **A 1800 s piece on a 30 min meeting is close to whole-meeting clustering.** The 30 min dev meetings are 1800.8–1809.0 s long, so an 1800 s piece is the whole meeting plus a tail piece of the last few seconds. Many 1800 s settings in the top 1% (22 for CAM++, 14 for ERes2NetV2) mean that on a 30 min meeting not splitting is better; the effect of pieces is seen only on the 4-hour meetings.
+- **cannot-link did harm.** The cause is assumed: one person over-split within a piece cannot be joined again.
+- **Flat axes in the top 1%:** overlap (0/60), the global floor value, piece length. link moves the most. As link goes down, floor 0 disappears from the top 1% (the floor cleans up the over-splitting).
+- Low link with floor 0 gives thousands of speakers on the 4-hour dev (4,937). bench ran out of memory in scoring (a0c7827) and in turn reconstruction (7f21b5c) in this case and was fixed; both fixes give the same output as before.
 
-### 조각 단위 시제품: test 결과 (사전 등록한 설정)
+### Chunked prototype: test results (preregistered settings)
 
-test는 dev와 화자가 겹치지 않는 10명으로 만든 30분 5회의와 4시간 1회의를 room과 call로 둔 12회의다(seed 400·401). 말수 적은 사람의 실제 비율은 30분 1.97~2.51%, 4시간 1.26%로 모두 1~3% 안이다. 비율은 회의를 만들 때 맞췄다(최대 5번 다시 뽑음). 결과는 `bench/results/diar/chunk/{test,ami,long}/`(75c9df7)이고, 회의 전체 기준선(`.whole`)은 사전 등록에 적은 회의 전체 설정이다(CAM++ average 0.25·바닥 3%, ERes2NetV2 complete 0.8·바닥 8%).
+test is 12 meetings: five 30 min meetings and one 4-hour meeting, made from 10 speakers who do not overlap with dev, each as room and call (seeds 400 and 401). The quiet speakers' actual shares are 1.97–2.51% at 30 min and 1.26% at 4 hours, all within 1–3%. The shares were matched when the meetings were made (redrawn up to 5 times). Results are in `bench/results/diar/chunk/{test,ami,long}/` (75c9df7), and the whole-meeting baseline (`.whole`) is the whole-meeting setting written in the preregistration (CAM++ average 0.25, floor 3%; ERes2NetV2 complete 0.8, floor 8%).
 
 | | CAM++ | ERes2NetV2 |
 |---|---:|---:|
-| AMI Array1 DER (16회의 평균) | 0.259 | 0.176 |
-| 한국어 test room DER (6회의 평균) | 0.191 | 0.162 |
-| **1차 기준 (두 값의 평균)** | **0.225** | **0.169** |
-| 2차: 한국어 test call DER (두 채널, 번짐 없음) | 0.120 | 0.111 |
-| 참고: AMI Headset DER | 0.147 | 0.123 |
-| 참고: room 회의 전체 기준선 DER | 0.159 | 0.265 |
-| 사라진 특수 화자(늦게 합류·말수 적음·일찍 나감), 조각 / 기준선 | 5 / 9 | 1 / 15 |
-| 사라진 화자 전체, 조각 / 기준선 | 5 / 9 | 1 / 15 |
-| room 찾은 화자 수 / 실제 (2p, 4p-l, 4p-q, 6p 4시간, 6p, 6p) | 7/2, 6/4, 4/4, 7/6, 6/6, 6/6 | 7/2, 6/4, 7/4, 6/6, 10/6, 7/6 |
+| AMI Array1 DER (mean of 16 meetings) | 0.259 | 0.176 |
+| Korean test room DER (mean of 6 meetings) | 0.191 | 0.162 |
+| **Primary criterion (mean of the two)** | **0.225** | **0.169** |
+| Secondary: Korean test call DER (two channels, no bleed) | 0.120 | 0.111 |
+| For reference: AMI Headset DER | 0.147 | 0.123 |
+| For reference: room whole-meeting baseline DER | 0.159 | 0.265 |
+| Special speakers vanished (late joiner, quiet, early leaver), pieces / baseline | 5 / 9 | 1 / 15 |
+| All vanished speakers, pieces / baseline | 5 / 9 | 1 / 15 |
+| room speakers found / actual (2p, 4p-l, 4p-q, 6p 4 hours, 6p, 6p) | 7/2, 6/4, 4/4, 7/6, 6/6, 6/6 | 7/2, 6/4, 7/4, 6/6, 10/6, 7/6 |
 
-- **순위: ERes2NetV2.** 1차 기준이 5.6점 차이라 1점 미만일 때의 시간 규칙은 쓰지 않았다. 2차(통화)도 ERes2NetV2가 앞선다.
-- **관문 통과, 두 모델 모두.** 기준선은 4시간 회의를 포함해 모든 test 회의에서 돌았으므로 따로 떼어 보고할 회의는 없다. CAM++는 회의별로도 기준선보다 많이 사라진 회의가 없다(같음 8, 그중 양쪽 모두 0이 4; 적음 4). 사라지는 사람은 대부분 말수 적은 149다(아래 "앱으로 옮길 때").
-- **CAM++는 room DER에서 기준선이 낫다(0.159 대 0.191).** 조각 단위는 사라지는 사람을 줄였지만 화자를 더 많이 셌다. ERes2NetV2는 조각 단위가 DER과 사라짐 모두에서 낫다.
-- **dev보다 나쁘다.** ERes2NetV2의 dev 점수는 0.086, test room은 0.162다. dev에서 적은 대로 두 모델 모두 dev 최선이 낙관적이었다.
-- **과다 계산.** 2명 room을 두 모델 모두 7명으로 셌고, ERes2NetV2는 6명 room 하나를 10명으로 셌다. 통화(system만)에서는 거의 맞는다(두 모델 모두 6회의 중 5).
-- **번짐(2차, 고르는 데 쓰지 않음).** mic에 system 소리가 −25 dB로 새면, mic를 통째로 "나"로 보는 규칙 때문에 call DER이 0.11~0.12에서 0.46~0.47로 오른다. 지연 없는 누출만 지우는 거친 대용(`drop_echo`, 0.1 s 프레임의 상관 0.5 초과)을 넣으면 0.150~0.158이다. 한 트랙으로 섞어 나누면 0.161~0.166이다. 실제 누출에는 지연과 방 울림이 있으므로 이 값은 하한에 가깝다.
-- **한계.** 한국어 회의는 같은 클립을 다시 쓴다(dev 12명, test 10명). room과 call은 같은 섞음이다(같은 seed, 같은 turn, 같은 비율): 말수 적은 사람의 독립 표본이 아니다. 통화의 mic를 통째로 "나"로 보는 것은 하이브리드 회의(내 옆에 다른 사람이 있음)에서 틀린다.
+- **Ranking: ERes2NetV2.** The primary criterion differs by 5.6 points, so the time rule for a difference under 1 point was not used. On the secondary (call) ERes2NetV2 also leads.
+- **The gate is passed, by both models.** The baseline ran on every test meeting including the 4-hour one, so no meeting has to be reported apart. CAM++ has no meeting where more vanished than in the baseline, meeting by meeting either (equal 8, of which 4 are 0 on both sides; fewer 4). The person who vanishes is mostly the quiet speaker 149 (see "Moving to the app" below).
+- **For CAM++ the baseline is better on room DER (0.159 vs 0.191).** Pieces made fewer people vanish but counted more speakers. For ERes2NetV2 pieces are better on both DER and vanishing.
+- **Worse than dev.** ERes2NetV2's dev score is 0.086 and its test room 0.162. As written for dev, both models' dev best was optimistic.
+- **Over-counting.** Both models counted the 2-speaker room as 7, and ERes2NetV2 counted one 6-speaker room as 10. In calls (system only) they are almost right (5 of 6 meetings for both models).
+- **Bleed (secondary, not used for choosing).** When system sound leaks into the mic at −25 dB, the rule that takes the mic whole as "me" raises call DER from 0.11–0.12 to 0.46–0.47. A crude stand-in that removes only zero-delay leaks (`drop_echo`, correlation over 0.5 in 0.1 s frames) gives 0.150–0.158. Mixing into one track and diarizing gives 0.161–0.166. A real leak has delay and room reverb, so these values are close to a lower bound.
+- **Limits.** The Korean meetings reuse the same clips (12 speakers in dev, 10 in test). room and call are the same mix (same seed, same turns, same shares): they are not independent samples of the quiet speaker. Taking a call's mic whole as "me" is wrong in a hybrid meeting (someone else beside me).
 
-**상한: 메모리 실패.** 4시간 회의를 오디오에서 turn까지 한 프로세스로 돌린 값이다(long 단계, 사전 등록한 설정).
+**Cap: memory failure.** A 4-hour meeting run from audio to turns in one process (the long step, preregistered settings).
 
-| 4시간 | 처리 시간 | 최대 RSS (사전 등록 측정) | 최대 RSS, long-fixmem (사후, 사전 등록 아님) |
+| 4 hours | Processing time | Peak RSS (preregistered measurement) | Peak RSS, long-fixmem (post hoc, not preregistered) |
 |---|---:|---:|---:|
-| room, CAM++ | 9.7분 | **2112 MB** | 1064 MB |
-| room, ERes2NetV2 | 36.6분 | **1810 MB** | 1046 MB |
-| call, CAM++ | 9.3분 | 827 MB | 661 MB |
-| call, ERes2NetV2 | 25.3분 | 894 MB | 853 MB |
+| room, CAM++ | 9.7 min | **2112 MB** | 1064 MB |
+| room, ERes2NetV2 | 36.6 min | **1810 MB** | 1046 MB |
+| call, CAM++ | 9.3 min | 827 MB | 661 MB |
+| call, ERes2NetV2 | 25.3 min | 894 MB | 853 MB |
 
-- CAM++ 시간 상한(15분)은 통과, 메모리 상한(1.0 GB)은 4시간 room에서 두 모델 모두 실패다. 사전 등록 결과는 이것이다.
-- 원인은 전역 연결의 후보 수다. local average 0.15에서 조각 하나가 수백 개로 쪼개져, 4시간 room의 후보가 CAM++ 7,014개, ERes2NetV2 6,177개(call 3,632개, 3,058개)였다. 이 후보들의 float64 정사각 거리 행렬과 위 삼각형의 색인이 1 GB 가까이 됐다(군집 단계 tracemalloc 904 MB). 30분 회의와 격자에서는 드러나지 않았다.
-- long-fixmem은 사후 공학 수정이다(86b3c1d). 거리를 응축 형태로 바로 만들고, float32 곱은 통째로 둔다(행 블록으로 나눠 곱하면 BLAS 반올림이 달라 최대 2e-7 차이가 났다). 라벨은 test 저장본 88개(한국어 test와 AMI, 두 모델; 108번 비교)에서 비트 단위로 같고 DER도 같다. 그래도 room은 1.0 GB를 넘는다(MB는 2^20 바이트; 1,000 MB로 치면 4.6~6.4%, 1,024 MB로 치면 2.1~3.9%). ERes2NetV2는 추출을 마친 시점에 이미 872 MB다.
-- 4시간 ERes2NetV2 처리 시간은 25~37분이다(기록만). final pass(약 22.6분) 뒤에 이어 돌리면 회의 후 처리는 약 48~60분이고, CAM++는 9~10분을 더해 약 32분이다. 두 작업을 겹쳐 돌리는 것은 재지 않았다.
+- The CAM++ time cap (15 min) is passed; the memory cap (1.0 GB) fails on the 4-hour room for both models. This is the preregistered result.
+- The cause is the number of global-link candidates. At local average 0.15 one piece splits into hundreds, so the 4-hour room had 7,014 candidates for CAM++ and 6,177 for ERes2NetV2 (call 3,632 and 3,058). The float64 square distance matrix of these candidates and the indices of its upper triangle came close to 1 GB (904 MB tracemalloc in the clustering step). It did not show on the 30 min meetings or in the grid.
+- long-fixmem is a post hoc engineering fix (86b3c1d). It builds the distances in condensed form directly and keeps the float32 product whole (multiplying in row blocks rounds differently in BLAS, giving up to 2e-7 difference). The labels are bit-identical on 88 test stores (Korean test and AMI, both models; 108 comparisons), and so is DER. room still goes over 1.0 GB (MB is 2^20 bytes; 4.6–6.4% over counting 1,000 MB, 2.1–3.9% counting 1,024 MB). ERes2NetV2 is already at 872 MB when extraction finishes.
+- The 4-hour ERes2NetV2 processing time is 25–37 min (recorded only). Run after the final pass (about 22.6 min), after-meeting processing is about 48–60 min; CAM++ adds 9–10 min for about 32 min. Running the two jobs in parallel was not measured.
 
-### 앱으로 옮길 때
+### Moving to the app
 
-- 클러스터 번호 규칙(처음 나온 순서)과 동점 규칙(낮은 번호 우선)을 명시하고 고정한다. 같은 입력에 같은 출력이 나오는지 확인하는 결정성 테스트를 둔다. 과분할된 결과에서는 동점 규칙만으로 DER이 2점 움직였다.
-- 임베딩이 없는 짧은 클러스터(10프레임 미만이라 임베딩을 못 뽑은 꼬리)는 시간상 이웃 화자나 가장 많이 겹치는 화자에게 넘겨, 꼬리가 남지 않게 한다.
-- CAM++ average 0.25, 3%의 실제 동작: average 0.25로 촘촘한 핵을 찾고, 임베딩의 3% 이상인 핵을 화자 후보로 뽑고, 나머지(room은 최대 절반)를 가장 가까운 후보의 중심에 붙인다. 화자 수는 바닥 비율이 정하고 컷은 핵의 위치를 정한다. 구현과 설명은 이 두 단계로 한다.
-- 비율 바닥의 구조적 위험: 화자 수가 "전체 발화의 3%"로 정해지면 긴 회의에서 잠깐 들어온 사람이 사라진다. 4시간의 3%는 약 7분이므로, 10분만 참석해 3분 말한 사람은 화자로 나오지 않는다. 바닥의 단위는 임베딩 수지만 임베딩 수가 발화량에 비례하므로 같은 이야기다. 6명 회의에서 말수가 적은 사람도 같은 위험을 안는다(AMI의 vanished 8~22/63).
-- 화자 수 상한: 설정에 따라 화자가 수천 명까지 나온다(조각 단위 격자 확장의 link 0.15·바닥 0 설정이 4시간 dev에서 4,937명). 앱에는 화자 수 상한(예: 20명)과 그것을 넘을 때의 처리(전역 바닥을 올리거나 큰 것부터 k개만 남기고 나머지를 가장 가까운 화자에 붙임)가 필요하다. bench 채점기도 이 경우에 메모리가 터져 고쳤다(a0c7827, 총합은 이전과 같음).
-- 전역 연결의 후보 수: 조각 단위 test에서 4시간 room의 후보가 6~7천 개였고, 응축 거리로 바꿔도 1.0 GB를 넘었다. 후보 수에 상한을 두거나, 2단계로 잇는다(조각 안 군집 → 조각마다 대표 몇 개 → 전역). 어느 쪽이든 군집 단계의 메모리가 회의 길이와 상관없이 정해져야 한다.
-- 과다 계산은 사용자에게 바로 보인다: 2명 회의에 화자 7명이 나왔다(조각 단위 test, 두 모델). 화자 수 상한(위)과 SPK-3(이름 붙이기에서 두 화자를 하나로 합치기)을 함께 설계한다. 상한이 남은 과분할을 줄이고, 합치기가 사용자가 마지막에 고치는 길이다.
-- 말수 적은 화자 149가 test에서 거듭 사라진다. 조각 단위로는 CAM++가 149가 나오는 room 3회의 모두와 4시간 call에서, ERes2NetV2가 4시간 room에서 잃었고, 회의 전체 기준선은 거의 모든 회의에서 잃었다. 발화는 회의의 1.3~2.5%(38~197초, turn 중앙값 4~6초)이고, 가장 가까운 목소리는 매번 118이다. call(전화 대역)에서는 149와 118의 중심 코사인이 0.84~0.89로 149 자신의 임베딩이 자기 중심에 붙는 정도(0.86~0.88)와 같고, room에서는 0.54~0.62로 떨어져 있지만 149 자신의 흩어짐이 큰 편이다(0.76~0.81, 다른 화자는 대개 0.80~0.85).
-- 통화의 mic를 통째로 "나"로 보는 규칙은 번짐에 약하다: 조각 단위 test에서 −25 dB 누출만으로 call DER이 0.11에서 0.46으로 올랐다. 앱의 화자 분리는 에코 제거(AEC)에 의존한다. 하이브리드 회의에서는 규칙 자체가 틀린다.
-- 메모리는 화자 분리를 final pass 뒤에 돌린다는 가정으로 잰 값이다. whisper와 동시에 돌리면 더한다.
-- 조각 단위 시제품에서 볼 것:
-  - 바닥을 회의 전체가 아니라 조각(10~15분)마다 적용하고, 조각별 화자를 전역에서 묶는다. 늦게 합류한 사람도 자기 조각 안에서는 바닥을 넘을 수 있다.
-  - 늦게 합류한 사람과 말수 적은 사람을 넣은 합성 회의로 vanished를 센다. dev와 test 화자를 나누는 원칙은 그대로다.
-  - 바닥을 넘는 클러스터가 하나도 없을 때의 대체 규칙(예: 큰 것부터 k개)도 정한다. 지금 `diar_pipe`는 이때 아무것도 하지 않고, WeSpeaker 0.02의 화자 폭발이 그 결과다.
-  - 메모리 상한과 4시간 처리 시간, AMI DER을 잰다. 고르는 것은 30분 dev로만 한다.
-  - 메모리 상한(1.0 GB RSS)은 사전 등록한 설정 하나를 long 단계에서 별도 프로세스로 돌려 잰 RSS에 적용한다. 격자 워커(여러 설정과 회의를 한 프로세스에서 돈다)에는 적용하지 않는다. 격자 확장의 가장 무거운 설정은 4시간 dev에서 워커 최대 4.5 GB였다. long 단계는 단계별(추출, 군집, reconstruct, mic)로 그 단계 자체의 최대 할당(tracemalloc)과 그 뒤의 프로세스 최대 RSS를 따로 기록한다.
+- State and fix the cluster numbering rule (order of first appearance) and the tie rule (lower number first). Keep a determinism test that the same input gives the same output. On over-split results, the tie rule alone moved DER by 2 points.
+- Hand short clusters without an embedding (tails under 10 frames, too short to extract an embedding) to the neighbouring speaker in time or the speaker they overlap most, so no tail is left.
+- What CAM++ average 0.25, 3% actually does: average 0.25 finds tight cores, the cores with 3% or more of the embeddings become speaker candidates, and the rest (up to half in room) attach to the nearest candidate's centroid. The floor share sets the number of speakers and the cut sets where the cores are. Implement and explain it as these two steps.
+- The structural risk of a share floor: when the number of speakers is set by "3% of all speech", someone who drops in briefly on a long meeting vanishes. 3% of 4 hours is about 7 minutes, so a person who attends for 10 minutes and talks for 3 does not come out as a speaker. The floor's unit is embeddings, but the number of embeddings scales with the amount of speech, so it is the same thing. A quiet person in a 6-person meeting has the same risk (AMI vanished 8–22/63).
+- A cap on the number of speakers: some settings give thousands of speakers (link 0.15 with floor 0 in the widened chunked grid gave 4,937 on the 4-hour dev). The app needs a speaker cap (for example 20) and a way to handle going over it (raise the global floor, or keep the k largest and attach the rest to the nearest speaker). The bench scorer also ran out of memory in this case and was fixed (a0c7827, totals the same as before).
+- The number of global-link candidates: in the chunked test the 4-hour room had 6–7 thousand candidates, and even with condensed distances it went over 1.0 GB. Cap the number of candidates, or link in two stages (clustering within a piece → a few representatives per piece → global). Either way the clustering step's memory must be fixed regardless of the meeting's length.
+- Over-counting is visible to the user at once: a 2-person meeting came out with 7 speakers (chunked test, both models). Design the speaker cap (above) together with SPK-3 (merging two speakers into one when naming them). The cap reduces the over-splitting left, and merging is the user's way to fix it at the end.
+- The quiet speaker 149 vanishes again and again on test. With pieces, CAM++ lost 149 in all 3 room meetings 149 is in and in the 4-hour call, ERes2NetV2 in the 4-hour room, and the whole-meeting baseline lost 149 in almost every meeting. 149's speech is 1.3–2.5% of the meeting (38–197 s, median turn 4–6 s), and the nearest voice is always 118. In call (phone band) the centroid cosine of 149 and 118 is 0.84–0.89, the same as how close 149's own embeddings sit to their own centroid (0.86–0.88); in room it is apart at 0.54–0.62, but 149's own spread is on the large side (0.76–0.81; other speakers mostly 0.80–0.85).
+- The rule that takes a call's mic whole as "me" is weak against bleed: in the chunked test a −25 dB leak alone raised call DER from 0.11 to 0.46. The app's diarization depends on echo cancellation (AEC). In a hybrid meeting the rule itself is wrong.
+- The memory was measured assuming diarization runs after the final pass. Running it at the same time as whisper adds to it.
+- What to look at in the chunked prototype:
+  - Apply the floor per piece (10–15 min), not over the whole meeting, and link the pieces' speakers globally. A late joiner can pass the floor within their own piece.
+  - Count vanished on synthetic meetings with late joiners and quiet speakers. The principle of keeping dev and test speakers apart stays.
+  - Also set a fallback rule for when no cluster passes the floor (for example the k largest). `diar_pipe` does nothing in that case now, and WeSpeaker 0.02's speaker explosion is the result.
+  - Measure the memory cap, the 4-hour processing time and AMI DER. Choose on the 30 min dev only.
+  - The memory cap (1.0 GB RSS) applies to the RSS of the one preregistered setting run in a separate process in the long step. It does not apply to the grid workers (which run many settings and meetings in one process). The heaviest setting in the widened grid peaked at 4.5 GB per worker on the 4-hour dev. The long step records, per stage (extraction, clustering, reconstruct, mic), that stage's own peak allocation (tracemalloc) and the process's peak RSS after it, separately.
 
-### 앱과 다른 점
+### Where it differs from the app
 
-- bench는 mic와 system을 한 트랙으로 섞어서 나눈다. 앱은 두 채널을 따로 녹음하므로, 통화에서는 "나"(mic)가 이미 분리되어 있고 system 쪽의 원격 화자만 나누면 된다. 이번 call 결과는 앱보다 불리한 조건이다. 조각 단위 시제품은 채널별 입력으로 잰다.
-- 앱의 대면 회의는 노트북 내장 마이크다. AMI Array1(탁자 위 원형 마이크 배열의 한 채널)과 거리·잡음 조건이 같지는 않다.
+- bench mixes mic and system into one track and diarizes that. The app records the two channels separately, so in a call "me" (mic) is already apart and only the remote speakers on the system side need diarizing. This call result is a harder condition than the app's. The chunked prototype is measured with per-channel input.
+- The app's in-person meetings use a laptop's built-in microphone. That is not the same distance and noise condition as AMI Array1 (one channel of a circular microphone array on the table).
