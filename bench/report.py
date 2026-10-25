@@ -26,11 +26,6 @@ def lat(r: dict) -> str:
     return f"{r['caption_latency_median_s']:.1f} / {r['caption_latency_p95_s']:.1f}s"
 
 
-def load_avg(r: dict) -> str:
-    # one older result wrote its note in Korean ("중간 최대" = the peak in between)
-    return r.get("load", "—").replace("중간 최대", "peak in between")
-
-
 # peak memory a summary may use, by device tier (models are loaded after transcription
 # has let go of its own)
 TIER_LIMIT_MB = {"8GB": 4096, "16GB": 9216}
@@ -548,7 +543,7 @@ def main() -> None:
                     else f"{r['pass_sec_first10min']:.2f}s → {r['pass_sec_last10min']:.2f}s")
             lines.append(
                 f"| {r['engine']} | {'batch' if r['mode'] == 'longform' else 'live (10 s period)'} | "
-                f"**{pct(r['cer'])}** | {pct(u['cer']) if u else '—'} | {cost} | {lat(r)} | {load_avg(r)} |"
+                f"**{pct(r['cer'])}** | {pct(u['cer']) if u else '—'} | {cost} | {lat(r)} | {r.get('load', '—')} |"
             )
         if sv:
             lines.append(f"| {sv['engine']} (reference) | live (10 s period) | {pct(sv['cer'])} | "
@@ -570,7 +565,7 @@ def main() -> None:
                     else f"{r['pass_sec_first10min']:.2f}s → {r['pass_sec_last10min']:.2f}s")
             return (f"| {r['engine']} | {kind} | **{pct(r['cer'])}** | {pct(u['cer']) if u else '—'} | "
                     f"{verdict} | {reply} | {r.get('filter_dropped_segments', '—')} | {cost} | {lat(r)} | "
-                    f"{load_avg(r)} |")
+                    f"{r.get('load', '—')} |")
 
         lines += [
             "",
@@ -637,7 +632,7 @@ def main() -> None:
             lines.append(
                 f"| {r['engine']} | {'batch + short replies' if 'replies' in r else 'batch'} | **{pct(r['cer'])}** | "
                 f"{verdict_text} | {reply} | {r['sec']:.0f}s | {r['rtf']:.3f} | {r['peak_footprint_mb']:.0f}MB | "
-                f"{load_avg(r)} |"
+                f"{r.get('load', '—')} |"
             )
         lines += [
             "",

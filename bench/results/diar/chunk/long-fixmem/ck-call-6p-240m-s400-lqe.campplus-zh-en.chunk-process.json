@@ -63,5 +63,5 @@
   "segmentation_sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
   "embedding_sha256": "aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2"
  },
- "posthoc": "\uc0ac\ud6c4, \uc0ac\uc804 \ub4f1\ub85d \uc544\ub2d8: the global link's condensed distances (86b3c1d), labels bit-identical on all 88 test stores; the preregistered measurement is in long/"
+ "posthoc": "post hoc, not preregistered: the global link's condensed distances (86b3c1d), labels bit-identical on all 88 test stores; the preregistered measurement is in long/"
 }
