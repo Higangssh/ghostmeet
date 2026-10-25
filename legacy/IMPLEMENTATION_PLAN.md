@@ -1,4 +1,4 @@
-> **보관됨.** v0.1.0(ghostmeet) 기획이다. 리뉴얼 범위와 로드맵은 `requirements.md` v2를 따른다.
+> **Archived.** This is the v0.1.0 (ghostmeet) plan. The renewal's scope and roadmap are in `requirements.md` v2.
 
 
 # ghostmeet Implementation Plan (10 Steps)
