@@ -632,7 +632,7 @@ def _stage(stages: dict, name: str, run):
 
 
 # re-runs of the long step after a fix that leaves every label as it was; never preregistered
-POSTHOC = {"long-fixmem": "사후, 사전 등록 아님: the global link's condensed distances (86b3c1d), labels "
+POSTHOC = {"long-fixmem": "post hoc, not preregistered: the global link's condensed distances (86b3c1d), labels "
                           "bit-identical on all 88 test stores; the preregistered measurement is in long/"}
 
 
