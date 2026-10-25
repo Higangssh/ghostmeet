@@ -1,167 +1,167 @@
-# REC-4 에코 제거 조사 (0.3 설계 메모)
+# REC-4 echo cancellation research (0.3 design memo)
 
-문서 조사만 했다. 코드 실험은 하지 않았고, 확인되지 않은 것은 **추정**으로 적는다.
+Documents only. No code experiments. Anything not confirmed is marked **estimated**.
 
-## 왜 필요한가
+## Why it is needed
 
-스피커로 통화를 들으면 상대 목소리가 마이크로 되들어온다. 앱은 통화의 마이크 채널을 통째로 "나"로 본다(SPK-1). 그래서 새어 든 상대 목소리는 "나"의 발화가 되고 전사에도 두 번 나온다.
+When a call plays through the speakers, the far side's voice leaks back into the microphone. The app takes a call's mic channel whole as "me" (SPK-1). So the leaked far-side voice becomes "my" speech, and it shows up twice in the transcript.
 
-bench의 조각 단위 test(`bench/results/RESULTS.md` §9, 합성 통화 6회의)에서 −25 dB 누출만으로 call DER이 크게 올랐다.
+In the bench's chunked test (`bench/results/RESULTS.md` §9, 6 synthetic calls), a −25 dB leak alone raised call DER sharply.
 
-| 조건 | call DER |
+| Condition | call DER |
 |---|---:|
-| 누출 없음 (CAM++ / ERes2NetV2) | 0.120 / 0.111 |
-| −25 dB 누출 | 0.471 / 0.463 |
-| 누출 + `drop_echo` | 0.158 / 0.150 |
+| No leak (CAM++ / ERes2NetV2) | 0.120 / 0.111 |
+| −25 dB leak | 0.471 / 0.463 |
+| Leak + `drop_echo` | 0.158 / 0.150 |
 
-## 앱에 이미 있는 것
+## What the app already has
 
-앱은 mic와 system을 채널별로 디스크에 저장한다(`PcmStore`). 두 채널의 시각은 샘플 커서에서 나온다. 그러므로 **참조 신호(system)가 이미 정렬된 채로 있다.** 이것이 OS 에코 제거와 다른 선택지를 연다.
+The app stores mic and system on disk per channel (`PcmStore`). Both channels' times come from the sample cursor. So **the reference signal (system) is already there, aligned.** That opens an option other than OS echo cancellation.
 
 ## macOS: VoiceProcessingIO (VPIO)
 
-- VPIO는 입력과 출력을 한 유닛으로 묶은 Audio Unit이다. 자기 출력 경로로 나가는 소리를 알고, 그것을 마이크에서 지운다.
-- 외부 참조 신호를 넣는 속성은 찾지 못했다. ScreenCaptureKit이 잡은 시스템 오디오를 VPIO의 참조로 줄 수는 없다고 본다.
-- WWDC23 "What's new in voice processing"의 설명:
-  - 앱의 voice 스트림을 뺀 모든 소리(다른 앱 포함)가 "other audio"다.
-  - voice와 섞여 출력되고, 기본으로 **볼륨이 줄어든다(ducking).**
-  - `kAUVoiceIOProperty_OtherAudioDuckingConfiguration`(AVAudioEngine에서는 `voiceProcessingOtherAudioDuckingConfiguration`)으로 줄이는 정도를 min~max로 고를 수 있다.
-  - 이 설명으로 보면 다른 앱의 소리도 VPIO가 보는 출력에 들어간다. 그래서 회의 앱의 상대 목소리가 지워질 수 있다(**추정**, 문서에 명시 없음).
-- **공존 문제:**
-  - 지금 마이크는 cpal(HAL 기반 입력)로 연다. VPIO를 쓰면 같은 장치를 VPIO가 따로 잡는다.
-  - Apple 포럼에 보고가 있다. VPIO를 켠 앱이 **다른 앱(Zoom 등)의 입력 스트림을 끊었다**는 것이다. 답은 확인하지 못했다.
-  - 기록 앱이 사용자의 회의 앱 마이크를 끊거나 상대 목소리를 줄이면 안 된다. 이 둘이 VPIO의 가장 큰 위험이다.
-- **장치 제약:** 오래된 PJSIP 티켓과 포럼 글에 "VPIO는 기본 또는 내장 입출력에서만 동작한다"는 보고가 있다. 블루투스 헤드셋에서는 게인이 크게 떨어진다는 보고도 있다.
-- 결론: VPIO는 "회의 앱 옆에서 조용히 녹음한다"는 앱의 전제와 충돌할 가능성이 크다. 쓰려면 다음 셋을 실기기에서 먼저 확인해야 한다.
-  1. Zoom이나 Meet가 동시에 켜져 있을 때 입력이 끊기지 않는가
-  2. ducking을 min으로 두면 사용자가 듣는 소리가 그대로인가
-  3. 다른 앱의 소리가 참조로 쓰이는가
+- VPIO is an Audio Unit that ties input and output into one unit. It knows what goes out through its own output path and removes that from the mic.
+- I found no property for feeding in an outside reference signal. My reading is that the system audio ScreenCaptureKit captures cannot be given to VPIO as its reference.
+- WWDC23 "What's new in voice processing" says:
+  - Every sound except the app's voice stream (other apps included) is "other audio".
+  - It is mixed with voice on output, and by default **its volume is lowered (ducking).**
+  - `kAUVoiceIOProperty_OtherAudioDuckingConfiguration` (`voiceProcessingOtherAudioDuckingConfiguration` in AVAudioEngine) picks how much, from min to max.
+  - By this description, other apps' sound is also in the output VPIO sees. So the far-side voice from the meeting app may be removed (**estimated**; the docs do not say so).
+- **Coexistence problems:**
+  - The mic is opened with cpal today (HAL-based input). With VPIO, VPIO holds the same device separately.
+  - There is a report on the Apple forums that an app with VPIO on **cut another app's (Zoom etc.) input stream**. I did not find an answer.
+  - A recording app must not cut the user's meeting-app mic or turn down the far side's voice. These two are VPIO's biggest risks.
+- **Device limits:** an old PJSIP ticket and forum posts report that "VPIO only works on the default or built-in input and output". There are also reports of gain dropping sharply on Bluetooth headsets.
+- Conclusion: VPIO is likely to clash with the app's premise, "record quietly next to the meeting app". Using it needs these three checked on a real machine first.
+  1. Does input stay up while Zoom or Meet is running at the same time?
+  2. With ducking at min, does what the user hears stay unchanged?
+  3. Is other apps' sound used as the reference?
 
-## Windows: 통신 모드 AEC
+## Windows: communications-mode AEC
 
-두 가지 길이 있다.
+There are two ways.
 
-1. **통신 스트림 + 장치의 AEC 효과(APO).**
-   - 캡처 스트림을 통신 범주(`AudioCategory_Communications`)로 열면 장치 드라이버의 통신 처리 체인이 켜진다. 장치에 AEC APO가 있을 때만 해당한다.
-   - 참조는 기본 렌더 장치다. Windows build 22621부터는 `IAcousticEchoCancellationControl::SetEchoCancellationRenderEndpoint`로 참조 렌더 장치를 고를 수 있다.
-   - 끝점이 AEC를 지원해도 참조 제어를 지원하지 않을 수 있다. 이때 `GetService`가 `E_NOINTERFACE`를 낸다(Microsoft 문서).
-   - 제약 1: AEC 유무가 **장치와 드라이버에 달려 있다.**
-   - 제약 2: 통신 스트림이 열리면 Windows의 "통신 활동 감지 시 다른 소리 줄이기"(기본 80%)가 사용자의 다른 소리를 줄일 수 있다(**추정**, 확인 필요).
-2. **Voice Capture DSP (`CLSID_CWMAudioAEC`, Vista부터).**
-   - AEC, 마이크 배열, 잡음 억제, AGC, VAD를 묶은 DMO다. 기능마다 켜고 끌 수 있다.
-   - source 모드는 DMO가 장치를 직접 잡는다.
-   - **filter 모드는 앱이 마이크(stream 0)와 스피커(stream 1) 샘플을 넣는다.** 앱의 WASAPI loopback(system 채널)을 참조로 줄 수 있다.
-   - AEC는 단일 채널만 지원한다. 출력은 16비트, 8/11.025/16/22.05 kHz다. 앱의 16 kHz mono와 맞는다.
-   - 오래된 API(DMO)라서 앞으로 유지될지는 불확실하다.
+1. **A communications stream + the device's AEC effect (APO).**
+   - Opening the capture stream in the communications category (`AudioCategory_Communications`) turns on the device driver's communications processing chain. Only when the device has an AEC APO.
+   - The reference is the default render device. From Windows build 22621, `IAcousticEchoCancellationControl::SetEchoCancellationRenderEndpoint` picks the reference render device.
+   - An endpoint may support AEC but not reference control. Then `GetService` returns `E_NOINTERFACE` (Microsoft docs).
+   - Limit 1: whether there is AEC **depends on the device and driver.**
+   - Limit 2: once a communications stream opens, Windows' "reduce other sounds when communication activity is detected" (default 80%) may turn down the user's other sounds (**estimated**, needs checking).
+2. **Voice Capture DSP (`CLSID_CWMAudioAEC`, since Vista).**
+   - A DMO bundling AEC, mic array, noise suppression, AGC and VAD. Each feature can be turned on and off.
+   - In source mode the DMO holds the device itself.
+   - **In filter mode the app feeds in mic (stream 0) and speaker (stream 1) samples.** The app's WASAPI loopback (the system channel) can be given as the reference.
+   - AEC supports a single channel only. Output is 16-bit, 8/11.025/16/22.05 kHz. That fits the app's 16 kHz mono.
+   - It is an old API (DMO), so whether it will be kept up is uncertain.
 
-## 대안: 녹음 뒤 소프트웨어 에코 제거 (권고)
+## Alternative: software echo cancellation after the recording (recommended)
 
-두 채널이 시각을 맞춰 디스크에 있으므로, 회의 뒤 화자 분리 전에 mic 채널에서 system 채널을 지울 수 있다. OS마다 같은 코드다. 회의 중 캡처 경로(cpal, ScreenCaptureKit, WASAPI)는 건드리지 않는다. 다른 앱의 소리를 줄이지도 않고 다른 앱의 입력을 끊지도 않는다.
+Both channels are on disk with their times aligned, so after the meeting, before diarization, the system channel can be removed from the mic channel. It is the same code on every OS. The capture path during the meeting (cpal, ScreenCaptureKit, WASAPI) is not touched. It neither turns down other apps' sound nor cuts other apps' input.
 
-- **후보 crate:**
-  - `webrtc-audio-processing`: WebRTC APM 바인딩. 원본 C++는 BSD-3-Clause다. crate 자체의 라이선스는 아직 확인하지 못했다.
-  - `sonora`: AEC3를 순수 Rust로 옮긴 것, BSD-3-Clause, 0.1.0으로 초기 단계다.
-  - 둘 다 허용 라이선스이지만 채택 전에 Cargo.toml의 라이선스와 의존성을 확인한다.
-- **풀어야 할 것:**
-  - 지연: 스피커 → 공기 → 마이크, 그리고 두 캡처 경로의 버퍼 차이가 있다. AEC3에는 지연 추정기가 있다.
-  - 클럭 드리프트: 두 장치의 샘플 클럭이 다르다. 4시간이면 누적된다. 샘플 커서로 맞춘 시각에 GapFiller가 채운 무음이 섞인다.
-  - 이중 통화: 내가 상대와 동시에 말할 때 내 목소리를 지우면 안 된다. bench의 "talking over the far side is still me" 테스트가 이것을 지킨다.
-- **회의 중 자막에는 적용하지 않는다.** live 자막은 잠정값이다. 새어 든 상대 목소리가 "나" 자막에 잠깐 보이는 것은 0.3에서 받아들인다. final pass 전에 mic 채널을 정리하면 최종 전사에서도 중복이 빠진다.
-- 두 패스 구조와 맞는다. live 자막에 남는 중복은 final pass가 회의 전체 전사를 한 트랜잭션으로 덮어쓸 때 사라진다. 에코 제거가 실패하거나 취소되면 final pass는 정리하지 않은 mic로 돈다. 그래도 지금보다 나빠지지 않는다.
-- **하한선으로 `drop_echo`:**
-  - bench의 거친 대용이다. 0.1초 프레임마다 mic와 system의 0-지연 상관이 0.5를 넘으면 그 프레임을 "나"에서 뺀다.
-  - 합성 통화에서 DER 0.46→0.15를 냈다. 지연과 방 울림이 없는 누출만 지우므로 실제 스피커 환경에서는 이보다 못하다.
-  - 소프트웨어 AEC가 실패할 때의 대체로, 지연 추정(상호상관의 최대점)을 더하면 같은 구조로 쓸 수 있다.
-  - 이 대체는 오디오를 고치지 않고 "나" 구간만 덜어낸다. 전사 중복은 남는다.
+- **Candidate crates:**
+  - `webrtc-audio-processing`: WebRTC APM bindings. The original C++ is BSD-3-Clause. The crate's own licence is not checked yet.
+  - `sonora`: AEC3 ported to pure Rust, BSD-3-Clause, at 0.1.0, early stage.
+  - Both are permissive, but check the licence and dependencies in Cargo.toml before adopting.
+- **To solve:**
+  - Delay: speaker → air → mic, plus the buffer difference between the two capture paths. AEC3 has a delay estimator.
+  - Clock drift: the two devices' sample clocks differ. Over 4 hours it adds up. Silence that GapFiller filled is mixed into the times aligned by the sample cursor.
+  - Double talk: when I talk over the far side, my voice must not be removed. The bench test "talking over the far side is still me" guards this.
+- **Not applied to captions during the meeting.** Live captions are provisional. In 0.3 we accept that leaked far-side voice shows briefly in "me" captions. Cleaning the mic channel before the final pass also takes the duplicates out of the final transcript.
+- It fits the two passes. Duplicates left in the live captions go away when the final pass overwrites the whole meeting's transcript in one transaction. If echo cancellation fails or is cancelled, the final pass runs on the uncleaned mic. That is still no worse than today.
+- **`drop_echo` as the floor:**
+  - A crude stand-in in the bench. For each 0.1 s frame, if the zero-delay correlation of mic and system is over 0.5, that frame is taken out of "me".
+  - On synthetic calls it gave DER 0.46→0.15. It only removes leaks with no delay and no room reverb, so with real speakers it does worse than this.
+  - As the fallback when software AEC fails, it can be used in the same shape by adding delay estimation (the peak of the cross-correlation).
+  - This fallback does not fix the audio; it only trims "me" spans. Duplicates in the transcript remain.
 
-## 확인할 것 (실험 순서)
+## To check (experiment order)
 
-1. 소프트웨어 AEC를 bench에 붙인다. 합성 누출에 지연(10~200 ms)과 방 울림을 더해 call DER, 이중 통화 보존, 4시간 드리프트를 잰다. 공개 음성만 쓴다.
-2. 실제 Mac에서 스피커 통화를 녹음해 mic 누출 수준과 지연을 잰다. 오디오는 저장소에 넣지 않고, 숫자만 기록한다.
-3. VPIO와 Windows 통신 모드는 1이 실패할 때만 실기기에서 공존 문제(다른 앱 입력 끊김, ducking)부터 확인한다.
+1. Add software AEC to the bench. Add delay (10–200 ms) and room reverb to the synthetic leak, and measure call DER, double-talk preservation and 4-hour drift. Public speech only.
+2. On a real Mac, record a call over speakers and measure the mic leak level and delay. The audio does not go into the repo; only numbers are recorded.
+3. VPIO and Windows communications mode only if 1 fails: check the coexistence problems (other apps' input cut, ducking) on a real machine first.
 
-## 출처
+## Sources
 
 - Apple WWDC23 "What's new in voice processing": https://developer.apple.com/videos/play/wwdc2023/10235/
-- Apple 포럼, VPIO로 다른 앱 입력이 끊김: https://developer.apple.com/forums/thread/751100
-- Apple 포럼, macOS VPIO 장치 제약과 게인: https://developer.apple.com/forums/thread/66953
+- Apple forums, VPIO cuts another app's input: https://developer.apple.com/forums/thread/751100
+- Apple forums, macOS VPIO device limits and gain: https://developer.apple.com/forums/thread/66953
 - Microsoft `IAcousticEchoCancellationControl`: https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nn-audioclient-iacousticechocancellationcontrol
 - Microsoft Voice Capture DSP: https://learn.microsoft.com/en-us/windows/win32/medfound/voicecapturedmo
-- `sonora` (AEC3 Rust 포팅): https://docs.rs/crate/sonora/0.1.0
+- `sonora` (AEC3 Rust port): https://docs.rs/crate/sonora/0.1.0
 
-## 확인 실험: 녹음 뒤 소프트웨어 에코 제거 (2026-10-22)
+## Check experiment: software echo cancellation after the recording (2026-10-22)
 
-**crate:**
-- **`sonora` 0.2.0**: BSD-3-Clause. WebRTC audio processing(AEC3)을 순수 Rust로 옮긴 것이다. 의존성은 모두 MIT, Apache-2.0, Zlib, BSD-3이고, 빌드 때 받아 오는 것이 없으며 C/C++ 빌드도 없다. MSRV 1.91(우리 툴체인 1.98).
-- `webrtc-audio-processing` 2.1.0: crates.io에 라이선스가 "non-standard"로 표시되고, 저장소의 `COPYING`은 BSD-3-Clause다. 시스템 라이브러리를 동적 링크하거나(`bundled`면 meson·ninja로 C++ 빌드) 해야 하고, Windows는 문서에 없다. 앱에는 맞지 않는다.
+**Crates:**
+- **`sonora` 0.2.0**: BSD-3-Clause. WebRTC audio processing (AEC3) ported to pure Rust. Its dependencies are all MIT, Apache-2.0, Zlib or BSD-3; nothing is downloaded at build time, and there is no C/C++ build. MSRV 1.91 (our toolchain is 1.98).
+- `webrtc-audio-processing` 2.1.0: crates.io shows its licence as "non-standard"; the repo's `COPYING` is BSD-3-Clause. It needs a system library linked dynamically (or, with `bundled`, a C++ build with meson and ninja), and Windows is not documented. It does not fit the app.
 
-**bench:**
-- 실행은 `bench/run_aec.py`, 누출 모델은 `bench/aec_leak.py`(테스트 6개), 에코 제거는 `bench/aec/`(앱 워크스페이스 밖)이다. 결과는 `bench/results/aec/`.
-- 회의: 조각 단위 test의 30분 통화 5개. mic는 나만, system은 상대다.
-- 누출: system을 −25 dB로 mic에 더한다. 그 위에 지연(20/80/200 ms), 방(RT60 0.3초, 합성 임펄스 응답), 클럭 드리프트(50 ppm, 30분에 90 ms), 셋을 합친 "real"(80 ms + 방 + 50 ppm)을 얹는다.
-- 상대 쪽은 사전 등록한 대로 나누고(ERes2NetV2, 조각 단위), "나"만 바뀐다.
-- 비교한 방법:
-  - 처리 없음
+**Bench:**
+- The run is `bench/run_aec.py`, the leak model `bench/aec_leak.py` (6 tests), echo cancellation `bench/aec/` (outside the app workspace). Results are in `bench/results/aec/`.
+- Meetings: the five 30-minute calls of the chunked test. The mic is me alone, system is the far side.
+- Leak: system is added to the mic at −25 dB. On top of that: delay (20/80/200 ms), room (RT60 0.3 s, synthetic impulse response), clock drift (50 ppm, 90 ms over 30 minutes), and "real", all three together (80 ms + room + 50 ppm).
+- The far side is split as preregistered (ERes2NetV2, chunked); only "me" changes.
+- Methods compared:
+  - no processing
   - `drop_echo`
-  - sonora에 기록된 그대로의 참조
-  - sonora에 참조를 20 ms 앞당겨 준 것(`lead20`)
+  - sonora with the reference as recorded
+  - sonora with the reference moved 20 ms earlier (`lead20`)
 
-평균 call DER(collar 0.25, 5회의)이다. 누출이 없을 때가 **0.101**이다. 괄호 안은 "나"로 잡힌 시간 중 내 발화가 아닌 비율이다(누출 없음 0.010).
+Mean call DER (collar 0.25, 5 meetings). With no leak it is **0.101**. In brackets: the share of time taken as "me" that is not my speech (0.010 with no leak).
 
-| 누출 | 처리 없음 | `drop_echo` | sonora | sonora + lead20 |
+| Leak | No processing | `drop_echo` | sonora | sonora + lead20 |
 |---|---:|---:|---:|---:|
-| −25 dB, 지연 없음 | 0.439 (0.50) | 0.143 (0.15) | 0.198 (0.24) | **0.104** (0.011) |
-| 지연 20 ms | 0.438 | 0.428 | 0.103 | **0.104** |
-| 지연 80 ms | 0.438 | 0.437 | 0.104 | **0.104** |
-| 지연 200 ms | 0.435 | 0.435 | 0.104 | **0.104** |
-| 방 (지연 없음) | 0.397 | 0.180 | 0.181 (0.20) | **0.103** (0.011) |
-| 드리프트 50 ppm | 0.437 | 0.431 | 0.105 | **0.104** |
-| real (80 ms + 방 + 50 ppm) | 0.391 (0.47) | 0.390 | 0.103 (0.011) | **0.103** (0.011) |
+| −25 dB, no delay | 0.439 (0.50) | 0.143 (0.15) | 0.198 (0.24) | **0.104** (0.011) |
+| Delay 20 ms | 0.438 | 0.428 | 0.103 | **0.104** |
+| Delay 80 ms | 0.438 | 0.437 | 0.104 | **0.104** |
+| Delay 200 ms | 0.435 | 0.435 | 0.104 | **0.104** |
+| Room (no delay) | 0.397 | 0.180 | 0.181 (0.20) | **0.103** (0.011) |
+| Drift 50 ppm | 0.437 | 0.431 | 0.105 | **0.104** |
+| real (80 ms + room + 50 ppm) | 0.391 (0.47) | 0.390 | 0.103 (0.011) | **0.103** (0.011) |
 
-- **sonora는 지연이 있는 모든 누출에서 누출 없음 수준으로 되돌린다**(0.103~0.105, 바닥 0.101). 지연, 방, 드리프트를 합친 경우도 같다. 회의별로도 바닥과 0.004 안이다(2명 통화 0.044 대 0.040).
-- **지연이 0이면 실패한다**(0.198, 방 0.181). 에코가 참조와 같은 순간이나 더 일찍 오면 AEC3가 지우지 못한다(인과성). 실제 스피커 누출은 버퍼와 공기 때문에 늘 지연이 있지만, 앱은 두 트랙을 샘플 커서로 맞춰 저장하므로 캡처 경로의 버퍼 차이에 따라 0에 가까울 수 있다. **참조를 20 ms 앞당기면 모든 조건에서 바닥으로 돌아온다.** 디스크의 트랙이라 언제든 할 수 있다. 앱에서는 이것을 기본으로 한다.
-- **내 발화 보존(이중 통화):** "나"로 남은 내 발화가 누출 없음 0.945에서 sonora 0.939로, 0.6점 줄었다.
-- `drop_echo`는 지연이 0일 때만 듣는다(0.143). 20 ms만 늦어도 쓸모가 없다(0.428). 대체 경로로 쓰려면 지연 추정이 꼭 필요하다. sonora가 이렇게 듣는 한 대체 경로의 필요는 작다.
-- **속도:** sonora는 한 스레드에 RTF 약 0.021이다. 4시간 mic에 약 5분이다. final pass 전에 돌려도 회의 후 처리에 5분 정도만 더한다.
-- **남은 것:**
-  - 4시간 드리프트: 50 ppm이면 끝에 720 ms다. 지연 200 ms까지는 문제가 없었지만 720 ms는 재지 않았다.
-  - 비선형 스피커 왜곡과 실제 방 녹음. 합성 RIR은 실제 방보다 단순하다.
-  - 실제 Mac에서의 누출 수준과 지연(실험 순서 2).
-  - 회의 오디오는 쓰지 않았다.
+- **sonora brings every leak with a delay back to the no-leak level** (0.103–0.105, floor 0.101). The same holds with delay, room and drift combined. Per meeting it is within 0.004 of the floor too (a 2-person call: 0.044 against 0.040).
+- **With zero delay it fails** (0.198, room 0.181). When the echo arrives at the same moment as its reference or earlier, AEC3 cannot remove it (causality). A real speaker leak always has a delay from buffers and air, but the app stores the two tracks aligned by the sample cursor, so depending on the capture paths' buffer difference it can be close to 0. **Moving the reference 20 ms earlier brings every condition back to the floor.** The tracks are on disk, so this can always be done. The app does this by default.
+- **Keeping my speech (double talk):** my speech still kept as "me" went from 0.945 with no leak to 0.939 with sonora, 0.6 points less.
+- `drop_echo` only works with zero delay (0.143). Even 20 ms late makes it useless (0.428). As a fallback it needs delay estimation. As long as sonora works like this, the need for a fallback is small.
+- **Speed:** sonora runs at RTF about 0.021 on one thread. About 5 minutes for a 4-hour mic. Run before the final pass, it adds only about 5 minutes to the after-meeting processing.
+- **Left:**
+  - 4-hour drift: at 50 ppm it is 720 ms by the end. Delays up to 200 ms were fine, but 720 ms was not measured.
+  - Nonlinear speaker distortion and real room recordings. A synthetic RIR is simpler than a real room.
+  - The leak level and delay on a real Mac (experiment order 2).
+  - No meeting audio was used.
 
-## 결정 (2026-10-22)
+## Decision (2026-10-22)
 
-- 0.3의 REC-4는 sonora 0.2.0으로 녹음 뒤에, final pass 앞에서 처리한다. 참조를 20 ms 앞당기는 것(lead20)이 기본이다. lead20은 첫 실행에서 지연 0의 실패를 보고 더한 사후 설계다.
-- VoiceProcessingIO와 Windows 통신 모드 AEC는 대체 경로로 내린다.
-- 순서: ort 골격 다음에 sonora를 통합한다. 앱 워크스페이스에 들어갈 때 `security.rs`와 의존성 라이선스를 함께 확인한다.
-- 4시간 드리프트(끝에서 720 ms)는 0.2 GUI 점검 뒤에 돌린다. 나쁘면 구간별 지연 추정을 검토한다. 비선형 왜곡은 따로 합성 실험을 하지 않고 아래 실제 Mac 측정으로 대신한다.
+- REC-4 in 0.3 runs sonora 0.2.0 after the recording, before the final pass. Moving the reference 20 ms earlier (lead20) is the default. lead20 is a post hoc design, added after seeing the zero-delay failure in the first run.
+- VoiceProcessingIO and Windows communications-mode AEC are demoted to fallbacks.
+- Order: sonora is integrated after the ort skeleton. When it enters the app workspace, check `security.rs` and the dependency licences together.
+- The 4-hour drift (720 ms at the end) runs after the 0.2 GUI check. If it is bad, consider per-span delay estimation. Nonlinear distortion gets no separate synthetic experiment; the real Mac measurement below stands in for it.
 
-## 실제 Mac 누출 측정 절차 (GUI 점검 때)
+## Real Mac leak measurement procedure (during the GUI check)
 
-사용자가 스피커로 재생해야 하는 측정이다. **실제 회의 오디오와 사람 목소리는 쓰지 않는다.** 합성 음성만 재생하고, 그동안 아무도 말하지 않는다. 저장소에는 숫자만 남긴다.
+A measurement in which the user has to play sound through the speakers. **No real meeting audio and no human voices.** Play synthetic speech only, and nobody talks meanwhile. Only numbers go into the repo.
 
-1. **재생할 소리.** `say`로 만든 합성 음성 60초를 `bench/data/aec/mac/far.wav`에 둔다(`bench/make_synth.sh`처럼, 저장소 밖). 여러 목소리가 번갈아 말하고 사이에 무음이 섞이게 한다.
-2. **녹음.**
-   - MeetButler 0.2 빌드를 **테스트 데이터 폴더로** 띄운다. GUI 점검과 같은 실행 방식이다.
+1. **Sound to play.** Put 60 seconds of synthetic speech made with `say` at `bench/data/aec/mac/far.wav` (like `bench/make_synth.sh`, outside the repo). Several voices take turns, with silence in between.
+2. **Recording.**
+   - Launch the MeetButler 0.2 build **on the test data folder**, the same way as for the GUI check.
 
      ```bash
      open -n --env MEETBUTLER_DATA_DIR=$HOME/MeetButler-test \
              --env MEETBUTLER_MODELS=$HOME/MeetButler-test/models .../MeetButler.app
      ```
 
-   - 실제 데이터 폴더(`~/Library/Application Support/dev.sshlab.meetbutler/`)는 쓰지 않는다.
-   - 마이크와 시스템 오디오를 둘 다 켜고 Start를 누른다.
-   - 다른 회의 앱은 끈다. 이어폰과 헤드셋은 빼고, 내장 스피커와 내장 마이크로 한다.
-3. **재생.** `afplay bench/data/aec/mac/far.wav`를 볼륨 50%와 100%로 한 번씩 재생한다. 사이에 10초를 쉰다. 그동안 방은 조용히 한다. 외장 스피커가 있으면 한 번 더 한다.
-4. **멈춤.** Stop을 누른다. final pass와 요약은 취소해도 된다.
-5. **분석.**
-   - `$HOME/MeetButler-test/sessions/<id>/`의 `mic.pcm`과 `system.pcm`(16 kHz mono s16le)을 읽기만 하는 스크립트로 잰다. 파일을 저장소나 다른 곳으로 복사하지 않는다.
-   - 스크립트는 테스트 폴더의 세션만 읽는다. 실제 데이터 폴더는 경로 인자로도 받지 않는다. 경로가 테스트 폴더 밖이거나 실제 데이터 폴더 아래이면 열기 전에 멈춘다.
-   - 잴 것:
-     - 누출 수준(system 대비 dB)
-     - 지연(상호상관의 최대점, ms)
-     - 꼬리 길이(상관 포락선이 −30 dB가 되는 시간)
-     - sonora(lead20) 전후의 누출 에너지 감소(ERLE, dB)
-   - 볼륨마다 따로 잰다. 스크립트는 이 측정 때 `bench/`에 만든다(숫자만 출력).
-6. **정리.** 측정 세션은 테스트 폴더로 띄운 앱의 라이브러리에서 지운다. 지우는 것은 `$HOME/MeetButler-test` 안의 세션뿐이다.
-7. **기록.** 위 숫자만 이 문서에 적는다. bench의 합성 조건(−25 dB, 20~200 ms, RT60 0.3초)과 다르면 그 값으로 bench 조건을 하나 더해 call DER을 다시 잰다.
+   - The real data folder (`~/Library/Application Support/dev.sshlab.meetbutler/`) is not used.
+   - Turn on both the microphone and system audio and press Start.
+   - Close other meeting apps. Unplug earphones and headsets; use the built-in speakers and built-in mic.
+3. **Playback.** Play `afplay bench/data/aec/mac/far.wav` once at 50% volume and once at 100%, with a 10-second pause in between. Keep the room quiet meanwhile. If there is an external speaker, do it once more.
+4. **Stop.** Press Stop. The final pass and summary may be cancelled.
+5. **Analysis.**
+   - Measure `mic.pcm` and `system.pcm` (16 kHz mono s16le) in `$HOME/MeetButler-test/sessions/<id>/` with a script that only reads them. Do not copy the files into the repo or anywhere else.
+   - The script reads only sessions in the test folder. It does not take the real data folder even as a path argument. If a path is outside the test folder or under the real data folder, it stops before opening it.
+   - Measure:
+     - leak level (dB relative to system)
+     - delay (peak of the cross-correlation, ms)
+     - tail length (time until the correlation envelope reaches −30 dB)
+     - the drop in leak energy before and after sonora (lead20) (ERLE, dB)
+   - Measure each volume separately. The script is written in `bench/` at measurement time (it prints numbers only).
+6. **Cleanup.** Delete the measurement sessions from the library of the app launched on the test folder. Only sessions inside `$HOME/MeetButler-test` are deleted.
+7. **Record.** Write only the numbers above into this document. If they differ from the bench's synthetic conditions (−25 dB, 20–200 ms, RT60 0.3 s), add one more bench condition with those values and measure call DER again.

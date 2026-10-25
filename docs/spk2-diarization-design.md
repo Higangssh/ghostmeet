@@ -1,214 +1,214 @@
-# SPK-2 화자 분리 Rust 설계 (0.3 설계 메모)
+# SPK-2 diarization in Rust (0.3 design memo)
 
-근거는 `bench/results/RESULTS.md` §9(조각 단위 시제품 dev·test)다. bench는 Python 프로토타입이다. 아래 숫자 중 앱에서 다시 재야 하는 것은 그렇게 적었다.
+The evidence is `bench/results/RESULTS.md` §9 (the chunked prototype's dev and test). The bench is a Python prototype. Numbers below that must be measured again in the app say so.
 
-## 범위
+## Scope
 
-- 대면 회의(마이크 한 채널 안의 여러 명)와 통화의 상대 채널(system) 안의 여러 명을 나눈다.
-- 통화의 마이크는 SPK-1대로 통째로 "나"다. 에코 제거(REC-4)에 기댄다(`docs/rec4-aec-research.md`).
-- 회의 후 처리다. live 자막에는 화자를 붙이지 않는다. 실시간 화자는 relabelled 40% 이상이라 기본에서 뺐다(§9).
-- 결과는 segment의 `speaker` 필드에 들어간다. 이름 붙이기와 합치기는 SPK-3이다.
+- Split several people in an in-person meeting (one microphone channel) and several people in a call's far-side channel (system).
+- In a call, the microphone is "me" as a whole, as SPK-1 says. This relies on echo cancellation (REC-4, `docs/rec4-aec-research.md`).
+- It runs after the meeting. Live captions get no speaker. Live speakers relabelled 40% or more, so they are off by default (§9).
+- The result goes into each segment's `speaker` field. Naming and merging speakers is SPK-3.
 
-## 모델
+## Models
 
 | | segmentation-3.0 | ERes2NetV2 (zh-cn 16k common) |
 |---|---|---|
-| 출처 | pyannote, sherpa-onnx의 GitHub 재배포 ONNX (gated 아님) | 3D-Speaker (modelscope `iic/speech_eres2netv2_sv_zh-cn_16k-common`), sherpa-onnx 재배포 |
-| 라이선스 | MIT | Apache-2.0 |
-| 파일 / sha256 | `model.onnx` 5,992,913 B / `220ad67c…1079` | 71,441,526 B / `bf1a75b9…2239` |
-| 입력 → 출력 | 파형 (N, 1, 160000) → (N, 589, 7) powerset | fbank (N, T, 80) → (N, 192) |
+| Source | pyannote, ONNX redistributed on GitHub by sherpa-onnx (not gated) | 3D-Speaker (modelscope `iic/speech_eres2netv2_sv_zh-cn_16k-common`), redistributed by sherpa-onnx |
+| Licence | MIT | Apache-2.0 |
+| File / sha256 | `model.onnx` 5,992,913 B / `220ad67c…1079` | 71,441,526 B / `bf1a75b9…2239` |
+| Input → output | waveform (N, 1, 160000) → (N, 589, 7) powerset | fbank (N, T, 80) → (N, 192) |
 
-ERes2NetV2의 ONNX 메타데이터는 `normalize_samples=1`, `feature_normalize_type=global-mean`이다. 앱이 Kaldi 호환 80차원 fbank와 프레임 평균 빼기를 직접 구현해야 한다. bench는 sherpa의 C++ 구현(kaldi-native-fbank)을 썼다. **Rust fbank가 sherpa와 같은 값을 내는지가 첫 위험이다.** 같은 입력에 대해 sherpa 임베딩과의 코사인 0.999 이상을 slow tier의 통과 기준으로 둔다.
+ERes2NetV2's ONNX metadata is `normalize_samples=1`, `feature_normalize_type=global-mean`. The app must implement a Kaldi-compatible 80-dim fbank and the per-frame mean subtraction itself. The bench used sherpa's C++ implementation (kaldi-native-fbank). **The first risk is whether a Rust fbank gives the same values as sherpa.** The slow tier's pass bar is a cosine of 0.999 or more against sherpa's embedding for the same input.
 
-모델은 사용자가 내려받는다(앱이 스스로 받지 않음). sha256으로 확인하고, `ModelCache`에 프로세스당 한 번 올린다.
+The user downloads the models (the app never downloads on its own). They are checked by sha256 and loaded once per process in `ModelCache`.
 
-## 파이프라인
+## Pipeline
 
-1. **분할.**
-   - `PcmStore`에서 10초 창을 1초 간격으로 읽는다. 오디오를 통째로 메모리에 두지 않는다.
-   - 창마다 589프레임 × 3 지역 화자의 라벨(int8)을 낸다. 4시간이면 14.4k 창, 24 MB다.
-2. **임베딩.**
-   - (창, 지역 화자)마다, 그 화자가 혼자 말하는 샘플로 임베딩 하나를 만든다.
-   - 4시간 room 회의에서 약 26k개, 192 × f32 = 20 MB다.
-   - 10프레임 미만이라 임베딩을 못 뽑은 것은 아래 꼬리 규칙으로 처리한다.
-3. **조각 안 군집.**
-   - 1200초 조각(+60초 겹침), cosine average linkage, 컷 0.15, 조각 바닥 0이다(§9 사전 등록).
-   - 조각당 임베딩 약 2.3k개, 응축 거리 2.6M double(21 MB)이다.
-4. **2단계 연결 (bench와 다른 점).**
-   - bench는 조각 안 군집을 모두 전역 후보로 올렸다. 4시간 room에서 6~7천 개였고, 1.0 GB를 넘은 원인이 이것이다.
-   - 앱은 조각마다 발화 초가 큰 순으로 **대표 K개(제안: 32)** 만 올린다. 나머지는 같은 조각 안에서 중심이 가장 가까운 대표에 붙인다.
-   - 전역 연결은 대표의 중심끼리 average linkage, 컷 0.3이다. 겹침 구간이 같은 사람이라고 하면 먼저 잇는다(must-link).
-   - 4시간이면 후보가 13 × 32 = 416개 이하다. 회의 길이에 비례할 뿐, 제곱으로 늘지 않는다.
-   - 위험이 있다. 조각 안에서 말수 적은 사람의 군집이 상위 K에 들지 못하면 다른 사람의 대표에 붙는다. 사라짐 관문(특수 화자)으로 확인한다.
-   - K는 bench에 없던 새 값이다. **bench dev에서 고르고 test로 확인하는 절차를 한 번 더 거친다.** 사전 등록한 설정과의 차이(DER, 사라짐)를 보고한다.
-5. **전역 바닥과 화자 수 상한.**
-   - 연결된 화자의 총 발화가 회의의 1% 미만이면 가장 가까운 큰 화자에 붙인다. 넘는 화자가 없으면 가장 큰 화자가 남는다.
-   - 그 뒤에도 20명을 넘으면 큰 순으로 20명만 남기고 나머지를 가장 가까운 화자에 붙인다.
-   - 과다 계산(2명 회의에 7명)은 사용자에게 바로 보인다. 상한으로 남은 과분할은 SPK-3의 "두 화자 합치기"로 사용자가 고친다. 두 기능은 함께 설계한다.
-6. **turn 복원.**
-   - 프레임마다 그 프레임에서 말하는 지역 화자 수만큼 표를 많이 받은 군집을 고른다.
-   - 블록 단위로 계산한다(bench 7f21b5c). 군집이 많아도 프레임 × 군집 행렬을 만들지 않는다.
-   - min_on 0.3초, min_off 0.5초다.
+1. **Segmentation.**
+   - Read 10 s windows every 1 s from `PcmStore`. The audio is never held in memory whole.
+   - Each window gives labels (int8) for 589 frames × 3 local speakers. 4 hours is 14.4k windows, 24 MB.
+2. **Embeddings.**
+   - For each (window, local speaker), make one embedding from the samples where that speaker talks alone.
+   - A 4-hour room meeting has about 26k, at 192 × f32 = 20 MB.
+   - Those with under 10 frames, which get no embedding, follow the tail rule below.
+3. **Clustering inside a piece.**
+   - 1200 s pieces (+60 s overlap), cosine average linkage, cut 0.15, piece floor 0 (§9, preregistered).
+   - About 2.3k embeddings per piece; the condensed distances are 2.6M doubles (21 MB).
+4. **Two-stage link (differs from the bench).**
+   - The bench put every in-piece cluster up as a global candidate. A 4-hour room meeting had 6–7 thousand, which is why it went over 1.0 GB.
+   - The app puts up only **K representatives per piece (proposed: 32)**, largest speech seconds first. The rest attach to the representative in the same piece whose centroid is nearest.
+   - The global link is average linkage over the representatives' centroids, cut 0.3. Where the overlap says two are the same person, they are joined first (must-link).
+   - 4 hours gives at most 13 × 32 = 416 candidates. It grows with meeting length, not with its square.
+   - There is a risk. If a quiet person's cluster does not make the top K in a piece, it attaches to someone else's representative. The vanished gate (special speakers) checks this.
+   - K is a new value the bench did not have. **It goes through choosing on bench dev and checking on test once more.** Report the difference (DER, vanished) from the preregistered setting.
+5. **Global floor and speaker cap.**
+   - A linked speaker whose total speech is under 1% of the meeting attaches to the nearest large speaker. If no speaker passes, the largest one stays.
+   - If more than 20 remain after that, keep the 20 largest and attach the rest to the nearest speaker.
+   - Over-counting (7 speakers in a 2-person meeting) is plain to the user. Over-splitting left by the cap is fixed by the user with SPK-3's "merge two speakers". Design the two together.
+6. **Turn reconstruction.**
+   - For each frame, pick as many of the most-voted clusters as there are local speakers talking in that frame.
+   - Computed in blocks (bench 7f21b5c). No frame × cluster matrix is built, however many clusters there are.
+   - min_on 0.3 s, min_off 0.5 s.
 
-## 결정성 규칙
+## Determinism rules
 
-- 군집 번호는 첫 임베딩이 나온 순서다(first-seen). 투표가 같으면 낮은 번호가 이긴다. bench에서 번호 규칙만으로 DER이 2점 움직였다.
-- 임베딩 없는 꼬리는 시간상 이웃 화자 중 그 구간과 가장 많이 겹치는 화자에게 넘긴다. 이웃이 없으면 버린다.
-- 정렬은 모두 안정 정렬이다. 거리는 f32 곱에 f64 변환으로 bench와 같은 순서로 계산한다. 블록으로 나눈 f32 행렬곱은 반올림이 달라진다(86b3c1d에서 확인).
-- 같은 입력에는 같은 출력이 나와야 한다. 이것을 기본 tier 테스트로 고정한다.
+- Clusters are numbered in the order their first embedding appears (first-seen). On a tied vote the lower number wins. In the bench, the numbering rule alone moved DER by 2 points.
+- A tail without an embedding goes to the neighbouring speaker in time that overlaps that span most. With no neighbour it is dropped.
+- Every sort is stable. Distances are computed as in the bench: an f32 product converted to f64, in the same order. An f32 matrix product split into blocks rounds differently (found in 86b3c1d).
+- The same input must give the same output. A default-tier test pins this.
 
-## 메모리 예산 (4시간, 목표 1 GB)
+## Memory budget (4 hours, target 1 GB)
 
-bench의 long 단계를 Python 한 프로세스로 잰 값과, 앱에서의 예상이다. 앱의 ORT 설정(arena, 스레드)에 따라 달라지므로 앱에서 다시 잰다.
+Values measured in one Python process in the bench's long step, and what the app should expect. They depend on the app's ORT settings (arena, threads), so measure again in the app.
 
-bench 측정은 4시간 room 회의(26k 임베딩)에서 단계마다 잰 현재 RSS의 증가분이다. Python, sherpa-onnx 1.13.8, ORT 1.31, 스레드 4.
+The bench figures are the growth in current RSS at each stage, on a 4-hour room meeting (26k embeddings). Python, sherpa-onnx 1.13.8, ORT 1.31, 4 threads.
 
-| 항목 | bench 측정 (ERes2NetV2) | 참고: CAM++ | 앱 예상 |
+| Item | Bench (ERes2NetV2) | For reference: CAM++ | App expectation |
 |---|---:|---:|---|
-| 런타임 (Python·numpy·sherpa import) | 31 MB | 32 MB | 앱은 이미 떠 있음. 따로 세지 않음 |
-| segmentation 세션 | 37 MB | 36 MB | 비슷 |
-| 임베딩 모델 가중치 (파일 71 MB / 28 MB) | 142 MB | 87 MB | 파일의 약 2배. ORT가 최적화한 사본을 따로 들고 있는 것으로 보임(추정) |
-| **ORT arena·작업 메모리 (임베딩)** | **약 545 MB** | 약 105 MB | 처음 100개 임베딩 안에 다 찬다(498 → 769 → 816 MB). 가장 긴 입력(10초, fbank 약 1,000프레임) 하나의 작업 공간을 arena가 들고 있는 것으로 보임(추정). 아래 참고 |
-| 오디오 버퍼 | 약 0 | 약 0 | 파일을 조금씩 읽는다. 창 하나 0.6 MB |
-| 분할 라벨 (int8) | 24 MB (+분할 작업 약 25) | 같음 | 24 MB. bench는 쌓을 때 사본을 하나 더 만든다(+26). 앱은 버퍼 하나에 바로 쓴다 |
-| 임베딩 저장 (26k × 192 f32) | 19 MB (+목록 오버헤드, 남은 증가 약 26) | 같음 | 20 MB |
-| (창, 화자) 쌍과 구간 목록 | 10 MB | 10 MB | 수 MB |
-| 군집 | 조각 안 약 40 MB, 전역 포함 약 160 MB (fixmem, 추출 뒤 872 → 1033 MB) | | 2단계 연결로 전역은 수 MB, 조각 안 40 MB 정도 |
-| turn 복원 | 22 MB | | 같음 |
-| **합계 (최대 RSS)** | 추출 뒤 870 MB, 전체 1046 MB (fixmem) | 411 MB, 1064 MB | ORT를 직접 부르면 약 600 MB (추정, 아래 확인 실험: 직접 부른 ORT의 ERes2NetV2는 최대 438 MB) |
+| Runtime (Python, numpy, sherpa imports) | 31 MB | 32 MB | The app is already running. Not counted separately |
+| Segmentation session | 37 MB | 36 MB | Similar |
+| Embedding model weights (file 71 MB / 28 MB) | 142 MB | 87 MB | About twice the file. ORT seems to keep a separate optimised copy (estimated) |
+| **ORT arena and working memory (embeddings)** | **about 545 MB** | about 105 MB | Fills within the first 100 embeddings (498 → 769 → 816 MB). The arena seems to hold the working space of the longest input (10 s, about 1,000 fbank frames) (estimated). See below |
+| Audio buffer | about 0 | about 0 | The file is read a little at a time. 0.6 MB per window |
+| Segmentation labels (int8) | 24 MB (+about 25 of segmentation work) | Same | 24 MB. The bench makes one more copy when stacking (+26). The app writes straight into one buffer |
+| Embedding store (26k × 192 f32) | 19 MB (+list overhead, about 26 of remaining growth) | Same | 20 MB |
+| (Window, speaker) pairs and span lists | 10 MB | 10 MB | A few MB |
+| Clustering | about 40 MB inside pieces, about 160 MB with global (fixmem, 872 → 1033 MB after extraction) | | With the two-stage link, global is a few MB and in-piece about 40 MB |
+| Turn reconstruction | 22 MB | | Same |
+| **Total (peak RSS)** | 870 MB after extraction, 1046 MB overall (fixmem) | 411 MB, 1064 MB | About 600 MB calling ORT directly (estimated; in the check below, ERes2NetV2 on ORT called directly peaked at 438 MB) |
 
-ERes2NetV2의 메모리 대부분은 가중치가 아니라 ORT의 작업 메모리다. 앱(Rust `ort`)에서 줄일 수 있다고 보는 손잡이는 셋이다. 모두 추정이며 재야 한다.
+Most of ERes2NetV2's memory is ORT's working memory, not the weights. Three knobs might reduce it in the app (Rust `ort`). All are estimated and must be measured.
 
-1. ~~arena 끄기 또는 요청한 만큼만 늘리기~~: 확인 실험에서 효과가 없었다. 끄면 오히려 200 MB 늘었다(아래).
-2. 임베딩 입력 길이에 상한(예: 3~5초)을 둔다. 작업 메모리는 입력 길이에 비례한다. 다만 임베딩이 바뀌므로 bench에서 DER을 다시 잰다.
-3. 스레드 수. 스레드마다 작업 공간을 따로 쓰는지 확인한다.
+1. ~~Turn the arena off, or grow it only as requested~~: no effect in the check. Turning it off added 200 MB (below).
+2. Cap the embedding input length (for example 3–5 s). Working memory grows with input length. But the embeddings change, so DER must be measured again in the bench.
+3. Thread count. Check whether each thread has its own working space.
 
-## 언제 돌리나
+## When it runs
 
-bench Python 기준 처리 시간은 4시간 회의에 ERes2NetV2 25~37분(스레드 4), CAM++ 9~10분이다. final pass(large-v3-turbo, Metal)는 약 22.6분이다.
+Bench Python processing time for a 4-hour meeting is 25–37 min for ERes2NetV2 (4 threads) and 9–10 min for CAM++. The final pass (large-v3-turbo, Metal) is about 22.6 min.
 
-- **A. final pass 뒤에 이어서 (기본 제안).**
-  - 메모리가 더해지지 않는다. 위 예산은 이 가정이다.
-  - 4시간 회의의 회의 후 처리가 약 48~60분이다. 진행률과 취소가 필요하다. 취소하면 화자 없는 전사가 남는다.
-- **B. final pass와 겹쳐서.**
-  - whisper는 Metal(GPU), 화자 분리는 CPU라 겹칠 여지가 있다.
-  - 메모리는 더해진다. CPU 경합(whisper의 CPU 부분, 디코더)은 재지 않았다.
-- **C. 회의 중 조각이 끝날 때마다 분할·임베딩.**
-  - 1200초 조각은 회의 중에 닫힌다. 닫힌 조각의 분할과 임베딩을 회의 중 CPU 여유에 돌리면 회의 후에는 전역 연결과 복원(수 초)만 남는다.
-  - "회의 중 세션 전체를 다시 처리하지 않는다"는 원칙과 맞는다. 조각마다 한 번만 처리하기 때문이다.
-  - 위험은 live 자막과의 CPU 경합이다. 자막 지연(STT 목표)을 지켜야 한다.
-- 0.3은 A로 시작하고, 잰 뒤에 C를 검토하기를 제안한다. B와 C 모두 아직 재지 않았다.
+- **A. Right after the final pass (proposed default).**
+  - Memory does not add up. The budget above assumes this.
+  - After-meeting processing for a 4-hour meeting is about 48–60 min. It needs progress and cancel. Cancelling leaves the transcript without speakers.
+- **B. Overlapping the final pass.**
+  - whisper is on Metal (GPU) and diarization on the CPU, so there is room to overlap.
+  - Memory adds up. CPU contention (whisper's CPU part, the decoder) was not measured.
+- **C. Segmentation and embeddings each time a piece ends during the meeting.**
+  - A 1200 s piece closes during the meeting. If closed pieces are segmented and embedded with spare CPU during the meeting, only the global link and reconstruction (seconds) are left afterwards.
+  - It fits the rule "never re-process the whole session during the meeting", since each piece is processed once.
+  - The risk is CPU contention with live captions. The caption delay (STT target) must hold.
+- Proposal for 0.3: start with A, and look at C after measuring. Neither B nor C is measured yet.
 
-## 테스트 계획
+## Test plan
 
-- **기본 tier (모델 없음, 네트워크 없음, 빠름).**
-  - 가짜 분할 라벨과 가짜 임베딩(화자마다 한 방향 + 잡음)을 쓴다. bench `tests/test_diar_chunk.py`의 사례를 옮긴다.
-  - 옮길 사례:
-    - 늦게 합류한 사람이 조각 안에서 살아남음
-    - 조각마다 조금씩 말하는 사람이 총합으로 살아남음
-    - 같은 목소리는 한 화자
-    - 겹침이 경계를 넘는 표류를 이음
-    - first-seen 번호와 같은 입력 같은 출력
-  - 새로 둘 사례:
-    - 대표 K개 상한
-    - 화자 20명 상한(넘을 때 큰 순으로 남김)
-    - 바닥을 넘는 화자가 없을 때
-    - 임베딩 없는 꼬리
-    - 후보가 수천 개일 때 전역 단계의 할당이 K × 조각 수에 묶임
-  - fbank는 합성 신호(사인파, 무음)로 만든 기준값을 fixture로 둔다. fixture에는 도출한 숫자만 넣는다.
-- **slow tier (`--ignored`, 모델은 `MEETBUTLER_MODELS`, 다운로드 없음).**
-  - bench의 합성 한국어 회의와 AMI(`bench/data/`, 저장소 밖)를 쓴다.
-  - 확인할 것:
-    1. 같은 오디오의 Rust 임베딩과 sherpa 임베딩의 코사인
-    2. Rust 결과의 DER이 Python 기준과 0.5점 안
-    3. 4시간 회의의 최대 RSS와 처리 시간
-  - bench에 Rust 결과를 읽는 단계를 두어 같은 채점기로 잰다.
-- 실제 회의 오디오는 테스트에도 fixture에도 쓰지 않는다.
+- **Default tier (no model, no network, fast).**
+  - Fake segmentation labels and fake embeddings (one direction per speaker + noise). Port the cases from the bench's `tests/test_diar_chunk.py`.
+  - Cases to port:
+    - a late joiner survives inside a piece
+    - someone who speaks a little in each piece survives in total
+    - the same voice is one speaker
+    - overlap joins a drift across a boundary
+    - first-seen numbering, and the same input gives the same output
+  - New cases:
+    - the cap of K representatives
+    - the 20-speaker cap (keeps the largest when over)
+    - no speaker passes the floor
+    - a tail without an embedding
+    - with thousands of candidates, the global step's allocation is bounded by K × number of pieces
+  - For fbank, keep reference values made from synthetic signals (sine, silence) as a fixture. The fixture holds derived numbers only.
+- **Slow tier (`--ignored`, models from `MEETBUTLER_MODELS`, no downloads).**
+  - Uses the bench's synthetic Korean meetings and AMI (`bench/data/`, outside the repo).
+  - What to check:
+    1. the cosine between Rust and sherpa embeddings of the same audio
+    2. the Rust result's DER within 0.5 points of the Python baseline
+    3. peak RSS and processing time for a 4-hour meeting
+  - Add a bench step that reads the Rust results, so the same scorer measures them.
+- Real meeting audio is never used in tests or fixtures.
 
-## 새 crate 후보
+## New crate candidates
 
-| crate | 용도 | 라이선스 | 메모 |
+| crate | Use | Licence | Note |
 |---|---|---|---|
-| `ort` 2.0.0-rc.x | ONNX Runtime 바인딩 | MIT OR Apache-2.0 | 2.0은 아직 RC다. 기본 빌드는 빌드 때 ORT 바이너리를 내려받는다. **결정: download 기능을 끄고 `load-dynamic`으로, 버전과 sha256을 고정한 라이브러리를 번들에 싣는다**(아래 결정). `security.rs`에 그 검사를 더한다. |
-| ONNX Runtime | 실행기 | MIT | dmg 크기에 수십 MB가 더해질 수 있다(50 MB 목표, 재야 함). |
-| `ndarray` | 텐서 | MIT OR Apache-2.0 | `ort`가 쓴다. |
-| `realfft` / `rustfft` | fbank의 FFT | MIT OR Apache-2.0 | fbank는 직접 구현해 sherpa와 비교한다. |
-| `kodama` | 계층 군집(average, NN-chain) | MIT | 조각 안 군집용이다. 컷 규칙("임계값 미만에서만 합침")과 동점 처리를 bench와 맞춰야 한다. 직접 구현도 가능하다. |
-| (기존) `tract-onnx` | Silero에 이미 씀 | MIT OR Apache-2.0 | 순수 Rust라 바이너리가 없다. 두 모델의 연산 지원과 속도는 확인하지 않았다. 되면 새 실행기가 필요 없다. 먼저 확인할 가치가 있다. |
+| `ort` 2.0.0-rc.x | ONNX Runtime binding | MIT OR Apache-2.0 | 2.0 is still an RC. The default build downloads an ORT binary at build time. **Decision: turn the download feature off and ship a library pinned by version and sha256 in the bundle with `load-dynamic`** (Decision below). Add that check to `security.rs`. |
+| ONNX Runtime | Runtime | MIT | May add tens of MB to the dmg (50 MB target, must be measured). |
+| `ndarray` | Tensors | MIT OR Apache-2.0 | Used by `ort`. |
+| `realfft` / `rustfft` | FFT for fbank | MIT OR Apache-2.0 | fbank is our own implementation, compared with sherpa. |
+| `kodama` | Hierarchical clustering (average, NN-chain) | MIT | For clustering inside pieces. The cut rule ("merge only below the threshold") and tie handling must match the bench. Our own implementation is also possible. |
+| (existing) `tract-onnx` | Already used for Silero | MIT OR Apache-2.0 | Pure Rust, so no binary. Op support and speed for the two models were not checked. If it works, no new runtime is needed. Worth checking first. |
 
-## 대안: sherpa-onnx C API 바인딩
+## Alternative: a sherpa-onnx C API binding
 
-sherpa-onnx(Apache-2.0)의 C API를 Rust에서 부르는 길이다(예: `sherpa-rs`, MIT).
+Call sherpa-onnx's (Apache-2.0) C API from Rust (for example `sherpa-rs`, MIT).
 
-장점:
-- bench가 쓴 것과 같은 fbank, 같은 분할, 같은 임베딩 경로다. 재현 위험(fbank 차이)이 사라진다.
-- 모델 입출력 처리를 직접 짜지 않아도 된다.
+For:
+- The same fbank, segmentation and embedding path as the bench. The reproduction risk (fbank differences) goes away.
+- No model input/output handling to write.
 
-단점:
-- sherpa의 오프라인 화자 분리는 회의 전체를 한 번에 군집한다. 4시간에 N² 메모리이고, bench에서 5~6 GB였다. 그래서 군집은 어차피 직접 짜야 한다. 쓰는 것은 분할과 임베딩 추출기뿐이다.
-- C++ 빌드(CMake)와 ORT 동봉을 Windows 교차 빌드와 CI에 넣어야 한다. 의존성이 커지고 dmg도 커진다.
-- 바인딩 crate의 유지 상태에 기댄다.
+Against:
+- sherpa's offline diarization clusters the whole meeting at once. That is N² memory over 4 hours, 5–6 GB in the bench. So the clustering has to be ours anyway. Only the segmentation and the embedding extractor would be used.
+- The C++ build (CMake) and bundled ORT must go into the Windows cross build and CI. Dependencies grow and so does the dmg.
+- It depends on how well the binding crate is maintained.
 
-판단: `ort`로 분할과 임베딩을 직접 부른다(아래 결정). 임베딩 일치가 slow tier 기준을 못 넘으면 sherpa 바인딩으로 추출기만 대체한다. 군집과 복원은 어느 쪽이든 앱 코드다.
+Judgement: call segmentation and embeddings directly with `ort` (Decision below). If the embeddings miss the slow-tier bar, replace only the extractor with the sherpa binding. Clustering and reconstruction are app code either way.
 
-## 결정 (2026-10-22)
+## Decision (2026-10-22)
 
-- **두 모델 모두 `ort`로 돌린다.** segmentation만 tract로 두면 실행기가 둘이 된다. 기존 Silero(tract)는 그대로 둔다.
-- **공급망:**
-  - `ort`가 빌드 때 ORT 바이너리를 받아 오지 않게 한다(download 기능 끔).
-  - 버전과 sha256을 고정한 ONNX Runtime 동적 라이브러리를 `load-dynamic`으로 번들에 싣는다.
-  - 라이브러리는 `bench/fetch_diar.sh`처럼 사람이 돌리는 스크립트로 받고 해시로 확인한다.
-  - `app/src-tauri/tests/security.rs`에 "`ort`의 download 기능이 꺼져 있다"는 검사를 더한다.
-- **순서:** 0.2를 닫은 뒤 0.3 구현의 첫 커밋이 이 골격(빌드, 번들, 검사)이다. 그 전에는 이 설계만 고친다.
-- fbank는 직접 구현(`rustfft`)하고, kaldi-native-fbank와의 직접 비교는 하지 않는다. 끝에서 끝까지 임베딩 코사인(0.9999998 이상)으로 충분하다.
+- **Both models run on `ort`.** Keeping only segmentation on tract would mean two runtimes. The existing Silero (tract) stays as it is.
+- **Supply chain:**
+  - `ort` does not fetch an ORT binary at build time (download feature off).
+  - An ONNX Runtime dynamic library pinned by version and sha256 ships in the bundle via `load-dynamic`.
+  - The library is fetched by a script a person runs, like `bench/fetch_diar.sh`, and checked by hash.
+  - `app/src-tauri/tests/security.rs` gets a check that "`ort`'s download feature is off".
+- **Order:** after 0.2 closes, this skeleton (build, bundle, check) is the first commit of the 0.3 implementation. Until then only this design changes.
+- fbank is our own implementation (`rustfft`), with no direct comparison against kaldi-native-fbank. The end-to-end embedding cosine (0.9999998 or more) is enough.
 
-## 확인 실험: tract, ort arena, fbank (2026-10-22)
+## Checks: tract, the ort arena, fbank (2026-10-22)
 
-앱 코드는 바꾸지 않았다. 실험 crate는 `bench/tract_probe/`(앱 워크스페이스 밖, 빌드 결과는 `bench/data/`)다. 입력은 bench의 한국어 test 회의(합성, 공개 음성 클립)다. 실험 중 머신의 부하가 들쭉날쭉했다(다른 프로세스로 load average 2~34). 시간은 같은 입력을 번갈아 잰 상대값으로 읽는다.
+No app code changed. The probe crate is `bench/tract_probe/` (outside the app workspace, build output in `bench/data/`). Inputs are the bench's Korean test meetings (synthetic, public speech clips). Machine load swung during the checks (load average 2–34 from other processes). Read times as relative values from the same inputs measured alternately.
 
-**tract-onnx 0.23.9 (최신 안정판)**
+**tract-onnx 0.23.9 (latest stable)**
 
-- **segmentation-3.0: 올라간다.**
-  - 입력을 고정 shape(1, 1, 160000)으로 주면 추론 단계에서 "Unifying shapes 1,1,160000 and N,1,T"로 실패한다.
-  - 모델의 기호 그대로(N, 1, T) 두고 `with_ignore_output_shapes(true)`, `into_optimized()`로 실행하면 된다.
-  - onnxruntime과 출력 차이는 최대 2.3e-4이고, 프레임 라벨은 30분 회의 1,796창에서 99.9999% 같다(약 100만 프레임 중 1개).
-  - 한 스레드에 창당 51 ms다. 30분 회의 92초, 4시간 약 12분이다.
-- **ERes2NetV2: 정확하지만 최적화가 안 된다.**
-  - `into_optimized()`가 declutter에서 실패한다: `Pulling #262 ".../layer2/layer2.0/conv1/Conv.downsample..." Downsample over #261 "...conv3/Conv.einsum.concat-einsum-I.0..26.unmerge_out" Reshape: Invalid axis`. 막힌 연산은 **Downsample을 Reshape 너머로 당기는 변환**이다.
-  - T에 하한 단언을 줘도 같고, T를 고정하면 최적화가 된다. 길이마다 다시 컴파일해야 하므로(약 0.2초) 쓰기 어렵다.
-  - 최적화 없이(`into_typed()`) 기호 T로 돌리면 된다. 30분 회의 임베딩 3,104개 전부 sherpa와 코사인 0.99999976 이상이다.
-  - 느리다:
-    - 같은 40개 입력(23,056프레임)에서 tract typed 14.7초, onnxruntime 한 스레드 9.5초, 네 스레드 5.0초다.
-    - 30분 회의는 분할 92초 + 임베딩 940초로 RTF 0.57(한 스레드)이다. 4시간이면 2시간이 넘는다.
-- **판단: tract만으로는 안 된다.** segmentation은 tract로 충분하다. ERes2NetV2는 tract의 이 최적화 버그가 고쳐지기 전에는 ort가 필요하다. ort를 들인다면 두 모델 모두 ort로 하는 편이 단순하다.
-  - 대안 하나: ERes2NetV2 입력을 몇 개의 고정 길이로 잘라 길이별 최적화 계획을 캐시한다. 임베딩이 달라지므로 bench에서 다시 재야 한다.
-  - 대안 둘: tract에 버그를 보고한다. 외부 게시라 사용자 승인이 필요하고 일정에 꼭 필요하지 않아 하지 않는다. 사용자가 원하면 아래 재현 절차로 한다.
-  - **재현 절차:**
-    1. `bench/fetch_diar.sh models`로 `3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx`(sha256 `bf1a75b9…2239`)를 받는다.
-    2. `bench/tract_probe`를 빌드한다(tract-onnx 0.23.9).
-    3. `meetbutler-tract-probe emb <model> <feats.f32> <lens.txt> <out.f32>`를 실행한다. 입력 fact가 `(1, T, 80)`, T 기호, `into_optimized()`다.
-    4. declutter에서 `Downsample over ... Reshape: Invalid axis`로 실패한다. `FIXED_T=536`으로 T를 고정하면 통과하고, `TYPED=1`(최적화 없음)도 통과한다.
-    - 보고에 실을 것은 tract 버전, 모델 출처 URL과 sha256, 실패 메시지, 위 세 경우의 차이다. 실패는 모델을 올리는 단계에서 나므로 입력 값은 필요 없다. 회의 오디오나 특징값은 싣지 않는다.
+- **segmentation-3.0: loads.**
+  - Given a fixed input shape (1, 1, 160000), it fails at inference with "Unifying shapes 1,1,160000 and N,1,T".
+  - Keeping the model's own symbols (N, 1, T) and running with `with_ignore_output_shapes(true)` and `into_optimized()` works.
+  - Output differs from onnxruntime by at most 2.3e-4, and frame labels are 99.9999% the same over 1,796 windows of a 30-minute meeting (1 frame in about a million).
+  - 51 ms per window on one thread. 92 s for a 30-minute meeting, about 12 min for 4 hours.
+- **ERes2NetV2: correct, but does not optimise.**
+  - `into_optimized()` fails in declutter: `Pulling #262 ".../layer2/layer2.0/conv1/Conv.downsample..." Downsample over #261 "...conv3/Conv.einsum.concat-einsum-I.0..26.unmerge_out" Reshape: Invalid axis`. The blocked op is **the transform that pulls a Downsample over a Reshape**.
+  - Asserting a lower bound on T does not help; fixing T lets it optimise. That means recompiling for each length (about 0.2 s), which is hard to use.
+  - Running unoptimised (`into_typed()`) with symbolic T works. All 3,104 embeddings of a 30-minute meeting have a cosine of 0.99999976 or more against sherpa.
+  - It is slow:
+    - On the same 40 inputs (23,056 frames): tract typed 14.7 s, onnxruntime one thread 9.5 s, four threads 5.0 s.
+    - A 30-minute meeting is 92 s segmentation + 940 s embeddings, RTF 0.57 (one thread). 4 hours would take over 2 hours.
+- **Judgement: tract alone does not work.** tract is enough for segmentation. ERes2NetV2 needs ort until tract fixes this optimisation bug. If ort comes in, running both models on ort is simpler.
+  - Alternative one: cut ERes2NetV2 inputs to a few fixed lengths and cache an optimised plan per length. The embeddings change, so it must be measured again in the bench.
+  - Alternative two: report the bug to tract. It is an external post, so it needs the user's approval, and the schedule does not need it, so it is not done. If the user wants it, use the repro steps below.
+  - **Repro steps:**
+    1. Fetch `3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx` (sha256 `bf1a75b9…2239`) with `bench/fetch_diar.sh models`.
+    2. Build `bench/tract_probe` (tract-onnx 0.23.9).
+    3. Run `meetbutler-tract-probe emb <model> <feats.f32> <lens.txt> <out.f32>`. The input fact is `(1, T, 80)`, T symbolic, `into_optimized()`.
+    4. It fails in declutter with `Downsample over ... Reshape: Invalid axis`. Fixing T with `FIXED_T=536` passes, and so does `TYPED=1` (no optimisation).
+    - The report carries the tract version, the model's source URL and sha256, the failure message, and the difference between the three cases above. The failure happens while loading the model, so no input values are needed. No meeting audio or features go in it.
 
-**onnxruntime 1.31 arena (ERes2NetV2, 같은 40개 입력, 설정마다 별도 프로세스)**
+**onnxruntime 1.31 arena (ERes2NetV2, the same 40 inputs, a separate process per setting)**
 
-| arena | 스레드 | 로드 후 | 최대 RSS | 시간 |
+| Arena | Threads | After load | Peak RSS | Time |
 |---|---:|---:|---:|---:|
-| 기본 | 1 | 154 MB | 438 MB | 9.45 s |
-| 끔 (`enable_cpu_mem_arena=false`) | 1 | 155 MB | **653 MB** | 9.58 s |
+| Default | 1 | 154 MB | 438 MB | 9.45 s |
+| Off (`enable_cpu_mem_arena=false`) | 1 | 155 MB | **653 MB** | 9.58 s |
 | `kSameAsRequested` | 1 | 155 MB | 438 MB | 9.59 s |
-| 기본 | 4 | 178 MB | 467 MB | 4.97 s |
-| 끔 | 4 | 178 MB | **666 MB** | 5.10 s |
+| Default | 4 | 178 MB | 467 MB | 4.97 s |
+| Off | 4 | 178 MB | **666 MB** | 5.10 s |
 | `kSameAsRequested` | 4 | 179 MB | 464 MB | 5.06 s |
 
-- arena를 끄면 최대가 오히려 200 MB 늘었다. 할당을 재사용하지 못하고 해제한 메모리를 OS에 돌려주지 않는 것으로 보인다(추정). `kSameAsRequested`는 차이가 없다. **arena 끄기는 손잡이가 아니다.**
-- 직접 부른 ORT의 작업 메모리는 약 280 MB다(438 − 155). sherpa를 거친 bench long 단계의 545 MB보다 작다. 차이의 원인(sherpa의 세션 설정, 4스레드, 분할 세션과의 공존)은 확인하지 않았다.
-- 남은 손잡이는 임베딩 입력 길이의 상한이다(위 예산표 참고). 앱의 ERes2NetV2 부분은 약 450 MB, 분할과 군집을 더해 약 600 MB로 본다(추정, 앱에서 다시 잰다).
+- Turning the arena off raised the peak by 200 MB. It seems allocations are not reused and freed memory is not returned to the OS (estimated). `kSameAsRequested` makes no difference. **Turning the arena off is not a knob.**
+- ORT called directly uses about 280 MB of working memory (438 − 155). That is less than the 545 MB of the bench long step through sherpa. The cause of the gap (sherpa's session settings, 4 threads, sharing the process with the segmentation session) was not checked.
+- The remaining knob is a cap on embedding input length (see the budget table above). The app's ERes2NetV2 part is taken as about 450 MB, and about 600 MB with segmentation and clustering (estimated, measure again in the app).
 
 **fbank**
 
-- 후보: **직접 구현**한다. FFT는 워크스페이스에 이미 있는 `rustfft` 6.4.1(MIT OR Apache-2.0)을 쓴다. 새 crate가 없다.
-- sherpa의 기본값(snip_edges 끔, 20 Hz~나이퀴스트−400 Hz, 80빈, Povey 창, 0.97 사전 강조, DC 제거, 샘플 [−1, 1])을 numpy로 옮긴 기준이 sherpa와 같은 임베딩을 낸다. 40개 클립(0.5~10초, room과 call)에서 ORT 임베딩이 sherpa와 코사인 0.9999998 이상이다.
-- Rust 구현(약 100줄)과 numpy 기준을 23,256프레임(무음, 440 Hz 사인 포함)에서 프레임 단위로 비교했다. log-mel 차이는 최대 3.6e-4(에너지가 거의 없는 빈, −14.8)이고 평균 2.9e-6이다. Rust fbank → ORT 임베딩은 sherpa와 코사인 0.99999982 이상이다.
-- kaldi-native-fbank 자체와의 직접 비교는 하지 않는다(결정). 대신 kaldi-native-fbank를 쓰는 sherpa의 임베딩으로 끝에서 끝까지 맞췄다.
-- 앱 테스트에는 이 비교를 fixture로 옮긴다. 합성 신호의 fbank 값(도출한 숫자)만 넣는다.
+- Candidate: **our own implementation**. The FFT is `rustfft` 6.4.1 (MIT OR Apache-2.0), already in the workspace. No new crate.
+- A numpy reference of sherpa's defaults (snip_edges off, 20 Hz to Nyquist−400 Hz, 80 bins, Povey window, 0.97 pre-emphasis, DC removal, samples in [−1, 1]) gives the same embeddings as sherpa. On 40 clips (0.5–10 s, room and call), the ORT embeddings have a cosine of 0.9999998 or more against sherpa.
+- The Rust implementation (about 100 lines) was compared frame by frame with the numpy reference over 23,256 frames (including silence and a 440 Hz sine). The log-mel difference is at most 3.6e-4 (a bin with almost no energy, −14.8) and 2.9e-6 on average. Rust fbank → ORT embeddings have a cosine of 0.99999982 or more against sherpa.
+- No direct comparison against kaldi-native-fbank itself (Decision). Instead, it was matched end to end through the embeddings of sherpa, which uses kaldi-native-fbank.
+- App tests take this comparison as a fixture. Only the fbank values of synthetic signals (derived numbers) go in.
