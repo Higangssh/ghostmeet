@@ -1,23 +1,24 @@
-# bench — 한국어 STT 엔진 비교
+# bench — Korean STT engine comparison
 
-MeetButler 0.2의 엔진 결정(requirements.md §8, §13)을 위한 측정 스크립트.
-결과는 [`results/RESULTS.md`](results/RESULTS.md).
+Measurement scripts for MeetButler 0.2's engine decisions (requirements.md §8, §13).
+Results are in [`results/RESULTS.md`](results/RESULTS.md).
 
-## 데이터와 라이선스
+## Data and licences
 
-| 무엇 | 출처 | 라이선스 |
+| What | Source | Licence |
 |---|---|---|
-| 음성 | [FLEURS](https://huggingface.co/datasets/google/fleurs) `ko_kr` test (382문장, 80분, 낭독) | CC BY 4.0 |
-| faster-whisper 모델 | Systran/faster-whisper-small, mobiuslabsgmbh/faster-whisper-large-v3-turbo | MIT |
-| whisper.cpp 모델 | ggerganov/whisper.cpp `ggml-small.bin`, `ggml-large-v3-turbo.bin` | MIT |
+| Speech | [FLEURS](https://huggingface.co/datasets/google/fleurs) `ko_kr` test (382 sentences, 80 min, read speech) | CC BY 4.0 |
+| faster-whisper models | Systran/faster-whisper-small, mobiuslabsgmbh/faster-whisper-large-v3-turbo | MIT |
+| whisper.cpp models | ggerganov/whisper.cpp `ggml-small.bin`, `ggml-large-v3-turbo.bin` | MIT |
 | whisper.cpp VAD | ggml-org/whisper-vad `ggml-silero-v5.1.2.bin` | MIT |
-| SenseVoice | k2-fsa/sherpa-onnx `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` (int8) | FunASR Model License (모델 출처 표기 조건, 앱 배포 전 확인 필요) |
+| SenseVoice | k2-fsa/sherpa-onnx `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` (int8) | FunASR Model License (requires crediting the model; check before shipping it in the app) |
 | sherpa-onnx VAD | k2-fsa/sherpa-onnx `silero_vad.onnx` (Silero v4 export, [release asset](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx), sha256 `9e2449e1…cbb1fd6`). The Rust engine runs the same file | MIT |
 
-실제 회의 녹음은 쓰지 않는다. 다운로드한 음성·모델은 전부 `bench/data/`(gitignore)에만 있고,
-`bench/results/raw/`(gitignore)에 엔진 출력 원문이 남는다. 커밋되는 것은 숫자뿐이다.
+No real meeting recordings are used. Downloaded speech and models live only in `bench/data/`
+(gitignored), and the raw engine output stays in `bench/results/raw/` (gitignored). Only
+numbers are committed.
 
-## 준비 (macOS)
+## Setup (macOS)
 
 ```bash
 brew install python@3.12 whisper.cpp ffmpeg
@@ -32,129 +33,153 @@ curl -L -o bench/data/downloads/fleurs/test.tar.gz \
   https://huggingface.co/datasets/google/fleurs/resolve/main/data/ko_kr/audio/test.tar.gz
 bench/.venv/bin/python -I -c "import tarfile,sys; tarfile.open(sys.argv[1]).extractall(sys.argv[2], filter='data')" \
   bench/data/downloads/fleurs/test.tar.gz bench/data/fleurs_ko
-# 모델: README 위 표의 파일을 bench/data/models/ 로 (SenseVoice는 models/sv/ 에 풀기)
+# models: the files in the table above go into bench/data/models/ (unpack SenseVoice into models/sv/)
 ```
 
-faster-whisper 모델은 첫 실행 때 `bench/data/models/faster-whisper/`로 받아진다.
+faster-whisper models are downloaded into `bench/data/models/faster-whisper/` on the first run.
 
-## 실행
+## Running
 
 ```bash
-sh bench/run_all.sh                                        # 전체 (M4 기준 약 1.5시간)
-bench/.venv/bin/python -I bench/run_utterances.py wcpp-small --limit 20   # 하나만
+sh bench/run_all.sh                                        # everything (about 1.5 hours on an M4)
+bench/.venv/bin/python -I bench/run_utterances.py wcpp-small --limit 20   # just one
 bench/.venv/bin/python -I bench/run_stream.py fw-small --mode live
 ```
 
-엔진 이름: `fw-small`, `fw-large-v3-turbo`, `wcpp-small`, `wcpp-large-v3-turbo`,
-`wcpp-small-cpu`, `sensevoice`, `sensevoice-coreml`, 그리고 앱의 Rust 엔진 `rust-<모델>`
-(`run_longform.py` 전용, 먼저 `cargo build --release -p meetbutler-engine --features whisper,silero
+Engine names: `fw-small`, `fw-large-v3-turbo`, `wcpp-small`, `wcpp-large-v3-turbo`,
+`wcpp-small-cpu`, `sensevoice`, `sensevoice-coreml`, and the app's Rust engine `rust-<model>`
+(`run_longform.py` only; first run `cargo build --release -p meetbutler-engine --features whisper,silero
 --example final_pass`).
 
-VAD 기준값: `silero_reference.py`가 WAV(또는 `--fleurs 분`으로 만든 FLEURS 세션)의 onnxruntime
-프레임 확률과 sherpa 구간을 JSON으로 쓴다. Rust 쪽 `tests/slow_vad.rs`가 이것과 비교한다.
+VAD reference: `silero_reference.py` writes onnxruntime frame probabilities and sherpa spans as
+JSON for a WAV (or for a FLEURS session made with `--fleurs <minutes>`). The Rust side,
+`tests/slow_vad.rs`, compares against it.
 
-`bench/`는 pytest가 수집하지 않는다(`pytest.ini`의 `norecursedirs`). 기존 테스트 스위트는
-계속 모델·네트워크 없이 돈다.
+pytest does not collect `bench/` (`norecursedirs` in `pytest.ini`). The existing test suite
+still runs without models or network.
 
-## 무엇을 같게 맞췄나
+## What was kept the same
 
-- 디코딩 설정은 `legacy/backend/transcriber.py`(v0.1)와 같게 했다. 한국어로 고정했고, Whisper는 beam 5다.
-  Silero VAD는 threshold 0.3, 최소 침묵 500ms, 패딩 200ms다. 창 사이에 텍스트 문맥은 넘기지
-  않는다. faster-whisper는 프로덕션의 `WhisperTranscriber`를 그대로 호출한다.
-- 스레드는 엔진마다 4개다(M4 성능 코어 수).
-- whisper.cpp는 Homebrew의 `whisper-server`를 loopback에 띄워 모델을 한 번만 올린다. 요청마다
-  WAV를 HTTP로 넘기는 비용이 들어가지만, 30초 창 기준 수 ms다.
-- 꼬리 창 측정은 `legacy/backend/incremental.py`의 `IncrementalTranscriber`(v0.1)를 그대로 쓴다.
+- Decoding settings match `legacy/backend/transcriber.py` (v0.1): fixed to Korean, Whisper at
+  beam 5. Silero VAD at threshold 0.3, minimum silence 500 ms, padding 200 ms. No text context
+  is carried between windows. faster-whisper calls the production `WhisperTranscriber` as is.
+- Four threads per engine (the number of M4 performance cores).
+- whisper.cpp runs Homebrew's `whisper-server` on loopback so the model loads once. Each request
+  pays for sending the WAV over HTTP, but that is a few ms for a 30 s window.
+- The tail-window measurement uses `IncrementalTranscriber` from `legacy/backend/incremental.py`
+  (v0.1) as is.
 
-## CER 계산
+## How CER is computed
 
-- NFKC로 정규화하고 소문자로 바꾼 뒤 공백과 문장부호를 지운다. 그다음 글자 단위 편집거리를
-  정답 글자 수로 나눈다(코퍼스 합산).
-- FLEURS 정답에는 읽지 않는 로마자 병기가 괄호로 들어 있다(`비슈케크(Bishkek)`). 그래서
-  괄호 안을 지운다.
-- 숫자 표기(`2명` / `두 명`)는 정규화하지 않는다. 그 대신 정답에 숫자가 없는 문장만으로 잰 CER을
-  따로 낸다. 엔진 비교는 이 값을 기준으로 본다.
+- Normalise with NFKC, lowercase, then remove spaces and punctuation. Then divide the
+  character-level edit distance by the number of reference characters (summed over the corpus).
+- FLEURS references carry romanisations in parentheses that are not read aloud
+  (`비슈케크(Bishkek)`), so the text in parentheses is removed.
+- Number forms (`2명` / `두 명`, "2 people" as digits or words) are not normalised. Instead, a
+  separate CER is reported on only the sentences whose reference has no digits. Engines are
+  compared on that value.
 
-## 알려진 문제와 해석
+## Known issues and how to read the results
 
-- live(10초 주기) CER이 문장 단위보다 훨씬 나쁘게 나온 것은 측정 당시
-  `IncrementalTranscriber`가 창 경계에서 같은 말을 두 번 확정했기 때문이다. 엔진 차이가 아니다.
-  수정 전후 결과는 RESULTS.md에 나란히 둔다.
-- FLEURS는 낭독체이고 깨끗한 음성이다. 회의실 원거리 마이크, 겹치는 발화, 구어체에서는 모든
-  엔진의 CER이 올라간다. 순위가 유지된다고 가정하지 말고, 대면 회의 조건은 따로 재야 한다.
-- 메모리는 macOS phys_footprint다(활성 상태 보기의 "메모리" 값과 같다). Metal 할당이 포함된다.
-- whisper.cpp는 수정 후에도 live CER 기준(문장 단위 + 2%p)에 못 미친다. 오류의 대부분이 문장 끝
-  삭제다. VAD를 끄면(`wcpp-small-novad`) 오히려 나빠져서, VAD 시각 재매핑이 원인이라는 가설은
-  기각했다. 세그먼트 끝 시각이 부정확한 것이 남은 후보다(단어 시각 DTW는 `-nfa`가 필요하며 재지 않았다).
-- `run_stream.py`는 음성이 다 들어온 뒤 강제 회차만 돈다(`pipeline._drain`과 같다). 예전에는 남은
-  분량이 1초 이상이면 강제하지 않았다. 그래서 창 끝까지 이어진 꼬리가 보류되면 같은 창을 끝없이
-  다시 읽었다(`wcpp-large-v3-turbo-novad`에서 발생, 결과 없음). 커밋된 결과는 모두 정상 종료했으므로
-  이 반복을 타지 않았다.
-- whisper-server에서 VAD를 켜면 세그먼트 시각만 원래 시간축으로 되돌리고, 단어 시각과 DTW 시각
-  (`t_dtw`)은 무음을 잘라낸 시간축에 그대로 남는다(30초 창 시험에서 DTW 끝이 세그먼트 시작보다
-  앞섰다). 그래서 DTW는 VAD를 끈 상태(`wcpp-small-novad-dtw`)에서만 쟀다. VAD를 끄면 삽입 오류
-  (무음 구간 환각, 반복)가 늘어서 DTW로 끝 시각을 바로잡아도 live CER이 기준에 못 미친다.
-  이 측정 막바지에 같은 기기에서 다른 빌드가 돌기 시작했으니 그 행의 창당 시간은 참고치다.
-- whisper.cpp long-form(세션 36분을 한 요청으로)은 CER이 크게 나쁘다. 오류 대부분이 삭제이고
-  20~35초씩 통째로 건너뛴 구간과 반복 세그먼트가 있다. 회의 후 재전사는 엔진의 long-form에
-  맡기지 말고 창이나 VAD 구간 단위로 잘라서 넣어야 한다(꼬리 창 backlog 수치 참고).
-- 우리 VAD 구간 + 구간별 디코딩(`*-spans`)에서는 짧은 구간이 환각을 낸다. turbo 일괄 처리의
-  2초 미만 구간 38개 중 37개가 "한글자막 by …", "시청해주셔서 감사합니다." 같은 자막 문구였다.
-  저장된 출력에서 1.5초(여백 포함) 미만 구간을 빼고 다시 채점하면 CER이 6.9%에서 2.4%로 떨어진다.
-  이 값은 측정이 아니라 사후 추정이다. 짧은 구간을 버리면 회의의 "네", "아니요" 같은 짧은 대답도
-  사라지는데, FLEURS에는 그런 발화가 없어서 그 비용은 여기서 보이지 않는다.
-- CER 정답 전처리: 처음에는 괄호를 전부 지웠다. 그런데 382문장 중 22문장은 괄호 안 한국어를 실제로
-  읽는다(282자). 지금은 한글이 없는 괄호만 지운다. 모든 결과는 `rescore.py`로 저장된 출력에서
-  다시 채점했다(엔진은 다시 돌리지 않았고 시간 값은 그대로다). 대부분 0.2~0.8%p 내려갔고 순위와
-  기준 통과 여부는 바뀌지 않았다.
-- 마지막 라운드(RESULTS.md 6절). `no_speech_prob`/`avg_logprob` 필터는 한 세그먼트도 버리지 않았다.
-  whisper.cpp는 자막 문구 환각에도 `no_speech_prob`를 낮게 낸다. 환각은 모두 문장 클립 끝에서
-  다음 간격으로 넘어가는 약 1초짜리 VAD 구간에서 나왔다(이어 붙인 경계. 실제 회의라면 클릭음이나
-  기침 소리에 해당한다). 묶기(`packed`)는 환각을 없애지만 짧은 대답 53개 중 22개를 삼킨다.
-  같은 대답을 따로 넣으면 turbo가 8개 모두 받아 적으므로 원인은 묶기다. 구간별(`spans`)은 대답을
-  49/53 살린다.
-- 저장된 출력에 "2초 미만 구간이 알려진 환각 문구(한글자막…, 시청해주셔서…, 지금까지 뉴스
-  스토리…, …계속 됩니다, 감사합니다)를 포함하면 버림" 규칙을 사후 적용한 추정치: turbo 일괄 CER
-  6.9% → 2.4%, 짧은 대답 49/53 유지. turbo live(문구만 제거)는 6.5% → 2.9%로 추정된다. small live는
-  환각이 1개뿐이라 8.2%로 그대로다. 측정이 아니라 추정이며, 회의의 진짜 "감사합니다"도 버린다.
-- 이 라운드의 짧은 대답 세션은 원래 세션보다 환각이 훨씬 적다(2개 대 37개). 끼워 넣기로 간격과
-  잡음 배열이 달라진 탓으로 보이지만 확인하지 않았다. 대답 재현율 비교는 같은 세션 안에서만 하라.
-- whisper.cpp의 ggml Silero v5.1.2는 쓰지 않는다(RESULTS.md 7절). 원래 모델은 이전 프레임의 마지막
-  64샘플을 문맥으로 붙이는데 ggml 이식판은 프레임마다 반사 패딩을 한다. FLEURS 36분에서 말을 23.0분만
-  찾았고(같은 int16 입력에서 v4 onnx는 26.9분) 발화를 통째로 놓쳐 Rust 최종본 CER이 6.0%였다. 합성 음성
-  세션에서는 v5가 오히려 더 많이 잡아서 이 차이가 보이지 않았다. VAD·엔진을 바꿀 때는 합성 음성만으로
-  판단하지 않는다.
-- 같은 Silero라도 float 입력과 int16 입력의 구간이 다르다(36분 세션 sherpa 구간 205개 대 174개).
-  5·6절은 float, 7절은 앱이 녹음하는 int16이다. 같은 형식끼리만 비교하라.
+- Live (10 s period) CER came out much worse than per-sentence CER because, at the time,
+  `IncrementalTranscriber` committed the same words twice at window boundaries. It is not an
+  engine difference. RESULTS.md keeps the before and after results side by side.
+- FLEURS is read speech and clean audio. Far-field room microphones, overlapping speech and
+  conversational speech raise every engine's CER. Do not assume the ranking holds; in-person
+  meeting conditions need their own measurement.
+- Memory is macOS phys_footprint (the same as the "Memory" value in Activity Monitor). It
+  includes Metal allocations.
+- Even after the fix, whisper.cpp misses the live CER bar (per-sentence + 2%p). Most of its
+  errors are deletions at sentence ends. Turning VAD off (`wcpp-small-novad`) made it worse, so
+  the hypothesis that VAD time remapping is the cause was rejected. Inaccurate segment end times
+  remain the candidate (word-time DTW needs `-nfa` and was not measured).
+- `run_stream.py` runs only a forced pass after all the audio is in (the same as
+  `pipeline._drain`). It used to skip forcing when 1 s or more remained, so when a tail running
+  to the end of the window was held back it re-read the same window forever (seen with
+  `wcpp-large-v3-turbo-novad`, no result). All committed results ended normally, so none hit
+  this loop.
+- With VAD on in whisper-server, only segment times are mapped back to the original timeline;
+  word times and DTW times (`t_dtw`) stay on the timeline with the silence cut out (in a 30 s
+  window test, the DTW end came before the segment start). So DTW was measured only with VAD
+  off (`wcpp-small-novad-dtw`). With VAD off, insertion errors (hallucination in silence,
+  repetition) go up, so even with DTW fixing end times, live CER misses the bar. Near the end of
+  this measurement another build started running on the same machine, so the per-window time in
+  that row is for reference only.
+- whisper.cpp long-form (the 36-minute session as one request) has a much worse CER. Most errors
+  are deletions, with stretches of 20–35 s skipped whole and repeated segments. Re-transcription
+  after the meeting must not be left to the engine's long-form; cut it into windows or VAD spans
+  (see the tail-window backlog figures).
+- With our VAD spans plus per-span decoding (`*-spans`), short spans hallucinate. Of turbo's 38
+  batch spans under 2 s, 37 were subtitle credits such as "한글자막 by …" or
+  "시청해주셔서 감사합니다." ("thanks for watching"). Rescoring the saved output without spans
+  under 1.5 s (padding included) drops CER from 6.9% to 2.4%. That value is a post hoc estimate,
+  not a measurement. Dropping short spans also drops short replies in meetings such as "네"
+  (yes) or "아니요" (no); FLEURS has no such utterances, so that cost does not show here.
+- CER reference preprocessing: at first, all parentheses were removed. But 22 of the 382
+  sentences actually read the Korean inside the parentheses (282 characters). Now only
+  parentheses with no Hangul are removed. All results were rescored from the saved output with
+  `rescore.py` (engines were not rerun and times are unchanged). Most went down by 0.2–0.8%p;
+  rankings and bar passes did not change.
+- The last round (RESULTS.md §6). The `no_speech_prob`/`avg_logprob` filter dropped no segment
+  at all. whisper.cpp gives a low `no_speech_prob` even for hallucinated subtitle credits. Every
+  hallucination came from a VAD span of about 1 s running from the end of a sentence clip into
+  the next gap (a splice boundary; in a real meeting, a click or a cough). Packing (`packed`)
+  removes the hallucinations but swallows 22 of the 53 short replies. Fed separately, turbo
+  transcribes all 8 of those replies, so packing is the cause. Per-span (`spans`) keeps 49/53
+  replies.
+- An estimate from applying, post hoc, the rule "drop a span under 2 s that contains a known
+  hallucination phrase (한글자막…, 시청해주셔서…, 지금까지 뉴스 스토리…, …계속 됩니다,
+  감사합니다)" to the saved output: turbo batch CER 6.9% → 2.4%, short replies 49/53 kept. turbo
+  live (phrases removed only) is estimated at 6.5% → 2.9%. small live had only one hallucination
+  and stays at 8.2%. This is an estimate, not a measurement, and it also drops a real
+  "감사합니다" (thank you) in a meeting.
+- This round's short-reply session hallucinates far less than the original session (2 vs 37).
+  It looks like inserting the replies changed the gaps and the noise layout, but this was not
+  checked. Compare reply recall only within the same session.
+- whisper.cpp's ggml Silero v5.1.2 is not used (RESULTS.md §7). The original model prepends the
+  previous frame's last 64 samples as context; the ggml port reflect-pads each frame instead. On
+  36 minutes of FLEURS it found only 23.0 minutes of speech (v4 onnx on the same int16 input:
+  26.9 minutes), missed whole utterances, and the Rust final pass CER was 6.0%. On a synthetic
+  speech session v5 caught more, so the difference did not show. Do not judge a VAD or engine
+  change on synthetic speech alone.
+- Even the same Silero gives different spans for float and int16 input (36-minute session,
+  sherpa spans 205 vs 174). §5 and §6 are float; §7 is int16, which is what the app records.
+  Compare only within the same format.
 
-## 요약 모델 측정 (0.2 마일스톤 3)
+## Summary model measurement (0.2 milestone 3)
 
-실제 회의 전사는 쓸 수 없어서 회의를 합성한다. `meeting_gen.py`가 회의 종류 3가지(주간 회의, 1:1,
-고객 미팅) × 길이 3가지(30분, 1시간, 2시간)를 만든다. 결정 사항, 할 일(담당자·기한), 숫자, 미해결
-질문, 중간에 철회되는 제안, 짧은 대답과 잡담을 심고, 심은 것을 정답지(key)로 함께 낸다. 사람·회사·
-기능 이름은 모두 지어냈다. 앱처럼 화자 표시가 없어서 담당자는 말 속에서 이름으로 불린다. 대본
-본문은 `bench/data/meetings/`(커밋 안 함)에만 둔다.
+Real meeting transcripts cannot be used, so meetings are synthesised. `meeting_gen.py` makes
+3 meeting types (weekly meeting, 1:1, customer meeting) × 3 lengths (30 minutes, 1 hour,
+2 hours). It plants decisions, action items (owner and due date), numbers, open questions, a
+proposal withdrawn midway, short replies and small talk, and outputs what it planted as the
+answer key. All people, company and feature names are invented. As in the app, there are no
+speaker labels, so owners are called by name in the speech. Script text lives only in
+`bench/data/meetings/` (not committed).
 
-`summary_score.py`는 고정 형식(SUM-1, JSON) 요약을 정답지와 맞춰 채점한다. 판정 모델은 쓰지 않는다.
-항목은 다음과 같다.
-- 형식 통과
-- 결정·할 일·미해결 질문 재현율: 한 항목의 핵심어가 출력의 한 항목 안에 모두 있으면 찾은 것으로 친다. 할 일은 담당자와 기한이 맞는지도 따로 센다.
-- 철회된 제안을 결정으로 적은 수
-- 회의에 없던 사람과 숫자
+`summary_score.py` scores a fixed-format (SUM-1, JSON) summary against the answer key. No judge
+model is used. It counts:
+- format pass
+- recall of decisions, action items and open questions: an item counts as found when all its key words are inside one item of the output. Action items are also counted separately for a correct owner and due date.
+- withdrawn proposals written as decisions
+- people and numbers that were not in the meeting
 
-한국어 자연스러움은 블라인드 사람 채점으로 본다.
+Korean fluency is judged by blind human scoring.
 
 ```bash
-bench/.venv/bin/python -I bench/meeting_gen.py                                 # 대본 9개
-bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench         # bench 테스트 전부(생성기·채점기·화자 분리)
-# (표준 라이브러리 unittest라 pytest가 필요 없다. bench/.venv는 위 "준비"에서 만든 venv다)
+bench/.venv/bin/python -I bench/meeting_gen.py                                 # 9 scripts
+bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench         # all bench tests (generator, scorer, diarization)
+# (standard-library unittest, so no pytest needed; bench/.venv is the venv from "Setup" above)
 ```
 
-### 요약 모델 (직접 변환한 GGUF)
+### Summary models (GGUF converted here)
 
-각 공식 저장소의 safetensors를 커밋 해시로 고정해 받고, sidecar와 같은 llama.cpp(`d812350`)의 `convert_hf_to_gguf.py`와 `llama-quantize`로 Q4_K_M을 만들었다(`llm_models.py`, 결과는 `llm_models.json`). 받은 원본은 변환 후 지웠다. 커밋 해시로 다시 만들 수 있고, 사용자가 받을 파일은 아래 sha256으로 확인한다.
+The safetensors from each official repository were downloaded pinned to a commit hash, and
+Q4_K_M was built with `convert_hf_to_gguf.py` and `llama-quantize` from the same llama.cpp as
+the sidecar (`d812350`) (`llm_models.py`, results in `llm_models.json`). The downloaded
+originals were deleted after conversion. They can be rebuilt from the commit hashes, and the
+file a user downloads is checked against the sha256 below.
 
-| 이름 | 원본 저장소@커밋 | 라이선스 | 기기 묶음 | 크기 | sha256 | 변환에 쓴 transformers |
+| Name | Source repository@commit | Licence | Device tier | Size | sha256 | transformers used to convert |
 |---|---|---|---|---:|---|---|
 | kanana-1.5-2.1b | `kakaocorp/kanana-1.5-2.1b-instruct-2505@7df4bc35ccd6` | Apache-2.0 | 8GB | 1.42 GiB | `622293385bb6fb46…` | 4.57.6 |
 | midm-2.0-mini | `K-intelligence/Midm-2.0-Mini-Instruct@383eb221c52a` | MIT | 8GB | 1.33 GiB | `f4ba7d9ac35b523f…` | 4.57.6 |
@@ -165,60 +190,68 @@ bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench         #
 | midm-2.0-base | `K-intelligence/Midm-2.0-Base-Instruct@35479c5fc9a1` | MIT | 16GB | 6.55 GiB | `e590278bb19ffaf6…` | 4.57.6 |
 | gemma-4-e4b | `google/gemma-4-E4B-it@ee0ef6023621` | Apache-2.0 | 8GB | 4.97 GiB | `4b9bd938e2cd55f4…` | 5.20.1 |
 
-- A.X 4.0 Light를 채택해 배포하면 Apache-2.0 §4(d)에 따라 저장소의 NOTICE("Built with Qwen 2.5 — Alibaba Cloud")를 함께 실어야 한다.
-- Gemma 4 E4B는 llama.cpp가 고정한 transformers 4.57.6이 `gemma4`를 몰라서 5.20.1로 변환했다(별도 venv). 나머지는 4.57.6.
-- Gemma 4 E4B는 "유효 4B"지만 레이어별 임베딩까지 합치면 약 8B라 Q4_K_M이 4.97 GiB다. 8GB 묶음 상한(최대 메모리 4GB)을 넘는다.
-- 라이선스 원문 확인 결과와 제외한 모델(EXAONE 4.0, Kanana-2, HyperCLOVA X SEED, Llama 계열)은 0.2 마일스톤 3 보고에 있다.
+- If A.X 4.0 Light is adopted and shipped, Apache-2.0 §4(d) requires shipping the repository's NOTICE ("Built with Qwen 2.5 — Alibaba Cloud") with it.
+- Gemma 4 E4B was converted with transformers 5.20.1 (a separate venv), because the 4.57.6 that llama.cpp pins does not know `gemma4`. The rest used 4.57.6.
+- Gemma 4 E4B is "effective 4B", but with its per-layer embeddings it is about 8B, so Q4_K_M is 4.97 GiB. That is over the 8GB tier's cap (4GB peak memory).
+- The licence text checks and the excluded models (EXAONE 4.0, Kanana-2, HyperCLOVA X SEED, the Llama family) are in the 0.2 milestone 3 report.
 
-## 화자 분리 측정 (requirements §12 위험 1)
+## Diarization measurement (requirements §12 risk 1)
 
-`run_diar.py`가 sherpa-onnx의 회의 후 화자 분리(pyannote segmentation-3.0 + 화자 embedding +
-군집)를 한국어 모의 회의와 AMI에서 잰다. `diar_pipe.py`는 같은 과정을 저장한 embedding 위에서
-numpy로 다시 해서, 다시 뽑지 않고 군집 방법·threshold·작은 군집 바닥을 바꿔 본다. 결과는
-`results/RESULTS.md` §9.
+`run_diar.py` measures sherpa-onnx's after-the-meeting diarization (pyannote segmentation-3.0 +
+speaker embedding + clustering) on Korean mock meetings and on AMI. `diar_pipe.py` redoes the
+same process in numpy on saved embeddings, so the clustering method, threshold and small-cluster
+floor can be varied without extracting again. Results are in `results/RESULTS.md` §9.
 
-| 무엇 | 출처 | 라이선스 |
+| What | Source | Licence |
 |---|---|---|
-| 한국어 음성 | [Zeroth-Korean](https://www.openslr.org/40/) (OpenSLR 40) 낭독. test 10명은 test 회의에, train 중 12명(124 139 151 158 164 169 183 187 194 200 207 208)은 dev 회의에 섞는다(`diar_mix.py`) | CC BY 4.0 |
-| 영어 회의 | [AMI](https://groups.inf.ed.ac.uk/ami/corpus/) test 16회의, Mix-Headset과 Array1-01 | CC BY 4.0 |
-| AMI 정답 | [BUTSpeechFIT/AMI-diarization-setup](https://github.com/BUTSpeechFIT/AMI-diarization-setup) `2509d8933721023fab4def2618aabd5c28eb82e9`, `only_words/rttms/test`, `uems/test` | Apache-2.0 |
-| 모델 | sherpa-onnx GitHub releases. 출처·라이선스·sha256은 `diar_models.json` | segmentation MIT, 3D-Speaker(CAM++, ERes2Net, ERes2NetV2) Apache-2.0, TitaNet·WeSpeaker CC BY 4.0(출처 표기 필요) |
+| Korean speech | [Zeroth-Korean](https://www.openslr.org/40/) (OpenSLR 40) read speech. The 10 test speakers are mixed into the test meetings, and 12 of the train speakers (124 139 151 158 164 169 183 187 194 200 207 208) into the dev meetings (`diar_mix.py`) | CC BY 4.0 |
+| English meetings | [AMI](https://groups.inf.ed.ac.uk/ami/corpus/) test, 16 meetings, Mix-Headset and Array1-01 | CC BY 4.0 |
+| AMI reference | [BUTSpeechFIT/AMI-diarization-setup](https://github.com/BUTSpeechFIT/AMI-diarization-setup) `2509d8933721023fab4def2618aabd5c28eb82e9`, `only_words/rttms/test`, `uems/test` | Apache-2.0 |
+| Models | sherpa-onnx GitHub releases. Sources, licences and sha256 in `diar_models.json` | segmentation MIT, 3D-Speaker (CAM++, ERes2Net, ERes2NetV2) Apache-2.0, TitaNet and WeSpeaker CC BY 4.0 (attribution required) |
 
-받기와 확인은 `fetch_diar.sh` 하나로 한다. 받은 파일은 `bench/data/diar/`(gitignore)에만 두고,
-파일 3542개의 sha256을 `diar_data.sha256`에 커밋해 두었다. 받을 때는 Content-Length와 맞는지,
-.wav가 RIFF로 시작하는지 확인하고 다섯 번까지 다시 받는다. Zeroth는 10.3 GB 압축 파일을 한 번
-흘려 읽으면서 위 화자만 남긴다.
+Downloading and checking are done by `fetch_diar.sh` alone. Downloaded files stay only in
+`bench/data/diar/` (gitignored), and the sha256 of all 3542 files is committed in
+`diar_data.sha256`. Each download is checked against its Content-Length, and each .wav for
+starting with RIFF, with up to five retries. Zeroth is read once as a stream from its 10.3 GB
+archive, keeping only the speakers above.
 
 ```bash
 bench/.venv/bin/pip install sherpa-onnx==1.13.8 onnxruntime==1.31.0 scipy==1.16.2 numpy==2.5.4 soundfile==0.14.0
-bench/fetch_diar.sh                       # models ami zeroth, 끝에 sha256 확인
+bench/fetch_diar.sh                       # models ami zeroth, sha256 check at the end
 ```
 
-| 패키지 | 버전 | 라이선스 | 쓰는 곳 |
+| Package | Version | Licence | Used for |
 |---|---|---|---|
-| sherpa-onnx | 1.13.8 (자체 onnxruntime 1.28.2 포함) | Apache-2.0 | 화자 분리 전체, embedding 추출 |
-| onnxruntime | 1.31.0 | MIT | `diar_pipe`의 segmentation |
-| scipy | 1.16.2 | BSD-3-Clause | `diar_pipe`의 계층 군집 |
+| sherpa-onnx | 1.13.8 (bundles its own onnxruntime 1.28.2) | Apache-2.0 | all of diarization, embedding extraction |
+| onnxruntime | 1.31.0 | MIT | segmentation in `diar_pipe` |
+| scipy | 1.16.2 | BSD-3-Clause | hierarchical clustering in `diar_pipe` |
 | numpy | 2.5.4 | BSD-3-Clause | |
-| soundfile | 0.14.0 | BSD-3-Clause | 음성 읽기 |
+| soundfile | 0.14.0 | BSD-3-Clause | reading audio |
 
-결과 JSON마다 `env`에 sherpa-onnx·onnxruntime·scipy·numpy 버전과 segmentation·embedding 모델의
-sha256이 들어간다.
+Every result JSON carries, in `env`, the sherpa-onnx, onnxruntime, scipy and numpy versions and
+the sha256 of the segmentation and embedding models.
 
-다시 돌리는 순서. 단계마다 결과가 저장되어 있으면 건너뛰고, `bench/data/diar/STOP`이 있으면 다음
-단위 앞에서 멈춘다.
+The order to rerun. Each step is skipped when its results are saved, and it stops before the
+next unit when `bench/data/diar/STOP` exists.
 
 ```bash
-bench/.venv/bin/python -I bench/run_diar.py tune korean ami          # 5분 dev로 고른 threshold, test 회의(한국어 12, AMI 32)
-bench/.venv/bin/python -I bench/run_diar.py online long              # 60초 조각 실시간 대 회의 후, 4시간 회의의 시간·메모리
-bench/.venv/bin/python -I bench/run_diar.py absorb                   # 30분 dev로 고른 threshold×비율 흡수(diar_post), 탐색용
-bench/.venv/bin/python -I bench/run_diar.py extract-dev verify       # 30분 dev embedding 저장, sherpa 재현 확인(DER 0.5%p 이내, 화자 수 동일)
-bench/.venv/bin/python -I bench/run_diar.py grid                     # 군집 방법 × threshold × 바닥, 공통·room·call 따로 고름
-bench/.venv/bin/python -I bench/run_diar.py preregister            # test를 보기 전에 쓸 값을 results/diar/preregistered.json에 한 번만 기록(덮어쓰지 않음)
-bench/.venv/bin/python -I bench/run_diar.py extract-test pipe        # test embedding 저장, 사전 등록한 값만 그대로 적용
-bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench    # 모델·데이터 없이 도는 테스트
+bench/.venv/bin/python -I bench/run_diar.py tune korean ami          # threshold chosen on a 5-minute dev, test meetings (Korean 12, AMI 32)
+bench/.venv/bin/python -I bench/run_diar.py online long              # 60 s piece live vs after the meeting, time and memory of a 4-hour meeting
+bench/.venv/bin/python -I bench/run_diar.py absorb                   # absorption (diar_post) with threshold × share chosen on a 30-minute dev, exploratory
+bench/.venv/bin/python -I bench/run_diar.py extract-dev verify       # save 30-minute dev embeddings, check sherpa reproduction (DER within 0.5%p, same speaker count)
+bench/.venv/bin/python -I bench/run_diar.py grid                     # clustering method × threshold × floor, chosen for shared, room and call separately
+bench/.venv/bin/python -I bench/run_diar.py preregister            # write the values to use into results/diar/preregistered.json once, before looking at test (never overwritten)
+bench/.venv/bin/python -I bench/run_diar.py extract-test pipe        # save test embeddings, apply only the preregistered values as they are
+bench/.venv/bin/python -I -m unittest discover -s bench/tests -t bench    # tests that run without models or data
 ```
 
-call 장면의 대역 제한은 6aa83d1부터 2의 거듭제곱 길이로 0을 채워 FFT한다(4시간 call 하나가 4.9시간 걸리던 것을 48초로). 출력은 양 끝 1초 안에서 최대 0.026, 가운데에서는 16비트 한 단계(3e-5) 안팎으로 달라지므로(잡음 30분으로 잰 값), RESULTS.md §9의 한국어 결과(call 회의와 그 회의가 들어간 평균)는 지금 코드로는 바이트 단위로 재현되지 않는다. 그대로 다시 만들려면 그 결과를 커밋한 167a9b8을 체크아웃해서 `bench/data/diar/`의 한국어 회의를 지우고 위 순서를 돌린다. room 회의와 AMI는 영향이 없다.
+From 6aa83d1, the call scene's band limit zero-pads to a power-of-two length for the FFT (one
+4-hour call went from 4.9 hours to 48 s). The output differs by up to 0.026 within 1 s of either
+end and by about one 16-bit step (3e-5) in the middle (measured on 30 minutes of noise), so the
+Korean results in RESULTS.md §9 (the call meetings and the averages that include them) do not
+reproduce byte for byte with the current code. To rebuild them exactly, check out 167a9b8, which
+committed those results, delete the Korean meetings in `bench/data/diar/`, and run the order
+above. Room meetings and AMI are not affected.
 
-테스트는 bench/.venv(위 pip 고정 명령으로 scipy까지 설치한 venv)에서 돌린다. 루트 `.venv`에는 scipy가 없어 diar_pipe 테스트가 실패한다.
+Run the tests in bench/.venv (the venv with scipy installed by the pinned pip command above).
+The root `.venv` has no scipy, so the diar_pipe tests fail there.

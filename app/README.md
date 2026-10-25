@@ -8,7 +8,7 @@ Three windows (requirements §6), all the app's own pages under one capability:
 | Window | Page | What |
 |---|---|---|
 | mini bar (`main`, always on top) | `index.html`, `main.js` | recording state, elapsed time, sources, the newest caption, Start/Stop, the way to the others; closing it quits |
-| panel (`panel`, 360×560) | `panel.html`, `panel.js` | 자막 / 요약 / 기록 tabs for the meeting on screen; 기록 holds the next meeting's sources, language and vocabulary, and this one's title and Markdown |
+| panel (`panel`, 360×560) | `panel.html`, `panel.js` | 자막 (Captions) / 요약 (Summary) / 기록 (Record) tabs for the meeting on screen; 기록 holds the next meeting's sources, language and vocabulary, and this one's title and Markdown |
 | library (`library`) | `library.html`, `library.js` | past meetings with a title filter, summary beside transcript, rename, Markdown copy/save, delete |
 
 `common.js` is shared. Closing the panel or the library hides it.
@@ -76,7 +76,8 @@ next to one that did not.
       switcher show the closer crop (face and tray). Both read in light and dark mode.
 - [ ] Only the mini bar shows, on top of other apps, draggable by its title bar.
 - [ ] Menu bar: the camera-and-voice glyph, tinted to match the menu bar in light and dark;
-      its menu has 녹음 시작, 패널 열기, 라이브러리, MeetButler 종료.
+      its menu has 녹음 시작 (Start recording), 패널 열기 (Open panel), 라이브러리 (Library),
+      MeetButler 종료 (Quit MeetButler).
 - [ ] ▢ opens the panel, ☰ the library; closing either hides it, and the button or the
       menu brings it back.
 - [ ] Activity Monitor: no `meetbutler-summarizer` running.
@@ -91,14 +92,15 @@ next to one that did not.
 - [ ] Deny both: nothing starts, and the window says why.
 
 **3. Recording and the windows**
-- [ ] Panel 기록 tab: set sources, language and a vocabulary (the attendees' names and a
+- [ ] Panel 기록 (Record) tab: set sources, language and a vocabulary (the attendees' names and a
       few terms) for the next meeting.
 - [ ] Start from the menu bar with the panel closed: it records with that setup. The menu
-      bar glyph gets its dot, its tooltip says 녹음 중, the first menu item reads 녹음 정지.
+      bar glyph gets its dot, its tooltip says 녹음 중 (Recording), the first menu item reads 녹음 정지 (Stop
+      recording).
 - [ ] Nothing records until Start. While recording, the red indicator and the elapsed time
       are always visible in the mini bar; the panel's elapsed time matches it.
-- [ ] Play a video in a browser during a call-like test: its speech shows as "상대", your
-      voice as "나". MeetButler's own sound is not captured.
+- [ ] Play a video in a browser during a call-like test: its speech shows as "상대" (them),
+      your voice as "나" (me). MeetButler's own sound is not captured.
 - [ ] Captions appear within a few seconds of speech (target: 3 s; measure and record).
       The mini bar shows the newest line.
 - [ ] The vocabulary field cannot be changed while recording.
@@ -119,7 +121,7 @@ next to one that did not.
 
 **4. Vocabulary (STT-7)** — real speech; the benchmark only had synthetic voices
 - [ ] In the meeting of step 3, say each vocabulary term at least once, plus a few short
-      replies ("네, 네.", "맞아요").
+      replies ("네, 네." "yes, yes", "맞아요" "right").
 - [ ] The final transcript spells the terms as written. Note any name heard as another
       attendee's name (the benchmark saw "시온" heard as "지호").
 - [ ] No segment is just vocabulary names repeated ("지호, 지호, 지호."); the real repeated
@@ -129,29 +131,30 @@ next to one that did not.
       vocabulary transcribes as before.
 
 **5. After Stop: final transcript, then summary**
-- [ ] The final pass runs ("최종본을 만드는 중… n%"), then the transcript switches from
+- [ ] The final pass runs ("최종본을 만드는 중… n%", making the final transcript), then the transcript switches from
       grey provisional captions to the final one.
-- [ ] The summary follows on its own ("요약하는 중… n%"), then the 요약 tab shows the
+- [ ] The summary follows on its own ("요약하는 중… n%", summarising), then the 요약 (Summary) tab shows the
       summary, decisions, action items and open questions. Note how long it took and the
       meeting's length.
 - [ ] Activity Monitor while it runs: one `meetbutler-summarizer` (inside the .app); it is
       gone once the summary shows, and the app's memory is back where it was.
-- [ ] A summary item's ↗ switches to 자막 and highlights the line it came from; the line
+- [ ] A summary item's ↗ switches to 자막 (Captions) and highlights the line it came from; the line
       says what the item says.
-- [ ] Another meeting: 취소 during the summary stops it within a few seconds, shows 취소됨
-      and 다시 요약; 다시 요약 runs it again.
+- [ ] Another meeting: 취소 (Cancel) during the summary stops it within a few seconds, shows 취소됨
+      (Cancelled) and 다시 요약 (Summarise again); 다시 요약 runs it again.
 - [ ] Rename `qwen3.5-4b-Q4_K_M.gguf` away and summarise again: the transcript is
       unaffected and the summary says it failed, naming the missing file. Rename it back.
 
 **6. Library and Markdown**
 - [ ] Before the first meeting (an empty data folder), the library shows the mascot and
-      "아직 회의가 없습니다…", and the panel's 요약 tab the mascot and "회의가 끝나면…";
+      "아직 회의가 없습니다…" (no meetings yet), and the panel's 요약 tab the mascot and
+      "회의가 끝나면…" (when the meeting ends);
       both read in light and dark mode, with no light rim around the figure.
 - [ ] The library lists the meetings; the filter narrows by title.
 - [ ] Rename in the library: the panel shows the new title, and the other way round.
-- [ ] Markdown 복사 pastes into a text editor as the meeting (title, date, summary with
+- [ ] Markdown 복사 (Copy Markdown) pastes into a text editor as the meeting (title, date, summary with
       times, transcript).
-- [ ] Markdown 저장 writes into Downloads and shows it in Finder; a second save does not
+- [ ] Markdown 저장 (Save Markdown) writes into Downloads and shows it in Finder; a second save does not
       overwrite the first.
 - [ ] Delete: the first click asks again, the second deletes, and the meeting's folder
       under `~/MeetButler-test/sessions/` is gone. A meeting recording or being finalised
@@ -161,8 +164,8 @@ next to one that did not.
 **7. Quitting** — every path must end without a crash report and keep the recording
 - [ ] Cmd+Q while recording: the app quits; on relaunch the session is there, stopped,
       with its audio and captions so far.
-- [ ] Close the mini bar while recording: same as Cmd+Q. MeetButler 종료 in the menu bar:
-      same.
+- [ ] Close the mini bar while recording: same as Cmd+Q. MeetButler 종료 (Quit MeetButler) in
+      the menu bar: same.
 - [ ] Cmd+Q during the final pass: the app quits promptly; the session keeps its live
       transcript (the final pass did not half-apply).
 - [ ] Cmd+Q during the summary: the app quits promptly and no `meetbutler-summarizer` is
@@ -195,7 +198,7 @@ and drops every model on `RunEvent::Exit`.
 - Finish what a hard exit left behind. A session killed outright (`kill`, a crash, power
   loss) never reaches `RunEvent::Exit`; on the next launch it is `interrupted` with its
   audio and live captions on disk. Run `Recorder::finalize` on such sessions at startup,
-  or offer a "최종본 만들기" button in the library; it already works on interrupted
+  or offer a "최종본 만들기" (Make the final transcript) button in the library; it already works on interrupted
   sessions.
 - Windows system audio (WASAPI loopback, `crates/meetbutler-audio/src/system.rs`).
 
