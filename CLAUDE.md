@@ -8,7 +8,7 @@ final transcript after the meeting. Scope and roadmap: `requirements.md` (v2).
 | Path | What |
 |---|---|
 | `crates/meetbutler-engine/` | spans (Silero on tract), blocklist, `PcmStore`, tail window, SQLite store, pipeline, `Recorder`, model cache, span decoder |
-| `crates/meetbutler-audio/` | 16 kHz mono conversion, mic (cpal), system audio (ScreenCaptureKit; Windows WASAPI not yet) |
+| `crates/meetbutler-audio/` | 16 kHz mono conversion, mic (cpal), system audio (ScreenCaptureKit; Windows WASAPI loopback built, not yet run on a real machine) |
 | `app/src-tauri/`, `app/ui/` | the desktop app; `app/README.md` lists models and manual checks |
 | `bench/` | engine benchmarks on public speech (FLEURS) and synthetic audio |
 | `legacy/` | v0.1: Chrome MV3 extension + Python FastAPI backend, tagged `v0.1.0` |
