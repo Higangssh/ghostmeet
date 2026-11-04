@@ -39,6 +39,9 @@ extension and Python backend move to `legacy/` (tag `v0.1.0`).
   which shows when a meeting is recording.
 - **Bundle**: `app/bundle.sh` builds the .app and .dmg with the sidecar inside, signed ad
   hoc with the hardened runtime and the microphone entitlement.
+- **README** rewritten for MeetButler, with a demo and screenshots made from the app's
+  pages playing an invented meeting (`app/demo-capture/`); the v0.1 guide moves to
+  `legacy/README.md`.
 - **Benchmarks** (`bench/`): engine, VAD, summary model and diarization measured on public
   speech (FLEURS, AMI) and synthetic audio only.
 

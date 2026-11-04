@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>MeetButler demo stage</title>
+  <style>
+    html, body { margin: 0; }
+    body {
+      width: 1280px; height: 800px; position: relative; overflow: hidden;
+      background: linear-gradient(135deg, #dfe5f2, #eef0f4 55%, #e6e9ef);
+      font: 13px -apple-system, "Apple SD Gothic Neo", "WenQuanYi Zen Hei", sans-serif;
+    }
+    .window {
+      position: absolute; border-radius: 10px; overflow: hidden; background: #f7f7f5;
+      box-shadow: 0 12px 36px rgba(20, 30, 60, .18), 0 0 0 1px rgba(0, 0, 0, .08);
+    }
+    .titlebar {
+      height: 28px; display: flex; align-items: center; gap: 7px; padding: 0 10px;
+      background: #ecebe8; border-bottom: 1px solid #dcdbd7; color: #6e6e73; font-size: 12px;
+    }
+    /* neutral window buttons: red belongs to the recording indicator */
+    .titlebar i { width: 11px; height: 11px; border-radius: 50%; background: #c9c8c4; }
+    .titlebar span { flex: 1; text-align: center; margin-right: 50px; }
+    iframe { display: block; border: 0; }
+  </style>
+</head>
+<body>
+  <div class="window" id="library-window" style="left: 32px; top: 168px">
+    <div class="titlebar"><i></i><i></i><i></i><span>MeetButler 라이브러리</span></div>
+    <iframe id="library" src="/ui/library.html" width="820" height="580"></iframe>
+  </div>
+  <div class="window" id="panel-window" style="left: 884px; top: 32px">
+    <div class="titlebar"><i></i><i></i><i></i><span>MeetButler</span></div>
+    <iframe id="panel" src="/ui/panel.html" width="360" height="560"></iframe>
+  </div>
+  <div class="window" id="bar-window" style="left: 32px; top: 32px">
+    <div class="titlebar"><i></i><i></i><i></i><span>MeetButler</span></div>
+    <iframe id="bar" src="/ui/index.html" width="400" height="92"></iframe>
+  </div>
+</body>
+</html>
